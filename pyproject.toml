@@ -1,0 +1,62 @@
+[tool.poetry]
+name = "adcm-aio-client"
+version = "0.1.0"
+description = "ADCM Client"
+authors = ["Aleksandr Alferov <aas@arenadata.io>"]
+license = "Apache License Version 2.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+httpx = "^0.27.2"
+
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.7.1"
+pyright = "^1.1.387"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+length-sort-straight = true
+order-by-type = true
+
+[tool.ruff.lint]
+select = [
+    # Pyflakes
+    "F",
+    # Pycodestyle
+    "E", "W",
+    # isort
+    "I",
+    # "COM" - The following rules may cause conflicts when used with the formatter: `COM812`.
+    # To avoid unexpected behavior, we recommend disabling these rules
+    "N", "UP", "YTT", "ANN",
+    "S", "BLE", "FBT", "B", "COM", "A", "C4",
+    "DTZ", "ICN", "PIE", "Q", "RET",
+    "SIM", "ARG", "PTH", "PLE", "TRY"
+]
+
+ignore = [
+    "COM812",
+]
+
+[tool.pyright]
+include = [
+    "adcm_aio_client",
+]
+
+typeCheckingMode = "standard"
+reportUnnecessaryTypeIgnoreComment = true
+
+reportMissingImports = "error"
+reportMissingTypeStubs = false
+
+pythonVersion = "3.12"
+pythonPlatform = "Linux"
