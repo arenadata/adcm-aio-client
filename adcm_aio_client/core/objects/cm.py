@@ -35,11 +35,11 @@ from adcm_aio_client.core.objects._common import (
     Deletable,
     WithActions,
     WithConfig,
+    WithImports,
     WithMaintenanceMode,
     WithStatus,
     WithUpgrades,
 )
-from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
 from adcm_aio_client.core.types import (
     DEFAULT_JOB_TERMINAL_STATUSES,
@@ -163,6 +163,7 @@ class Cluster(
     WithActions,
     WithUpgrades,
     WithConfig,
+    WithImports,
     WithActionHostGroups,
     WithConfigHostGroups,
     RootInteractiveObject,
@@ -213,10 +214,6 @@ class Cluster(
     def hosts(self: Self) -> "HostsInClusterNode":
         return HostsInClusterNode(cluster=self)
 
-    @cached_property
-    def imports(self: Self) -> ClusterImports:
-        return ClusterImports()
-
 
 FilterByBundle = FilterBy("bundle", COMMON_OPERATIONS, Bundle)
 
@@ -238,6 +235,7 @@ class Service(
     Deletable,
     WithActions,
     WithConfig,
+    WithImports,
     WithActionHostGroups,
     WithConfigHostGroups,
     InteractiveChildObject[Cluster],
