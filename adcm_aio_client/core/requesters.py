@@ -12,11 +12,14 @@
 
 from asyncio import get_event_loop
 from dataclasses import asdict, dataclass
-from typing import NamedTuple, Self
+from json.decoder import JSONDecodeError
+from typing import Any, NamedTuple, Self, TypeAlias
 from urllib.parse import urljoin
 
 from typing_extensions import Protocol
 import httpx
+
+Json: TypeAlias = Any
 
 
 class RequesterError(Exception):
@@ -27,11 +30,15 @@ class SessionError(RequesterError):
     pass
 
 
-class SessionRefreshError(SessionError):
+class ResponseError(RequesterError):
     pass
 
 
-class _RequesterResponse(Protocol):
+class UnauthorizedResponseError(ResponseError):
+    pass
+
+
+class _RequesterResponse(Protocol):  # TODO: name
     response: httpx.Response
 
     def as_list(self: Self) -> list: ...
@@ -71,8 +78,12 @@ class Session:
             self._credentials = credentials
             self.refresh()
 
+    @property
+    def refreshable(self: Self) -> bool:
+        return self._credentials is not None
+
     def refresh(self: Self) -> None:
-        if self._credentials is None:
+        if not self.refreshable:
             message = "Can't refresh session without user credentials"
             raise SessionError(message)
 
@@ -81,15 +92,37 @@ class Session:
 
         if response.status_code != 200:
             message = f"Authentication error: {response.status_code} for url: {login_url}"
-            raise SessionRefreshError(message)
+            raise SessionError(message)
 
 
 class RequesterResponse(NamedTuple):
     response: httpx.Response
 
-    def as_list(self: Self) -> list: ...
+    def as_list(self: Self) -> list:
+        if not isinstance(data := self._prepare_json_response(), list):
+            message = f"Expected a list, got {type(data)}"
+            raise ResponseError(message)
 
-    def as_dict(self: Self) -> dict: ...
+        return data
+
+    def as_dict(self: Self) -> dict:
+        if not isinstance(data := self._prepare_json_response(), dict):
+            message = f"Expected a dict, got {type(data)}"
+            raise ResponseError(message)
+
+        return data
+
+    def _prepare_json_response(self: Self) -> Json:
+        try:
+            data = self.response.json()
+        except JSONDecodeError as e:
+            message = "Response can't be parsed to json"
+            raise ResponseError(message) from e
+
+        if "results" in data:
+            data = data["results"]
+
+        return data
 
 
 class DefaultRequester(Requester):
