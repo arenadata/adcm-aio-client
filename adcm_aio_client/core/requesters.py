@@ -10,14 +10,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Literal, NamedTuple, Self, TypeAlias
+from asyncio import get_event_loop
+from dataclasses import asdict, dataclass
+from typing import NamedTuple, Self
 from urllib.parse import urljoin
 
 from typing_extensions import Protocol
 import httpx
 
-CredentialsDict: TypeAlias = dict[Literal["username", "password"], str]
-AuthHeaderDict: TypeAlias = dict[Literal["Authorization"], str]
+
+class RequesterError(Exception):
+    pass
+
+
+class SessionError(RequesterError):
+    pass
+
+
+class SessionRefreshError(SessionError):
+    pass
 
 
 class _RequesterResponse(Protocol):
@@ -38,16 +49,39 @@ class Requester(Protocol):
     async def delete(self: Self, path: str) -> _RequesterResponse: ...
 
 
-class Session(NamedTuple):  # TODO: client, credentials, def refresh()
-    client: httpx.AsyncClient
-    token: AuthHeaderDict | None
+@dataclass(slots=True, frozen=True)
+class Credentials:
+    username: str
+    password: str
 
-    @property
-    def auth_header(self: Self) -> AuthHeaderDict:
-        if self.token is None:
-            return {}
+    def dict(self: Self) -> dict:
+        return asdict(self)
 
-        return {"Authorization": f"Token {self.token}"}
+    def __repr__(self: Self) -> str:
+        return f"{self.username}'s credentials"
+
+
+class Session:
+    __slots__ = ("api_root", "client", "_credentials")
+
+    def __init__(self: Self, api_root: str, credentials: Credentials | None) -> None:
+        self.api_root = api_root
+        self.client = httpx.AsyncClient()
+        if credentials is not None:
+            self._credentials = credentials
+            self.refresh()
+
+    def refresh(self: Self) -> None:
+        if self._credentials is None:
+            message = "Can't refresh session without user credentials"
+            raise SessionError(message)
+
+        login_url = urljoin(self.api_root, "login/")
+        response = get_event_loop().run_until_complete(self.client.post(url=login_url, data=self._credentials.dict()))
+
+        if response.status_code != 200:
+            message = f"Authentication error: {response.status_code} for url: {login_url}"
+            raise SessionRefreshError(message)
 
 
 class RequesterResponse(NamedTuple):
@@ -59,25 +93,11 @@ class RequesterResponse(NamedTuple):
 
 
 class DefaultRequester(Requester):
-    __slots__ = ("api_root", "_session")
+    __slots__ = ("api_root", "session")
 
-    def __init__(self: Self, url: str, credentials: CredentialsDict | None = None) -> None:
+    def __init__(self: Self, url: str, credentials: Credentials | None = None) -> None:
         self.api_root = urljoin(url, "/api/v2/")
-
-        if credentials is not None:
-            self._session = self.login(credentials=credentials)
-        else:
-            self._session = Session(client=httpx.AsyncClient(), token=None)
-
-    def login(self: Self, credentials: CredentialsDict) -> Session:
-        response = httpx.post(url=urljoin(self.api_root, "token/"), data=credentials)
-        response.raise_for_status()
-
-        return Session(client=httpx.AsyncClient(), token=response.json()["token"])
-
-    @property  # TODO: recreate on AuthError in self.request ??
-    def session(self: Self) -> Session:
-        return self._session
+        self.session = Session(api_root=self.api_root, credentials=credentials)
 
     async def get(self: Self, path: str, query_params: dict | None = None) -> RequesterResponse:
         return await self.request(method="get", path=path, params=query_params or {})
@@ -94,9 +114,8 @@ class DefaultRequester(Requester):
     async def request(self: Self, method: str, path: str, **kwargs: dict) -> RequesterResponse:
         request_method = getattr(self.session.client, method.lower())
         url = urljoin(self.api_root, path)
-        headers = {**self.session.auth_header, **kwargs.pop("headers", {})}  # TODO: without auth headers
-
-        response = await request_method(url, headers=headers, **kwargs)
+        response = await request_method(url, headers=kwargs.pop("headers", {}), **kwargs)
+        # TODO: self.session.refresh() on AuthErrors
         response.raise_for_status()
 
         return RequesterResponse(response=response)
