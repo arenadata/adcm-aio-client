@@ -13,47 +13,31 @@
 from asyncio import get_event_loop
 from dataclasses import asdict, dataclass
 from json.decoder import JSONDecodeError
-from typing import Any, NamedTuple, Self, TypeAlias
+from typing import Any, Self, TypeAlias
 from urllib.parse import urljoin
 
 from typing_extensions import Protocol
 import httpx
 
+from adcm_aio_client.core.errors import ResponseError, SessionError
+
 Json: TypeAlias = Any
 
 
-class RequesterError(Exception):
-    pass
-
-
-class SessionError(RequesterError):
-    pass
-
-
-class ResponseError(RequesterError):
-    pass
-
-
-class UnauthorizedResponseError(ResponseError):
-    pass
-
-
-class _RequesterResponse(Protocol):  # TODO: name
-    response: httpx.Response
-
+class RequesterResponse(Protocol):
     def as_list(self: Self) -> list: ...
 
     def as_dict(self: Self) -> dict: ...
 
 
 class Requester(Protocol):
-    async def get(self: Self, path: str, query_params: dict) -> _RequesterResponse: ...
+    async def get(self: Self, path: str, query_params: dict) -> RequesterResponse: ...
 
-    async def post(self: Self, path: str, data: dict) -> _RequesterResponse: ...
+    async def post(self: Self, path: str, data: dict) -> RequesterResponse: ...
 
-    async def patch(self: Self, path: str, data: dict) -> _RequesterResponse: ...
+    async def patch(self: Self, path: str, data: dict) -> RequesterResponse: ...
 
-    async def delete(self: Self, path: str) -> _RequesterResponse: ...
+    async def delete(self: Self, path: str) -> RequesterResponse: ...
 
 
 @dataclass(slots=True, frozen=True)
@@ -95,7 +79,8 @@ class Session:
             raise SessionError(message)
 
 
-class RequesterResponse(NamedTuple):
+@dataclass(slots=True, frozen=True)
+class HTTPXRequesterResponse:
     response: httpx.Response
 
     def as_list(self: Self) -> list:
@@ -132,23 +117,23 @@ class DefaultRequester(Requester):
         self.api_root = urljoin(url, "/api/v2/")
         self.session = Session(api_root=self.api_root, credentials=credentials)
 
-    async def get(self: Self, path: str, query_params: dict | None = None) -> RequesterResponse:
+    async def get(self: Self, path: str, query_params: dict | None = None) -> HTTPXRequesterResponse:
         return await self.request(method="get", path=path, params=query_params or {})
 
-    async def post(self: Self, path: str, data: dict, **kwargs: dict) -> RequesterResponse:
+    async def post(self: Self, path: str, data: dict, **kwargs: dict) -> HTTPXRequesterResponse:
         return await self.request(method="post", path=path, data=data, **kwargs)
 
-    async def patch(self: Self, path: str, data: dict, **kwargs: dict) -> RequesterResponse:
+    async def patch(self: Self, path: str, data: dict, **kwargs: dict) -> HTTPXRequesterResponse:
         return await self.request(method="patch", path=path, data=data, **kwargs)
 
-    async def delete(self: Self, path: str, **kwargs: dict) -> RequesterResponse:
+    async def delete(self: Self, path: str, **kwargs: dict) -> HTTPXRequesterResponse:
         return await self.request(method="delete", path=path, **kwargs)
 
-    async def request(self: Self, method: str, path: str, **kwargs: dict) -> RequesterResponse:
+    async def request(self: Self, method: str, path: str, **kwargs: dict) -> HTTPXRequesterResponse:
         request_method = getattr(self.session.client, method.lower())
         url = urljoin(self.api_root, path)
         response = await request_method(url, headers=kwargs.pop("headers", {}), **kwargs)
         # TODO: self.session.refresh() on AuthErrors
         response.raise_for_status()
 
-        return RequesterResponse(response=response)
+        return HTTPXRequesterResponse(response=response)
