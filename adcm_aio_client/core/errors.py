@@ -23,5 +23,25 @@ class ResponseError(RequesterError):
     pass
 
 
-class UnauthorizedResponseError(ResponseError):
+class RequesterResponseError(ResponseError):
+    pass
+
+
+class BadRequestError(ResponseError):
+    pass
+
+
+class UnauthorizedError(ResponseError):
+    pass
+
+
+class NotFoundError(ResponseError):
+    pass
+
+
+class ConflictError(ResponseError):
+    pass
+
+
+class ServerError(ResponseError):
     pass

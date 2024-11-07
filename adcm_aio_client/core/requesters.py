@@ -13,13 +13,22 @@
 from asyncio import get_event_loop
 from dataclasses import asdict, dataclass
 from json.decoder import JSONDecodeError
-from typing import Any, Self, TypeAlias
+from typing import Any, Callable, Coroutine, Iterable, Self, TypeAlias
 from urllib.parse import urljoin
 
 from typing_extensions import Protocol
 import httpx
 
-from adcm_aio_client.core.errors import ResponseError, SessionError
+from adcm_aio_client.core.errors import (
+    BadRequestError,
+    ConflictError,
+    NotFoundError,
+    RequesterResponseError,
+    ResponseError,
+    ServerError,
+    SessionError,
+    UnauthorizedError,
+)
 
 Json: TypeAlias = Any
 
@@ -52,33 +61,6 @@ class Credentials:
         return f"{self.username}'s credentials"
 
 
-class Session:
-    __slots__ = ("api_root", "client", "_credentials")
-
-    def __init__(self: Self, api_root: str, credentials: Credentials | None) -> None:
-        self.api_root = api_root
-        self.client = httpx.AsyncClient()
-        if credentials is not None:
-            self._credentials = credentials
-            self.refresh()
-
-    @property
-    def refreshable(self: Self) -> bool:
-        return self._credentials is not None
-
-    def refresh(self: Self) -> None:
-        if not self.refreshable:
-            message = "Can't refresh session without user credentials"
-            raise SessionError(message)
-
-        login_url = urljoin(self.api_root, "login/")
-        response = get_event_loop().run_until_complete(self.client.post(url=login_url, data=self._credentials.dict()))
-
-        if response.status_code != 200:
-            message = f"Authentication error: {response.status_code} for url: {login_url}"
-            raise SessionError(message)
-
-
 @dataclass(slots=True, frozen=True)
 class HTTPXRequesterResponse:
     response: httpx.Response
@@ -86,14 +68,14 @@ class HTTPXRequesterResponse:
     def as_list(self: Self) -> list:
         if not isinstance(data := self._prepare_json_response(), list):
             message = f"Expected a list, got {type(data)}"
-            raise ResponseError(message)
+            raise RequesterResponseError(message)
 
         return data
 
     def as_dict(self: Self) -> dict:
         if not isinstance(data := self._prepare_json_response(), dict):
             message = f"Expected a dict, got {type(data)}"
-            raise ResponseError(message)
+            raise RequesterResponseError(message)
 
         return data
 
@@ -102,7 +84,7 @@ class HTTPXRequesterResponse:
             data = self.response.json()
         except JSONDecodeError as e:
             message = "Response can't be parsed to json"
-            raise ResponseError(message) from e
+            raise RequesterResponseError(message) from e
 
         if "results" in data:
             data = data["results"]
@@ -110,12 +92,54 @@ class HTTPXRequesterResponse:
         return data
 
 
+def _get_error_class(status_code: int) -> type[ResponseError]:
+    first_digit = status_code // 100
+    match first_digit:
+        case 5:
+            return ServerError
+        case 4:
+            match status_code:
+                case 400:
+                    return BadRequestError
+                case 401:
+                    return UnauthorizedError
+                case 404:
+                    return NotFoundError
+                case 409:
+                    return ConflictError
+
+    return ResponseError
+
+
+def convert_exceptions(func: Callable) -> Callable:
+    async def wrapper(*arg: Iterable, **kwargs: dict) -> httpx.Response:
+        response = await func(*arg, **kwargs)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise _get_error_class(status_code=response.status_code) from e
+
+        return response
+
+    return wrapper
+
+
 class DefaultRequester(Requester):
     __slots__ = ("api_root", "session")
 
     def __init__(self: Self, url: str, credentials: Credentials | None = None) -> None:
         self.api_root = urljoin(url, "/api/v2/")
-        self.session = Session(api_root=self.api_root, credentials=credentials)
+        self.client = httpx.AsyncClient()
+        if credentials:
+            get_event_loop().run_until_complete(self.login_as(credentials=credentials))
+
+    async def login_as(self: Self, credentials: Credentials) -> None:
+        login_url = urljoin(self.api_root, "login/")
+        response = await self._do_request(self.client.post(url=login_url, data=credentials.dict()))
+
+        if response.status_code != 200:
+            message = f"Authentication error: {response.status_code} for url: {login_url}"
+            raise SessionError(message)
 
     async def get(self: Self, path: str, query_params: dict | None = None) -> HTTPXRequesterResponse:
         return await self.request(method="get", path=path, params=query_params or {})
@@ -130,10 +154,15 @@ class DefaultRequester(Requester):
         return await self.request(method="delete", path=path, **kwargs)
 
     async def request(self: Self, method: str, path: str, **kwargs: dict) -> HTTPXRequesterResponse:
-        request_method = getattr(self.session.client, method.lower())
+        if not path.endswith("/"):
+            path = f"{path}/"
         url = urljoin(self.api_root, path)
-        response = await request_method(url, headers=kwargs.pop("headers", {}), **kwargs)
-        # TODO: self.session.refresh() on AuthErrors
-        response.raise_for_status()
+        request_method = getattr(self.client, method.lower())
+
+        response = await self._do_request(request_method(url, headers=kwargs.pop("headers", {}), **kwargs))
 
         return HTTPXRequesterResponse(response=response)
+
+    @convert_exceptions
+    async def _do_request(self: Self, request_coro: Coroutine[Any, Any, httpx.Response]) -> httpx.Response:
+        return await request_coro
