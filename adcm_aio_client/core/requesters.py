@@ -12,7 +12,7 @@
 
 from asyncio import sleep
 from dataclasses import asdict, dataclass
-from functools import wraps
+from functools import cached_property, wraps
 from json.decoder import JSONDecodeError
 from typing import Any, Callable, Coroutine, Iterable, Self, TypeAlias
 from urllib.parse import urljoin
@@ -67,25 +67,26 @@ class Requester(Protocol):
     async def delete(self: Self, path: str) -> RequesterResponse: ...
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(frozen=True)
 class HTTPXRequesterResponse:
     response: httpx.Response
 
     def as_list(self: Self) -> list:
-        if not isinstance(data := self._prepare_json_response(), list):
-            message = f"Expected a list, got {type(data)}"
+        if not isinstance(self.json_data, list):
+            message = f"Expected a list, got {type(self.json_data)}"
             raise RequesterResponseError(message)
 
-        return data
+        return self.json_data
 
     def as_dict(self: Self) -> dict:
-        if not isinstance(data := self._prepare_json_response(), dict):
-            message = f"Expected a dict, got {type(data)}"
+        if not isinstance(self.json_data, dict):
+            message = f"Expected a dict, got {type(self.json_data)}"
             raise RequesterResponseError(message)
 
-        return data
+        return self.json_data
 
-    def _prepare_json_response(self: Self) -> Json:
+    @cached_property
+    def json_data(self: Self) -> Json:
         try:
             data = self.response.json()
         except JSONDecodeError as e:
@@ -98,33 +99,21 @@ class HTTPXRequesterResponse:
         return data
 
 
-def _get_error_class(status_code: int) -> type[ResponseError]:
-    first_digit = status_code // 100
-    match first_digit:
-        case 5:
-            return ServerError
-        case 4:
-            match status_code:
-                case 400:
-                    return BadRequestError
-                case 401:
-                    return UnauthorizedError
-                case 404:
-                    return NotFoundError
-                case 409:
-                    return ConflictError
-
-    return ResponseError
+STATUS_ERRORS_MAP = {
+    400: BadRequestError,
+    401: UnauthorizedError,
+    404: NotFoundError,
+    409: ConflictError,
+    500: ServerError,
+}
 
 
 def convert_exceptions(func: Callable) -> Callable:
     @wraps(func)
     async def wrapper(*arg: Iterable, **kwargs: dict) -> httpx.Response:
         response = await func(*arg, **kwargs)
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            raise _get_error_class(status_code=response.status_code) from e
+        if response.status_code >= 300:
+            raise STATUS_ERRORS_MAP.get(response.status_code, ResponseError)
 
         return response
 
@@ -156,26 +145,25 @@ class DefaultRequester(Requester):
         return self
 
     async def get(self: Self, path: str, query_params: dict | None = None) -> HTTPXRequesterResponse:
-        return await self.request(method="get", path=path, params=query_params or {})
+        return await self.request(method=self.client.get, path=path, params=query_params or {})
 
-    async def post(self: Self, path: str, data: dict, **kwargs: dict) -> HTTPXRequesterResponse:
-        return await self.request(method="post", path=path, data=data, **kwargs)
+    async def post(self: Self, path: str, data: dict) -> HTTPXRequesterResponse:
+        return await self.request(method=self.client.post, path=path, data=data)
 
-    async def patch(self: Self, path: str, data: dict, **kwargs: dict) -> HTTPXRequesterResponse:
-        return await self.request(method="patch", path=path, data=data, **kwargs)
+    async def patch(self: Self, path: str, data: dict) -> HTTPXRequesterResponse:
+        return await self.request(method=self.client.patch, path=path, data=data)
 
-    async def delete(self: Self, path: str, **kwargs: dict) -> HTTPXRequesterResponse:
-        return await self.request(method="delete", path=path, **kwargs)
+    async def delete(self: Self, path: str) -> HTTPXRequesterResponse:
+        return await self.request(method=self.client.delete, path=path)
 
-    async def request(self: Self, method: str, path: str, **kwargs: dict) -> HTTPXRequesterResponse:
+    async def request(self: Self, method: Callable, path: str, **kwargs: dict) -> HTTPXRequesterResponse:
         url = urljoin(self.api_root, f"{path}/" if not path.endswith("/") else path)
-        request_method = getattr(self.client, method.lower())
 
         try:
-            response = await self._do_request(request_method(url, headers=kwargs.pop("headers", {}), **kwargs))
+            response = await self._do_request(method(url, **kwargs))
         except UnauthorizedError:
             await self._reconnect()
-            response = await self._do_request(request_method(url, headers=kwargs.pop("headers", {}), **kwargs))
+            response = await self._do_request(method(url, **kwargs))
 
         return HTTPXRequesterResponse(response=response)
 
