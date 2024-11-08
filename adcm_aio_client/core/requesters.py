@@ -31,6 +31,7 @@ from adcm_aio_client.core.errors import (
     ResponseError,
     ServerError,
     UnauthorizedError,
+    WrongCredentialsError,
 )
 
 Json: TypeAlias = Any
@@ -140,14 +141,18 @@ class DefaultRequester(Requester):
         self.client = httpx.AsyncClient()
 
     async def login(self: Self, credentials: Credentials) -> Self:
-        self._credentials = credentials
         login_url = urljoin(self.api_root, "login/")
-        response = await self._do_request(self.client.post(url=login_url, data=credentials.dict()))
+
+        try:
+            response = await self._do_request(self.client.post(url=login_url, data=credentials.dict()))
+        except UnauthorizedError as e:
+            raise WrongCredentialsError from e
 
         if response.status_code != 200:
             message = f"Authentication error: {response.status_code} for url: {login_url}"
             raise LoginError(message)
 
+        self._credentials = credentials
         return self
 
     async def get(self: Self, path: str, query_params: dict | None = None) -> HTTPXRequesterResponse:
@@ -163,9 +168,7 @@ class DefaultRequester(Requester):
         return await self.request(method="delete", path=path, **kwargs)
 
     async def request(self: Self, method: str, path: str, **kwargs: dict) -> HTTPXRequesterResponse:
-        if not path.endswith("/"):
-            path = f"{path}/"
-        url = urljoin(self.api_root, path)
+        url = urljoin(self.api_root, f"{path}/" if not path.endswith("/") else path)
         request_method = getattr(self.client, method.lower())
 
         try:

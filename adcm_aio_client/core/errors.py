@@ -19,6 +19,10 @@ class NoCredentialsError(RequesterError):
     pass
 
 
+class WrongCredentialsError(RequesterError):
+    pass
+
+
 class LoginError(RequesterError):
     pass
 
