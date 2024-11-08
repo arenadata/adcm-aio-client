@@ -56,22 +56,22 @@ class Accessor[T](ABC):
         self.query_params = query_params
 
     @abstractmethod
-    async def list(self: Self) -> AsyncGenerator[List[T], Any]: ...
+    async def list(self: Self) -> List[T]: ...
 
     @abstractmethod
-    async def get(self: Self, predicate: T | None) -> AsyncGenerator[T, Any]: ...
+    async def get(self: Self, predicate: T | None) -> T: ...
 
     @abstractmethod
-    async def get_or_none(self: Self, predicate: T | None) -> AsyncGenerator[T | None, Any]: ...
+    async def get_or_none(self: Self, predicate: T | None) -> T | None: ...
 
     @abstractmethod
-    async def all(self: Self) -> AsyncGenerator[List[T], Any]: ...
+    async def all(self: Self) -> List[T]: ...
 
     @abstractmethod
-    async def iter(self: Self) -> AsyncGenerator[T, Any]: ...
+    async def iter(self: Self) -> AsyncGenerator[T]: ...
 
     @abstractmethod
-    async def filter(self: Self, predicate: T) -> AsyncGenerator[List[T], Any]: ...
+    async def filter(self: Self, predicate: T) -> List[T]: ...
 
     def _create_object(self, data: Dict[str, Any]) -> T:
         obj = self.__new__(self.class_type)  # Create a new instance without calling __init__
@@ -113,7 +113,7 @@ class PaginatedAccessor[T](Accessor):
         assert response.as_dict()["status_code"] == 201  # TODO: rework accoring to actual API response structure
         return self._create_object(kwargs)
 
-    async def get(self, **predicate) -> AsyncGenerator[T, Any]:
+    async def get(self, **predicate) -> T:
         if predicate:
             filter_objects = Filter(**predicate)
 
@@ -137,7 +137,7 @@ class PaginatedAccessor[T](Accessor):
         )
         return [self._create_object(object) for object in response.as_list()]
 
-    async def get_or_none(self: Self, predicate: T) -> List[T | None]:
+    async def get_or_none(self: Self, predicate: T) -> T | None:
         with suppress(ObjectDoesNotExistError):
             obj = await self.get(predicate=predicate)
             if obj:
