@@ -15,7 +15,15 @@ class RequesterError(Exception):
     pass
 
 
-class SessionError(RequesterError):
+class NoCredentialsError(RequesterError):
+    pass
+
+
+class LoginError(RequesterError):
+    pass
+
+
+class ReconnectError(RequesterError):
     pass
 
 

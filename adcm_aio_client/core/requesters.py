@@ -10,8 +10,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from asyncio import get_event_loop
+from asyncio import sleep
 from dataclasses import asdict, dataclass
+from functools import wraps
 from json.decoder import JSONDecodeError
 from typing import Any, Callable, Coroutine, Iterable, Self, TypeAlias
 from urllib.parse import urljoin
@@ -22,31 +23,17 @@ import httpx
 from adcm_aio_client.core.errors import (
     BadRequestError,
     ConflictError,
+    LoginError,
+    NoCredentialsError,
     NotFoundError,
+    ReconnectError,
     RequesterResponseError,
     ResponseError,
     ServerError,
-    SessionError,
     UnauthorizedError,
 )
 
 Json: TypeAlias = Any
-
-
-class RequesterResponse(Protocol):
-    def as_list(self: Self) -> list: ...
-
-    def as_dict(self: Self) -> dict: ...
-
-
-class Requester(Protocol):
-    async def get(self: Self, path: str, query_params: dict) -> RequesterResponse: ...
-
-    async def post(self: Self, path: str, data: dict) -> RequesterResponse: ...
-
-    async def patch(self: Self, path: str, data: dict) -> RequesterResponse: ...
-
-    async def delete(self: Self, path: str) -> RequesterResponse: ...
 
 
 @dataclass(slots=True, frozen=True)
@@ -59,6 +46,24 @@ class Credentials:
 
     def __repr__(self: Self) -> str:
         return f"{self.username}'s credentials"
+
+
+class RequesterResponse(Protocol):
+    def as_list(self: Self) -> list: ...
+
+    def as_dict(self: Self) -> dict: ...
+
+
+class Requester(Protocol):
+    async def login(self: Self, credentials: Credentials) -> Self: ...
+
+    async def get(self: Self, path: str, query_params: dict) -> RequesterResponse: ...
+
+    async def post(self: Self, path: str, data: dict) -> RequesterResponse: ...
+
+    async def patch(self: Self, path: str, data: dict) -> RequesterResponse: ...
+
+    async def delete(self: Self, path: str) -> RequesterResponse: ...
 
 
 @dataclass(slots=True, frozen=True)
@@ -112,6 +117,7 @@ def _get_error_class(status_code: int) -> type[ResponseError]:
 
 
 def convert_exceptions(func: Callable) -> Callable:
+    @wraps(func)
     async def wrapper(*arg: Iterable, **kwargs: dict) -> httpx.Response:
         response = await func(*arg, **kwargs)
         try:
@@ -125,21 +131,24 @@ def convert_exceptions(func: Callable) -> Callable:
 
 
 class DefaultRequester(Requester):
-    __slots__ = ("api_root", "session")
+    __slots__ = ("api_root", "client", "retries", "retry_interval", "_credentials")
 
-    def __init__(self: Self, url: str, credentials: Credentials | None = None) -> None:
+    def __init__(self: Self, url: str, retries: int = 5, retry_interval: float = 5.0) -> None:
+        self.retries = retries
+        self.retry_interval = retry_interval
         self.api_root = urljoin(url, "/api/v2/")
         self.client = httpx.AsyncClient()
-        if credentials:
-            get_event_loop().run_until_complete(self.login_as(credentials=credentials))
 
-    async def login_as(self: Self, credentials: Credentials) -> None:
+    async def login(self: Self, credentials: Credentials) -> Self:
+        self._credentials = credentials
         login_url = urljoin(self.api_root, "login/")
         response = await self._do_request(self.client.post(url=login_url, data=credentials.dict()))
 
         if response.status_code != 200:
             message = f"Authentication error: {response.status_code} for url: {login_url}"
-            raise SessionError(message)
+            raise LoginError(message)
+
+        return self
 
     async def get(self: Self, path: str, query_params: dict | None = None) -> HTTPXRequesterResponse:
         return await self.request(method="get", path=path, params=query_params or {})
@@ -159,10 +168,33 @@ class DefaultRequester(Requester):
         url = urljoin(self.api_root, path)
         request_method = getattr(self.client, method.lower())
 
-        response = await self._do_request(request_method(url, headers=kwargs.pop("headers", {}), **kwargs))
+        try:
+            response = await self._do_request(request_method(url, headers=kwargs.pop("headers", {}), **kwargs))
+        except UnauthorizedError:
+            await self._reconnect()
+            response = await self._do_request(request_method(url, headers=kwargs.pop("headers", {}), **kwargs))
 
         return HTTPXRequesterResponse(response=response)
 
     @convert_exceptions
     async def _do_request(self: Self, request_coro: Coroutine[Any, Any, httpx.Response]) -> httpx.Response:
         return await request_coro
+
+    async def _reconnect(self: Self) -> None:
+        credentials = self._ensure_credentials()
+
+        for _ in range(self.retries):
+            try:
+                await self.login(credentials=credentials)
+                break
+            except (httpx.NetworkError, httpx.TransportError):
+                await sleep(delay=self.retry_interval)
+        else:
+            message = f"Can't reconnect in {self.retries} attempts"
+            raise ReconnectError(message)
+
+    def _ensure_credentials(self: Self) -> Credentials:
+        if self._credentials is None:
+            raise NoCredentialsError
+
+        return self._credentials
