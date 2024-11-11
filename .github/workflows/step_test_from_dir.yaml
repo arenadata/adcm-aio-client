@@ -13,8 +13,8 @@ on:
         default: "unspecified"
         description: "Name to use in `run-name` for tests to be more specific"
 jobs:
-  lint-python:
-    name: Lint Python Code
+  run-pytest-in-dir:
+    name: Run Tests
     runs-on: ubuntu-latest
     env:
       CODE_DIRS: "adcm_aio_client tests"
