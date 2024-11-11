@@ -31,11 +31,15 @@ class ReconnectError(RequesterError):
     pass
 
 
-class ResponseError(RequesterError):
+class RetryRequestError(RequesterError):
     pass
 
 
-class RequesterResponseError(ResponseError):
+class ResponseDataConversionError(RequesterError):
+    pass
+
+
+class ResponseError(RequesterError):
     pass
 
 
@@ -44,6 +48,10 @@ class BadRequestError(ResponseError):
 
 
 class UnauthorizedError(ResponseError):
+    pass
+
+
+class ForbiddenError(ResponseError):
     pass
 
 

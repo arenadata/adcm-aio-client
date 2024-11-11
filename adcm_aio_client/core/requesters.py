@@ -14,7 +14,7 @@ from asyncio import sleep
 from dataclasses import asdict, dataclass
 from functools import cached_property, wraps
 from json.decoder import JSONDecodeError
-from typing import Any, Callable, Coroutine, Iterable, Self, TypeAlias
+from typing import Any, Awaitable, Callable, Coroutine, ParamSpec, Self, TypeAlias
 from urllib.parse import urljoin
 
 from typing_extensions import Protocol
@@ -23,11 +23,12 @@ import httpx
 from adcm_aio_client.core.errors import (
     BadRequestError,
     ConflictError,
+    ForbiddenError,
     LoginError,
     NoCredentialsError,
     NotFoundError,
     ReconnectError,
-    RequesterResponseError,
+    ResponseDataConversionError,
     ResponseError,
     ServerError,
     UnauthorizedError,
@@ -35,6 +36,8 @@ from adcm_aio_client.core.errors import (
 )
 
 Json: TypeAlias = Any
+DoRequestParams = ParamSpec("DoRequestParams")
+DoRequestFunc: TypeAlias = Callable[DoRequestParams, Awaitable[httpx.Response]]
 
 
 @dataclass(slots=True, frozen=True)
@@ -58,13 +61,13 @@ class RequesterResponse(Protocol):
 class Requester(Protocol):
     async def login(self: Self, credentials: Credentials) -> Self: ...
 
-    async def get(self: Self, path: str, query_params: dict) -> RequesterResponse: ...
+    async def get(self: Self, *path: str | int, query_params: dict) -> RequesterResponse: ...
 
-    async def post(self: Self, path: str, data: dict) -> RequesterResponse: ...
+    async def post(self: Self, *path: str | int, data: dict) -> RequesterResponse: ...
 
-    async def patch(self: Self, path: str, data: dict) -> RequesterResponse: ...
+    async def patch(self: Self, *path: str | int, data: dict) -> RequesterResponse: ...
 
-    async def delete(self: Self, path: str) -> RequesterResponse: ...
+    async def delete(self: Self, *path: str | int) -> RequesterResponse: ...
 
 
 @dataclass(frozen=True)
@@ -74,14 +77,14 @@ class HTTPXRequesterResponse:
     def as_list(self: Self) -> list:
         if not isinstance(self.json_data, list):
             message = f"Expected a list, got {type(self.json_data)}"
-            raise RequesterResponseError(message)
+            raise ResponseDataConversionError(message)
 
         return self.json_data
 
     def as_dict(self: Self) -> dict:
         if not isinstance(self.json_data, dict):
             message = f"Expected a dict, got {type(self.json_data)}"
-            raise RequesterResponseError(message)
+            raise ResponseDataConversionError(message)
 
         return self.json_data
 
@@ -91,10 +94,7 @@ class HTTPXRequesterResponse:
             data = self.response.json()
         except JSONDecodeError as e:
             message = "Response can't be parsed to json"
-            raise RequesterResponseError(message) from e
-
-        if "results" in data:
-            data = data["results"]
+            raise ResponseDataConversionError(message) from e
 
         return data
 
@@ -102,15 +102,16 @@ class HTTPXRequesterResponse:
 STATUS_ERRORS_MAP = {
     400: BadRequestError,
     401: UnauthorizedError,
+    403: ForbiddenError,
     404: NotFoundError,
     409: ConflictError,
     500: ServerError,
 }
 
 
-def convert_exceptions(func: Callable) -> Callable:
+def convert_exceptions(func: DoRequestFunc) -> DoRequestFunc:
     @wraps(func)
-    async def wrapper(*arg: Iterable, **kwargs: dict) -> httpx.Response:
+    async def wrapper(*arg: DoRequestParams.args, **kwargs: DoRequestParams.kwargs) -> httpx.Response:
         response = await func(*arg, **kwargs)
         if response.status_code >= 300:
             raise STATUS_ERRORS_MAP.get(response.status_code, ResponseError)
@@ -121,16 +122,23 @@ def convert_exceptions(func: Callable) -> Callable:
 
 
 class DefaultRequester(Requester):
-    __slots__ = ("api_root", "client", "retries", "retry_interval", "_credentials")
+    __slots__ = ("_credentials", "api_root", "client", "retries", "retry_interval")
 
-    def __init__(self: Self, url: str, retries: int = 5, retry_interval: float = 5.0) -> None:
+    def __init__(
+        self: Self,
+        base_url: str,
+        root_path: str = "/api/v2/",
+        timeout: float = 5.0,
+        retries: int = 5,
+        retry_interval: float = 5.0,
+    ) -> None:
         self.retries = retries
         self.retry_interval = retry_interval
-        self.api_root = urljoin(url, "/api/v2/")
-        self.client = httpx.AsyncClient()
+        self.api_root = self._make_url(root_path, base=base_url)
+        self.client = httpx.AsyncClient(timeout=timeout)
 
     async def login(self: Self, credentials: Credentials) -> Self:
-        login_url = urljoin(self.api_root, "login/")
+        login_url = self._make_url("login", base=self.api_root)
 
         try:
             response = await self._do_request(self.client.post(url=login_url, data=credentials.dict()))
@@ -144,20 +152,20 @@ class DefaultRequester(Requester):
         self._credentials = credentials
         return self
 
-    async def get(self: Self, path: str, query_params: dict | None = None) -> HTTPXRequesterResponse:
-        return await self.request(method=self.client.get, path=path, params=query_params or {})
+    async def get(self: Self, *path: str | int, query_params: dict | None = None) -> HTTPXRequesterResponse:
+        return await self.request(*path, method=self.client.get, params=query_params or {})
 
-    async def post(self: Self, path: str, data: dict) -> HTTPXRequesterResponse:
-        return await self.request(method=self.client.post, path=path, data=data)
+    async def post(self: Self, *path: str | int, data: dict) -> HTTPXRequesterResponse:
+        return await self.request(*path, method=self.client.post, data=data)
 
-    async def patch(self: Self, path: str, data: dict) -> HTTPXRequesterResponse:
-        return await self.request(method=self.client.patch, path=path, data=data)
+    async def patch(self: Self, *path: str | int, data: dict) -> HTTPXRequesterResponse:
+        return await self.request(*path, method=self.client.patch, data=data)
 
-    async def delete(self: Self, path: str) -> HTTPXRequesterResponse:
-        return await self.request(method=self.client.delete, path=path)
+    async def delete(self: Self, *path: str | int) -> HTTPXRequesterResponse:
+        return await self.request(*path, method=self.client.delete)
 
-    async def request(self: Self, method: Callable, path: str, **kwargs: dict) -> HTTPXRequesterResponse:
-        url = urljoin(self.api_root, f"{path}/" if not path.endswith("/") else path)
+    async def request(self: Self, *path: str | int, method: Callable, **kwargs: dict) -> HTTPXRequesterResponse:
+        url = self._make_url(*path, base=self.api_root)
 
         try:
             response = await self._do_request(method(url, **kwargs))
@@ -166,6 +174,10 @@ class DefaultRequester(Requester):
             response = await self._do_request(method(url, **kwargs))
 
         return HTTPXRequesterResponse(response=response)
+
+    @staticmethod
+    def _make_url(*path: str | int, base: str) -> str:
+        return urljoin(base, "/".join(map(str, (*path, ""))))
 
     @convert_exceptions
     async def _do_request(self: Self, request_coro: Coroutine[Any, Any, httpx.Response]) -> httpx.Response:
