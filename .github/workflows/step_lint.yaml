@@ -1,6 +1,8 @@
 name: Run Linters
+
 on: 
   workflow_call:
+
 jobs:
   lint-python:
     name: Lint Python Code
@@ -9,7 +11,7 @@ jobs:
       CODE_DIRS: "adcm_aio_client tests"
     steps:
       - name: Install poetry
-        run: python3.12 -m pip install poetry
+        run: python -m pip install poetry
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: poetry install --with dev --no-root
@@ -19,4 +21,3 @@ jobs:
         run: poetry run ruff format --check $CODE_DIRS
       - name: Run pyright check
         run: poetry run pyright $CODE_DIRS
-

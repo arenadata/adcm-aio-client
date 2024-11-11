@@ -1,5 +1,6 @@
 name: Run Tests
 run-name: "Run Tests: ${{ inputs.description }}"
+
 on: 
   workflow_call:
     inputs:
@@ -12,6 +13,7 @@ on:
         required: false
         default: "unspecified"
         description: "Name to use in `run-name` for tests to be more specific"
+
 jobs:
   run-pytest-in-dir:
     name: Run Tests
