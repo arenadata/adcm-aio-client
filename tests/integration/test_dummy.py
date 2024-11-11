@@ -1,3 +1,3 @@
-def test_dummy_unit():
-    assert 1 == 1
+def test_dummy_unit() -> None:
+    assert 1 == 1  # noqa: S101
 
