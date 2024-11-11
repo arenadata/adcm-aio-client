@@ -4,7 +4,7 @@ on:
 jobs:
   lint-python:
     name: Lint Python Code
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       CODE_DIRS: "adcm_aio_client tests"
     steps:

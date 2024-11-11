@@ -15,7 +15,7 @@ on:
 jobs:
   run-pytest-in-dir:
     name: Run Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       CODE_DIRS: "adcm_aio_client tests"
     steps:
