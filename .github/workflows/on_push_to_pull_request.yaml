@@ -1,0 +1,22 @@
+name: Validate Pull Request Changes
+# most important for us is "synchronize" event for pull request, which is included by default
+on: pull_request
+jobs:
+  lint_python_code:
+    name: Lint changes in Python code
+    uses: ./.github/workflows/step_lint.yaml
+
+  run_unit_tests:
+    name: Run unit tests
+    uses: ./.github/workflows/step_test_from_dir.yaml
+    with:
+      target: tests/unit
+      description: Unit
+
+  run_integration_tests:
+    name: Run integration tests againts ADCM's develop branch
+    uses: ./.github/workflows/step_test_from_dir.yaml
+    with:
+      target: tests/integration
+      description: Integration
+
