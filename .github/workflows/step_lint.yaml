@@ -8,6 +8,12 @@ jobs:
     env:
       CODE_DIRS: "adcm_aio_client tests"
     steps:
+      - name: Show python
+        run: which python
+      - name: Show python 3
+        run: which python3
+      - name: Show pythons
+        run: "ls -la /usr/local/bin | grep python"
       - name: Install poetry
         run: python3.12 -m pip install poetry
       - uses: actions/checkout@v4
