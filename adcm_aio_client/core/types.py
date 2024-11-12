@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import NamedTuple, Optional, TypeAlias
+from typing import NamedTuple, Optional, Protocol, TypeAlias
 
 
 class AuthCredentials(NamedTuple):
@@ -21,3 +21,8 @@ class AuthCredentials(NamedTuple):
 AuthToken: TypeAlias = str
 Cert: TypeAlias = str | tuple[str, Optional[str], Optional[str]] | None
 Verify: TypeAlias = str | bool
+
+class AwaredOfOwnPath(Protocol):
+
+    def get_own_path(self) -> tuple[str | int, ...]:
+        ...
