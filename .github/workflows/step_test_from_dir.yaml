@@ -1,0 +1,30 @@
+name: Run Tests
+run-name: "Run Tests: ${{ inputs.description }}"
+
+on: 
+  workflow_call:
+    inputs:
+      target:
+        type: string
+        required: true
+        description: "Directory with tests to aim to"
+      description:
+        type: string
+        required: false
+        default: "unspecified"
+        description: "Name to use in `run-name` for tests to be more specific"
+
+jobs:
+  run-pytest-in-dir:
+    name: Run Tests
+    runs-on: ubuntu-24.04
+    env:
+      CODE_DIRS: "adcm_aio_client tests"
+    steps:
+      - name: Install poetry
+        run: python -m pip install poetry
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: poetry install --with test --no-root
+      - name: Run tests
+        run: poetry run pytest ${{ inputs.target }}
