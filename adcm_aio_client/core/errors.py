@@ -27,10 +27,6 @@ class LoginError(RequesterError):
     pass
 
 
-class ReconnectError(RequesterError):
-    pass
-
-
 class RetryRequestError(RequesterError):
     pass
 

@@ -11,6 +11,7 @@
 # limitations under the License.
 
 from asyncio import sleep
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from functools import cached_property, wraps
 from json.decoder import JSONDecodeError
@@ -27,17 +28,18 @@ from adcm_aio_client.core.errors import (
     LoginError,
     NoCredentialsError,
     NotFoundError,
-    ReconnectError,
     ResponseDataConversionError,
     ResponseError,
+    RetryRequestError,
     ServerError,
     UnauthorizedError,
     WrongCredentialsError,
 )
 
 Json: TypeAlias = Any
-DoRequestParams = ParamSpec("DoRequestParams")
-DoRequestFunc: TypeAlias = Callable[DoRequestParams, Awaitable[httpx.Response]]
+Params = ParamSpec("Params")
+RequestFunc: TypeAlias = Callable[Params, Awaitable["HTTPXRequesterResponse"]]
+DoRequestFunc: TypeAlias = Callable[Params, Awaitable[httpx.Response]]
 
 
 @dataclass(slots=True, frozen=True)
@@ -111,11 +113,31 @@ STATUS_ERRORS_MAP = {
 
 def convert_exceptions(func: DoRequestFunc) -> DoRequestFunc:
     @wraps(func)
-    async def wrapper(*arg: DoRequestParams.args, **kwargs: DoRequestParams.kwargs) -> httpx.Response:
+    async def wrapper(*arg: Params.args, **kwargs: Params.kwargs) -> httpx.Response:
         response = await func(*arg, **kwargs)
         if response.status_code >= 300:
             raise STATUS_ERRORS_MAP.get(response.status_code, ResponseError)
 
+        return response
+
+    return wrapper
+
+
+def retry_request(request_func: RequestFunc) -> RequestFunc:
+    @wraps(request_func)
+    async def wrapper(self: "DefaultRequester", *args: Params.args, **kwargs: Params.kwargs) -> HTTPXRequesterResponse:
+        for _ in range(self.retries):
+            try:
+                response = await request_func(self, *args, **kwargs)
+            except (UnauthorizedError, httpx.NetworkError, httpx.TransportError):
+                await sleep(self.retry_interval)
+                with suppress(httpx.NetworkError, httpx.TransportError):
+                    await self.login(self._ensure_credentials())
+            else:
+                break
+        else:
+            message = f"Request failed in {self.retries} attempts"
+            raise RetryRequestError(message)
         return response
 
     return wrapper
@@ -164,14 +186,10 @@ class DefaultRequester(Requester):
     async def delete(self: Self, *path: str | int) -> HTTPXRequesterResponse:
         return await self.request(*path, method=self.client.delete)
 
+    @retry_request
     async def request(self: Self, *path: str | int, method: Callable, **kwargs: dict) -> HTTPXRequesterResponse:
         url = self._make_url(*path, base=self.api_root)
-
-        try:
-            response = await self._do_request(method(url, **kwargs))
-        except UnauthorizedError:
-            await self._reconnect()
-            response = await self._do_request(method(url, **kwargs))
+        response = await self._do_request(method(url, **kwargs))
 
         return HTTPXRequesterResponse(response=response)
 
@@ -182,19 +200,6 @@ class DefaultRequester(Requester):
     @convert_exceptions
     async def _do_request(self: Self, request_coro: Coroutine[Any, Any, httpx.Response]) -> httpx.Response:
         return await request_coro
-
-    async def _reconnect(self: Self) -> None:
-        credentials = self._ensure_credentials()
-
-        for _ in range(self.retries):
-            try:
-                await self.login(credentials=credentials)
-                break
-            except (httpx.NetworkError, httpx.TransportError):
-                await sleep(delay=self.retry_interval)
-        else:
-            message = f"Can't reconnect in {self.retries} attempts"
-            raise ReconnectError(message)
 
     def _ensure_credentials(self: Self) -> Credentials:
         if self._credentials is None:
