@@ -22,7 +22,7 @@ class WithRequester(Protocol):
     _requester: Requester
 
 
-_Unset = object
+_Unset = object()
 
 
 class InteractiveObject:
