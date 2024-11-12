@@ -20,8 +20,7 @@ class Accessor[T](ABC):
     _requester: Requester
 
     @abstractmethod
-    def get_own_path(self: Self) -> tuple[str | int, ...]:
-        ...
+    def get_own_path(self: Self) -> tuple[str | int, ...]: ...
 
     @abstractmethod
     async def list(self: Self) -> ...: ...

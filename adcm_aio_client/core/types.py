@@ -22,7 +22,6 @@ AuthToken: TypeAlias = str
 Cert: TypeAlias = str | tuple[str, Optional[str], Optional[str]] | None
 Verify: TypeAlias = str | bool
 
-class AwaredOfOwnPath(Protocol):
 
-    def get_own_path(self) -> tuple[str | int, ...]:
-        ...
+class AwaredOfOwnPath(Protocol):
+    def get_own_path(self) -> tuple[str | int, ...]: ...
