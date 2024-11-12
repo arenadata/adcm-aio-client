@@ -12,13 +12,12 @@
 
 from asyncio import sleep
 from contextlib import suppress
-from dataclasses import asdict, dataclass
-from functools import cached_property, wraps
+from dataclasses import dataclass
+from functools import wraps
 from json.decoder import JSONDecodeError
 from typing import Any, Awaitable, Callable, Coroutine, ParamSpec, Self, TypeAlias
 from urllib.parse import urljoin
 
-from typing_extensions import Protocol
 import httpx
 
 from adcm_aio_client.core.errors import (
@@ -35,6 +34,7 @@ from adcm_aio_client.core.errors import (
     UnauthorizedError,
     WrongCredentialsError,
 )
+from adcm_aio_client.core.types import Credentials, Requester
 
 Json: TypeAlias = Any
 Params = ParamSpec("Params")
@@ -42,63 +42,38 @@ RequestFunc: TypeAlias = Callable[Params, Awaitable["HTTPXRequesterResponse"]]
 DoRequestFunc: TypeAlias = Callable[Params, Awaitable[httpx.Response]]
 
 
-@dataclass(slots=True, frozen=True)
-class Credentials:
-    username: str
-    password: str
-
-    def dict(self: Self) -> dict:
-        return asdict(self)
-
-    def __repr__(self: Self) -> str:
-        return f"{self.username}'s credentials"
-
-
-class RequesterResponse(Protocol):
-    def as_list(self: Self) -> list: ...
-
-    def as_dict(self: Self) -> dict: ...
-
-
-class Requester(Protocol):
-    async def login(self: Self, credentials: Credentials) -> Self: ...
-
-    async def get(self: Self, *path: str | int, query_params: dict) -> RequesterResponse: ...
-
-    async def post(self: Self, *path: str | int, data: dict) -> RequesterResponse: ...
-
-    async def patch(self: Self, *path: str | int, data: dict) -> RequesterResponse: ...
-
-    async def delete(self: Self, *path: str | int) -> RequesterResponse: ...
-
-
-@dataclass(frozen=True)
+@dataclass(slots=True)
 class HTTPXRequesterResponse:
     response: httpx.Response
+    _json_data: Json | None = None
 
     def as_list(self: Self) -> list:
-        if not isinstance(self.json_data, list):
-            message = f"Expected a list, got {type(self.json_data)}"
+        if not isinstance(data := self._get_json_data(), list):
+            message = f"Expected a list, got {type(data)}"
             raise ResponseDataConversionError(message)
 
-        return self.json_data
+        return data
 
     def as_dict(self: Self) -> dict:
-        if not isinstance(self.json_data, dict):
-            message = f"Expected a dict, got {type(self.json_data)}"
+        if not isinstance(data := self._get_json_data(), dict):
+            message = f"Expected a dict, got {type(data)}"
             raise ResponseDataConversionError(message)
 
-        return self.json_data
+        return data
 
-    @cached_property
-    def json_data(self: Self) -> Json:
+    def _get_json_data(self: Self) -> Json:
+        if self._json_data is not None:
+            return self._json_data
+
         try:
             data = self.response.json()
         except JSONDecodeError as e:
             message = "Response can't be parsed to json"
             raise ResponseDataConversionError(message) from e
 
-        return data
+        self._json_data = data
+
+        return self._json_data
 
 
 STATUS_ERRORS_MAP = {
@@ -126,10 +101,12 @@ def convert_exceptions(func: DoRequestFunc) -> DoRequestFunc:
 def retry_request(request_func: RequestFunc) -> RequestFunc:
     @wraps(request_func)
     async def wrapper(self: "DefaultRequester", *args: Params.args, **kwargs: Params.kwargs) -> HTTPXRequesterResponse:
-        for _ in range(self.retries):
+        for attempt in range(self.retries):
             try:
                 response = await request_func(self, *args, **kwargs)
             except (UnauthorizedError, httpx.NetworkError, httpx.TransportError):
+                if attempt >= self.retries - 1:
+                    continue
                 await sleep(self.retry_interval)
                 with suppress(httpx.NetworkError, httpx.TransportError):
                     await self.login(self._ensure_credentials())
