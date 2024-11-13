@@ -62,6 +62,9 @@ ignore = [
 include = [
     "adcm_aio_client",
 ]
+exclude = [
+    "adcm_aio_client/tests/**"
+]
 
 typeCheckingMode = "standard"
 reportUnnecessaryTypeIgnoreComment = true

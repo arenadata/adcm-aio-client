@@ -17,13 +17,13 @@ from adcm_aio_client.core.exceptions import (
     MultipleObjectsReturnedError,
     ObjectDoesNotExistError,
 )
-from adcm_aio_client.core.requesters import DefaultRequester
+from adcm_aio_client.core.types import Requester
 
 
 class Accessor[T, F](ABC):
     class_type: Type[T]
 
-    def __init__(self: Self, path: tuple[str | int, ...], requester: DefaultRequester) -> None:
+    def __init__(self: Self, path: tuple[str | int, ...], requester: Requester) -> None:
         self.path = path
         self.requester = requester
 

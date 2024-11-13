@@ -22,8 +22,8 @@ class BaseObject:
 
 
 class BaseNode(Accessor[BaseObject, None]):
-    def __init__(self: Self, path: str, requester: Requester, query_params: dict = None) -> None:
-        super().__init__(path, requester, query_params)
+    def __init__(self: Self, path: tuple[str | int, ...], requester: Requester) -> None:
+        super().__init__(path, requester)
         self.class_type = ast.literal_eval(self.class_type.__name__)
 
 
@@ -52,7 +52,7 @@ class Cluster(BaseObject):
         return self
 
 
-class ClusterNode[Cluster](BaseNode, PaginatedAccessor):
+class ClusterNode(BaseNode, PaginatedAccessor):
     class_type = Cluster
     id: int
     name: str
