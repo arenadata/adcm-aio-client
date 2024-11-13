@@ -54,6 +54,8 @@ select = [
 
 ignore = [
     "COM812",
+    "S101",
+    "TRY003",
 ]
 
 [tool.pyright]

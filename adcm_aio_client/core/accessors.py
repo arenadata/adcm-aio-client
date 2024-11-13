@@ -45,13 +45,13 @@ class Accessor[T, F](ABC):
     @abstractmethod
     async def filter(self: Self) -> List[T]: ...
 
-    def _create_object(self, data: Dict[str, Any]) -> T:
+    def _create_object(self: Self, data: Dict[str, Any]) -> T:
         return self.class_type(requester=self.requester, data=data)  # type: ignore
 
 
 class PaginatedAccessor[T](Accessor):
     def _gen_page_indexes(
-        self, page: Optional[int] = 1, items: Optional[int] = 10
+        self: Self, page: Optional[int] = 1, items: Optional[int] = 10
     ) -> Generator[Tuple[int, int], None, None]:
         """
         Generates indices for pagination slicing based on specified page number and offset.
@@ -77,7 +77,7 @@ class PaginatedAccessor[T](Accessor):
             yield (start_index, end_index)
             current_page += 1
 
-    async def get(self) -> T:
+    async def get(self: Self) -> T:
         response = await self._list(query_params={"offset": 0, "limit": 2})
         objects = response["results"]
 

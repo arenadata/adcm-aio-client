@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from typing import Optional, Self
+import ast
 
 from adcm_aio_client.core.accessors import Accessor, PaginatedAccessor
 from adcm_aio_client.core.requesters import Requester
@@ -23,7 +24,7 @@ class BaseObject:
 class BaseNode(Accessor[BaseObject, None]):
     def __init__(self: Self, path: str, requester: Requester, query_params: dict = None) -> None:
         super().__init__(path, requester, query_params)
-        self.class_type = eval(self.class_type.__name__)
+        self.class_type = ast.literal_eval(self.class_type.__name__)
 
 
 class Service(BaseObject): ...
@@ -36,8 +37,8 @@ class ServiceNode(BaseNode, PaginatedAccessor):
 
 
 class Cluster(BaseObject):
-    def __init__(self, id: int, name: str, description: str, services: Optional[ServiceNode] = None):
-        self.id = id
+    def __init__(self: Self, pk: int, name: str, description: str, services: Optional[ServiceNode] = None) -> None:
+        self.id = pk
         self.name = name
         self.description = description
         self.services = services

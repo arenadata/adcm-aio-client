@@ -2,7 +2,7 @@ class AccessionError(Exception):
     pass
 
 
-class MissingParameterException(AccessionError):
+class MissingParameterError(AccessionError):
     pass
 
 
