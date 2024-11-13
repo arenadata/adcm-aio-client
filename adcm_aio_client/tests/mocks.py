@@ -1,10 +1,10 @@
 # Define a mock response object to simulate API/database responses
-import json
 from typing import Self
+import json
 
 from httpx import Response
 
-from adcm_aio_client.core.requesters import HTTPXRequesterResponse, DefaultRequester
+from adcm_aio_client.core.requesters import DefaultRequester, HTTPXRequesterResponse
 
 page_content = [
     {
@@ -77,7 +77,7 @@ class MockRequester(DefaultRequester):
     async def get(self: Self, *path: str | int, query_params: dict | None = None) -> HTTPXRequesterResponse:
         # This function simulates retrieval of data
         if not isinstance(path, int) and not query_params or "id" not in query_params:
-            if query_params and not "limit" in query_params and not "offset" in query_params:
+            if query_params and "limit" not in query_params and "offset" not in query_params:
                 return HTTPXRequesterResponse(response=MockRequester.response_list)
             return HTTPXRequesterResponse(response=MockRequester.response_list)
         if query_params and "id" in query_params and query_params["id"] > 3:
