@@ -13,7 +13,7 @@
 from abc import ABC, abstractmethod
 from typing import AsyncGenerator, List, Self
 
-from adcm_aio_client.core.requesters import Requester
+from adcm_aio_client.core.types import Requester
 
 
 class Accessor[T](ABC):

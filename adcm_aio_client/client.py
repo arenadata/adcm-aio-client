@@ -12,8 +12,7 @@
 
 from typing import Self
 
-from adcm_aio_client.core.requesters import Requester
-from adcm_aio_client.core.types import AuthCredentials, AuthToken, Cert, Verify
+from adcm_aio_client.core.types import AuthCredentials, AuthToken, Cert, Requester, Verify
 
 
 class ADCMClient:
