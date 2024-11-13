@@ -1,14 +1,18 @@
-class MissingParameterException(Exception):
+class AccessionError(Exception):
     pass
 
 
-class MultipleObjectsReturnedError(Exception):
+class MissingParameterException(AccessionError):
     pass
 
 
-class ObjectDoesNotExistError(Exception):
+class MultipleObjectsReturnedError(AccessionError):
     pass
 
 
-class InvalidArgumentError(Exception):
+class ObjectDoesNotExistError(AccessionError):
+    pass
+
+
+class InvalidArgumentError(AccessionError):
     pass

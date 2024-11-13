@@ -11,49 +11,23 @@
 # limitations under the License.
 from abc import ABC, abstractmethod
 from contextlib import suppress
-from typing import AsyncGenerator, List, Self, Any, Dict, Type, Optional, Iterable, Tuple, Generator
+from typing import AsyncGenerator, List, Self, Any, Dict, Type, Optional, Tuple, Generator
 
 from adcm_aio_client.core.exceptions import (
-    MissingParameterException,
     ObjectDoesNotExistError,
     MultipleObjectsReturnedError,
 )
-from adcm_aio_client.core.mocks import MockRequester
-from adcm_aio_client.core.requesters import Requester, RequesterResponse
+from adcm_aio_client.core.requesters import HTTPXRequesterResponse, DefaultRequester
 
 
-class Filter[T]:
-    def __init__(self, **predicate):
-        self.predicate = predicate
-
-    def __call__(self, object_collection: Iterable[T]):
-        return get_objects(object_collection, self.predicate)
-
-    def is_valid(self) -> bool:
-        # Implement validation logic
-        return bool(self.predicate)
-
-    @staticmethod
-    def is_subdictionary(small, large):
-        # Iterate through each key-value pair in the smaller dictionary
-        for key, value in small.items():
-            # Check if the key is in the larger dictionary and the value matches
-            if key not in large or large[key] != value:
-                return False
-        return True
-
-    @staticmethod
-    def get_objects(object_collection: Iterable[T], filter_data: Optional[dict] = None) -> List[dict]:
-        return [obj for obj in object_collection if is_subdictionary(filter_data, obj.__dict__)]
-
-
-class Accessor[T](ABC):
+class Accessor[T, F](ABC):
     class_type: Type[T]
 
-    def __init__(self: Self, path: str, requester: Requester, query_params: dict = None) -> None:
+    def __init__(self: Self, path: str, requester: DefaultRequester, query_params: dict = None) -> None:
         self.path = path
         self.requester = requester
         self.query_params = query_params
+        self.filter_object = F()
 
     @abstractmethod
     async def list(self: Self) -> List[T]: ...
@@ -68,7 +42,7 @@ class Accessor[T](ABC):
     async def all(self: Self) -> List[T]: ...
 
     @abstractmethod
-    async def iter(self: Self) -> AsyncGenerator[T]: ...
+    async def iter(self: Self) -> AsyncGenerator[T, Self]: ...
 
     @abstractmethod
     async def filter(self: Self, predicate: T) -> List[T]: ...
@@ -82,7 +56,9 @@ class Accessor[T](ABC):
 
 
 class PaginatedAccessor[T](Accessor):
-    def paginate(self, page: Optional[int] = 1, items: Optional[int] = 10) -> Generator[Tuple[int, int], None, None]:
+    def _gen_page_indixes(
+        self, page: Optional[int] = 1, items: Optional[int] = 10
+    ) -> Generator[Tuple[int, int], None, None]:
         """
         Generates indices for pagination slicing based on specified page number and offset.
 
@@ -107,22 +83,9 @@ class PaginatedAccessor[T](Accessor):
             yield (start_index, end_index)
             current_page += 1
 
-    async def create(self: Self, **kwargs) -> T:
-        # Simulate a request that creates a new object
-        response: RequesterResponse = await MockRequester.post(self.path, kwargs)
-        assert response.as_dict()["status_code"] == 201  # TODO: rework accoring to actual API response structure
-        return self._create_object(kwargs)
-
     async def get(self, **predicate) -> T:
-        if predicate:
-            filter_objects = Filter(**predicate)
-
-            if not filter_objects.is_valid():
-                raise MissingParameterException("Filter parameters are missing or invalid.")
-
-        # Simulate a request that returns objects based on a filter
-        response: RequesterResponse = await MockRequester.get(self.path, self.query_params)
-        objects = response.as_dict()
+        response: HTTPXRequesterResponse = await self.requester.get(self.path, query_params=self.query_params)
+        objects = response.as_list()
 
         if not objects:
             raise ObjectDoesNotExistError("No objects found with the given filter.")
@@ -131,48 +94,37 @@ class PaginatedAccessor[T](Accessor):
         else:
             return self._create_object(objects[0])
 
-    async def list(self: Self, offset: int = 1, limit: int = 10) -> List[T]:
-        response: RequesterResponse = await MockRequester.list(
-            self.path, self.query_param.update({"offset": offset, "limit": limit})
-        )
-        return [self._create_object(object) for object in response.as_list()]
+    async def list(self: Self) -> List[T]:
+        response: HTTPXRequesterResponse = await self.requester.get(self.path, query_params=self.query_params)
+        return [self._create_object(obj) for obj in response.as_list()]
 
     async def get_or_none(self: Self, predicate: T) -> T | None:
         with suppress(ObjectDoesNotExistError):
             obj = await self.get(predicate=predicate)
             if obj:
-                yield obj
-            else:
-                yield None
-        yield None  # Default yield in case of exceptions
+                return obj
+        return None
 
-    async def all(self: Self, page: int = 1, items: int = 10) -> List[T]:
-        objects = []
-        try:
-            while True:
-                batch = await self.list(page, items)
-                objects.append(batch)
-                page += 1
-        except StopIteration:
-            return objects
+    async def all(self: Self) -> List[T]:
+        all_objects = []
 
-    async def iter(self: Self, offset: int = 1, limit: int = 10) -> AsyncGenerator[List[T]]:
-        paginator = self.paginate(offset, limit)
+        async for result in self.iter():
+            all_objects.append(result)
+
+        return all_objects
+
+    async def iter(self: Self) -> AsyncGenerator[T, Self]:
+        paginator = self._gen_page_indixes(self.query_params["offset"], self.query_params["limit"])
         while True:
             start, end = next(paginator)
-            response: RequesterResponse = await MockRequester.list(
-                self.path, self.query_param.update({"offset": start, "limit": end})
-            )
+            response: HTTPXRequesterResponse = await self.requester.get(self.path, query_params=self.query_params)
+
             if start >= len(response.as_list()):
                 raise StopIteration
-            yield [self._create_object(object) for object in response.as_list()]
+            yield [self._create_object(obj) for obj in response.as_list()]
 
     async def filter(self: Self, **predicate) -> List[T]:
-        filter_objects = Filter(**predicate)
-        if not predicate or not filter_objects.is_valid():
-            raise MissingParameterException("Filter parameters are missing or invalid.")
-
-        return [self._create_object(obj) for obj in filter_objects(await self.list())]
+        return self.filter_object(**predicate)
 
 
 class NonPaginatedAccessor(Accessor): ...
