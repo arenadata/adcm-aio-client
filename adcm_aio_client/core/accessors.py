@@ -26,8 +26,8 @@ class Accessor[T, F](ABC):
     def __init__(self: Self, path: str, requester: DefaultRequester, query_params: dict = None) -> None:
         self.path = path
         self.requester = requester
-        self.query_params = query_params
-        self.filter_object = F()
+        self.query_params = query_params if query_params else {}
+        self.filter_object = F
 
     @abstractmethod
     async def list(self: Self) -> List[T]: ...
@@ -56,7 +56,7 @@ class Accessor[T, F](ABC):
 
 
 class PaginatedAccessor[T](Accessor):
-    def _gen_page_indixes(
+    def _gen_page_indexes(
         self, page: Optional[int] = 1, items: Optional[int] = 10
     ) -> Generator[Tuple[int, int], None, None]:
         """
@@ -84,7 +84,7 @@ class PaginatedAccessor[T](Accessor):
             current_page += 1
 
     async def get(self, **predicate) -> T:
-        response: HTTPXRequesterResponse = await self.requester.get(self.path, query_params=self.query_params)
+        response: HTTPXRequesterResponse = await self.requester.get(self.path, query_params=predicate)
         objects = response.as_list()
 
         if not objects:
@@ -95,12 +95,12 @@ class PaginatedAccessor[T](Accessor):
             return self._create_object(objects[0])
 
     async def list(self: Self) -> List[T]:
-        response: HTTPXRequesterResponse = await self.requester.get(self.path, query_params=self.query_params)
+        response: HTTPXRequesterResponse = await self.requester.get()
         return [self._create_object(obj) for obj in response.as_list()]
 
-    async def get_or_none(self: Self, predicate: T) -> T | None:
+    async def get_or_none(self: Self, **predicate: T) -> T | None:
         with suppress(ObjectDoesNotExistError):
-            obj = await self.get(predicate=predicate)
+            obj = await self.get(**predicate)
             if obj:
                 return obj
         return None
@@ -114,13 +114,13 @@ class PaginatedAccessor[T](Accessor):
         return all_objects
 
     async def iter(self: Self) -> AsyncGenerator[T, Self]:
-        paginator = self._gen_page_indixes(self.query_params["offset"], self.query_params["limit"])
+        paginator = self._gen_page_indexes(self.query_params.get("offset", 0), self.query_params.get("limit", 10))
         while True:
             start, end = next(paginator)
             response: HTTPXRequesterResponse = await self.requester.get(self.path, query_params=self.query_params)
 
             if start >= len(response.as_list()):
-                raise StopIteration
+                return
             yield [self._create_object(obj) for obj in response.as_list()]
 
     async def filter(self: Self, **predicate) -> List[T]:

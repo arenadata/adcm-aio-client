@@ -9,17 +9,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from contextlib import suppress
-from typing import Self, Optional, AsyncGenerator, Any, List
+from typing import Self, Optional
 
 from adcm_aio_client.core.accessors import Accessor, PaginatedAccessor
-from adcm_aio_client.core.exceptions import (
-    MissingParameterException,
-    ObjectDoesNotExistError,
-    MultipleObjectsReturnedError,
-    InvalidArgumentError,
-)
-from adcm_aio_client.core.mocks import MockRequester
 from adcm_aio_client.core.requesters import Requester
 
 
@@ -28,7 +20,7 @@ class BaseObject:
     name: str
 
 
-class BaseNode(Accessor[BaseObject]):
+class BaseNode(Accessor[BaseObject, None]):
     def __init__(self: Self, path: str, requester: Requester, query_params: dict = None) -> None:
         super().__init__(path, requester, query_params)
         self.class_type = eval(self.class_type.__name__)
