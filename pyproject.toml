@@ -22,6 +22,7 @@ optional = true
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.3"
+pytest-asyncio = "^0.24.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -53,11 +54,16 @@ select = [
 
 ignore = [
     "COM812",
+    "S101",
+    "TRY003",
 ]
 
 [tool.pyright]
 include = [
     "adcm_aio_client",
+]
+exclude = [
+    "adcm_aio_client/tests/**"
 ]
 
 typeCheckingMode = "standard"
