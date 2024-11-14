@@ -76,6 +76,8 @@ class Cluster(Deletable, InteractiveObject):
 
 
 class ClustersNode(PaginatedAccessor[Cluster, None]):
+    class_type = Cluster
+
     def get_own_path(self: Self) -> Endpoint:
         return ("clusters",)
 
@@ -93,7 +95,8 @@ class Service(InteractiveChildObject[Cluster]):
         return ComponentsNode(parent=self, path=(*self.get_own_path(), "components"), requester=self._requester)
 
 
-class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]): ...
+class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
+    class_type = Service
 
 
 class Component(InteractiveChildObject[Service]):
@@ -105,4 +108,5 @@ class Component(InteractiveChildObject[Service]):
         return (*self._parent.get_own_path(), "components", self.id)
 
 
-class ComponentsNode(NonPaginatedChildAccessor[Service, Component, None]): ...
+class ComponentsNode(NonPaginatedChildAccessor[Service, Component, None]):
+    class_type = Component
