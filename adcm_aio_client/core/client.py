@@ -10,19 +10,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import cached_property
 from typing import Self
 
-from adcm_aio_client.core.types import AuthCredentials, AuthToken, Cert, Requester, Verify
+from adcm_aio_client.core.objects.cm import ClustersNode
+from adcm_aio_client.core.requesters import Requester
+from adcm_aio_client.core.types import Credentials, AuthToken, Cert, Verify
 
 
 class ADCMClient:
     def __init__(self: Self, requester: Requester) -> None:
-        pass
+        self._requester = requester
+
+    @cached_property
+    def clusters(self: Self) -> ClustersNode:
+        return ClustersNode(path=(), requester=self._requester)
 
 
 async def build_client(
     url: str | list[str],
-    credentials: AuthCredentials | AuthToken,
+    credentials: Credentials | AuthToken,
     *,
     verify: Verify | None = None,
     cert: Cert | None = None,
