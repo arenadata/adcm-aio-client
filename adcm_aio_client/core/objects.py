@@ -9,10 +9,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import Optional, Self
+import ast
 
-from typing import Self
-
-from adcm_aio_client.core.accessors import Accessor
+from adcm_aio_client.core.accessors import Accessor, PaginatedAccessor
+from adcm_aio_client.core.requesters import Requester
 
 
 class BaseObject:
@@ -20,20 +21,40 @@ class BaseObject:
     name: str
 
 
-class Cluster(BaseObject):
-    description: str
-    services: "ServiceNode"
-
-    def delete(self: Self) -> None: ...
-
-    def rename(self: Self, name: str) -> Self: ...
-
-
-class ClusterNode(Accessor[Cluster]):
-    def create(self: Self) -> Cluster: ...
+class BaseNode(Accessor[BaseObject, None]):
+    def __init__(self: Self, path: tuple[str | int, ...], requester: Requester) -> None:
+        super().__init__(path, requester)
+        self.class_type = ast.literal_eval(self.class_type.__name__)
 
 
 class Service(BaseObject): ...
 
 
-class ServiceNode(Accessor[Service]): ...
+class ServiceNode(BaseNode, PaginatedAccessor):
+    id: int
+    name: str
+    display_name: str
+
+
+class Cluster(BaseObject):
+    def __init__(self: Self, pk: int, name: str, description: str, services: Optional[ServiceNode] = None) -> None:
+        self.id = pk
+        self.name = name
+        self.description = description
+        self.services = services
+
+    def delete(self: Self) -> None:
+        # Implement delete logic
+        pass
+
+    def rename(self: Self, name: str) -> Self:
+        self.name = name
+        return self
+
+
+class ClusterNode(BaseNode, PaginatedAccessor):
+    class_type = Cluster
+    id: int
+    name: str
+    description: str
+    services: Optional[ServiceNode]
