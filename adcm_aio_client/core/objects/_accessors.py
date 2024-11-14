@@ -96,8 +96,12 @@ class PaginatedChildAccessor[Parent, Child: InteractiveChildObject, Filter](Pagi
         return self.class_type(parent=self._parent, requester=self._requester, data=data)
 
 
-class NonPaginatedAccessor[ReturnObject: InteractiveObject, Filter](Accessor[ReturnObject, Filter]):
-    async def iter(self: Self) -> AsyncGenerator[ReturnObject, None]:
+class NonPaginatedChildAccessor[Parent, Child: InteractiveChildObject, Filter](Accessor[Child, Filter]):
+    def __init__(self: Self, parent: Parent, path: Endpoint, requester: Requester) -> None:
+        super().__init__(path, requester)
+        self._parent = parent
+
+    async def iter(self: Self) -> AsyncGenerator[Child, None]:
         response = await self._request_endpoint(query={})
         results = self._extract_results_from_response(response=response)
         for record in results:
@@ -105,3 +109,6 @@ class NonPaginatedAccessor[ReturnObject: InteractiveObject, Filter](Accessor[Ret
 
     def _extract_results_from_response(self: Self, response: RequesterResponse) -> list[dict]:
         return response.as_list()
+
+    def _create_object(self: Self, data: dict[str, Any]) -> Child:
+        return self.class_type(parent=self._parent, requester=self._requester, data=data)

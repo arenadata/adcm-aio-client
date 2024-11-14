@@ -13,8 +13,6 @@
 from dataclasses import asdict, dataclass
 from typing import Optional, Protocol, Self
 
-from adcm_aio_client.core.requesters import Requester
-
 # Init / Authorization
 
 type AuthToken = str

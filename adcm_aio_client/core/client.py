@@ -15,7 +15,7 @@ from typing import Self
 
 from adcm_aio_client.core.objects.cm import ClustersNode
 from adcm_aio_client.core.requesters import Requester
-from adcm_aio_client.core.types import Credentials, AuthToken, Cert, Verify
+from adcm_aio_client.core.types import AuthToken, Cert, Credentials, Verify
 
 
 class ADCMClient:
