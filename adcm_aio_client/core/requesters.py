@@ -34,7 +34,7 @@ from adcm_aio_client.core.errors import (
     UnauthorizedError,
     WrongCredentialsError,
 )
-from adcm_aio_client.core.types import Credentials, Requester
+from adcm_aio_client.core.types import Credentials, PathPart, QueryParameters, Requester
 
 Json: TypeAlias = Any
 Params = ParamSpec("Params")
@@ -151,27 +151,27 @@ class DefaultRequester(Requester):
         self._credentials = credentials
         return self
 
-    async def get(self: Self, *path: str | int, query_params: dict | None = None) -> HTTPXRequesterResponse:
-        return await self.request(*path, method=self.client.get, params=query_params or {})
+    async def get(self: Self, *path: PathPart, query: QueryParameters | None = None) -> HTTPXRequesterResponse:
+        return await self.request(*path, method=self.client.get, params=query or {})
 
-    async def post(self: Self, *path: str | int, data: dict) -> HTTPXRequesterResponse:
+    async def post(self: Self, *path: PathPart, data: dict) -> HTTPXRequesterResponse:
         return await self.request(*path, method=self.client.post, data=data)
 
-    async def patch(self: Self, *path: str | int, data: dict) -> HTTPXRequesterResponse:
+    async def patch(self: Self, *path: PathPart, data: dict) -> HTTPXRequesterResponse:
         return await self.request(*path, method=self.client.patch, data=data)
 
-    async def delete(self: Self, *path: str | int) -> HTTPXRequesterResponse:
+    async def delete(self: Self, *path: PathPart) -> HTTPXRequesterResponse:
         return await self.request(*path, method=self.client.delete)
 
     @retry_request
-    async def request(self: Self, *path: str | int, method: Callable, **kwargs: dict) -> HTTPXRequesterResponse:
+    async def request(self: Self, *path: PathPart, method: Callable, **kwargs: dict) -> HTTPXRequesterResponse:
         url = self._make_url(*path, base=self.api_root)
         response = await self._do_request(method(url, **kwargs))
 
         return HTTPXRequesterResponse(response=response)
 
     @staticmethod
-    def _make_url(*path: str | int, base: str) -> str:
+    def _make_url(*path: PathPart, base: str) -> str:
         return urljoin(base, "/".join(map(str, (*path, ""))))
 
     @convert_exceptions
