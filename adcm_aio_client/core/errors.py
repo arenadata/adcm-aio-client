@@ -11,7 +11,14 @@
 # limitations under the License.
 
 
-class RequesterError(Exception):
+class ADCMClientError(Exception):
+    pass
+
+
+# Requester
+
+
+class RequesterError(ADCMClientError):
     pass
 
 
@@ -60,4 +67,19 @@ class ConflictError(ResponseError):
 
 
 class ServerError(ResponseError):
+    pass
+
+
+# Objects
+
+
+class AccessorError(ADCMClientError):
+    pass
+
+
+class MultipleObjectsReturnedError(AccessorError):
+    pass
+
+
+class ObjectDoesNotExistError(AccessorError):
     pass
