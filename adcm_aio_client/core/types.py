@@ -9,20 +9,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from dataclasses import asdict, dataclass
-from typing import NamedTuple, Optional, Self, TypeAlias
+from typing import Optional, Protocol, Self
 
-from typing_extensions import Protocol
+# Init / Authorization
 
-
-class AuthCredentials(NamedTuple):
-    username: str
-    password: str
-
-
-AuthToken: TypeAlias = str
-Cert: TypeAlias = str | tuple[str, Optional[str], Optional[str]] | None
-Verify: TypeAlias = str | bool
+type AuthToken = str
+type Cert = str | tuple[str, Optional[str], Optional[str]] | None
+type Verify = str | bool
 
 
 @dataclass(slots=True, frozen=True)
@@ -37,6 +32,14 @@ class Credentials:
         return f"{self.username}'s credentials"
 
 
+# Requests
+
+type PathPart = str | int
+type Endpoint = tuple[PathPart, ...]
+
+type QueryParameters = dict
+
+
 class RequesterResponse(Protocol):
     def as_list(self: Self) -> list: ...
 
@@ -46,10 +49,21 @@ class RequesterResponse(Protocol):
 class Requester(Protocol):
     async def login(self: Self, credentials: Credentials) -> Self: ...
 
-    async def get(self: Self, *path: str | int, query_params: dict) -> RequesterResponse: ...
+    async def get(self: Self, *path: PathPart, query: QueryParameters | None = None) -> RequesterResponse: ...
 
-    async def post(self: Self, *path: str | int, data: dict) -> RequesterResponse: ...
+    async def post(self: Self, *path: PathPart, data: dict) -> RequesterResponse: ...
 
-    async def patch(self: Self, *path: str | int, data: dict) -> RequesterResponse: ...
+    async def patch(self: Self, *path: PathPart, data: dict) -> RequesterResponse: ...
 
-    async def delete(self: Self, *path: str | int) -> RequesterResponse: ...
+    async def delete(self: Self, *path: PathPart) -> RequesterResponse: ...
+
+
+# Objects
+
+
+class WithRequester(Protocol):
+    _requester: Requester
+
+
+class AwareOfOwnPath(Protocol):
+    def get_own_path(self: Self) -> Endpoint: ...
