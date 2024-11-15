@@ -29,4 +29,4 @@ jobs:
         # will be accessible without PYTHONPATH manipulations
         run: poetry install --with test 
       - name: Run tests
-        run: poetry run pytest ${{ inputs.target }}
+        run: poetry run pytest ${{ inputs.target }} -v
