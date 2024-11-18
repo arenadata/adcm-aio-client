@@ -182,6 +182,10 @@ class HostProvider(Deletable, InteractiveObject):
         return str(self._data["description"])
 
     @property
+    def display_name(self: Self) -> str:
+        return str(self._data["prototype"]["displayName"])
+
+    @property
     def is_upgradable(self: Self) -> str:
         return str(self._data["isUpgradable"])
 
@@ -192,6 +196,6 @@ class HostProvider(Deletable, InteractiveObject):
     def get_own_path(self: Self) -> Endpoint:
         return "hostproviders", self.id
 
-    @cached_property
-    def prototype(self: Self) -> "PrototypeNode":
-        return PrototypeNode(parent=self, path=(*self.get_own_path(), "prototypes"), requester=self._requester)
+
+class HostprovidersNode(PaginatedAccessor[HostProvider, None]):
+    class_type = HostProvider
