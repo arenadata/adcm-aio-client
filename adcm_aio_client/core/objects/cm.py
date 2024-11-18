@@ -1,6 +1,6 @@
 from enum import Enum
 from functools import cached_property
-from typing import Literal, Self
+from typing import Self
 
 from adcm_aio_client.core.objects._accessors import (
     NonPaginatedChildAccessor,
@@ -141,7 +141,7 @@ class ConfigsNode(PaginatedChildAccessor): ...
 class HostProvidersNode(PaginatedChildAccessor): ...
 
 
-class Host(InteractiveChildObject[Cluster | None]):
+class Host(InteractiveChildObject):
     @property
     def id(self: Self) -> int:
         return int(self._data["id"])
@@ -154,10 +154,6 @@ class Host(InteractiveChildObject[Cluster | None]):
     def description(self: Self) -> str:
         return str(self._data["description"])
 
-    @property
-    def status(self: Self) -> ADCMEntityStatus:
-        return ADCMEntityStatus(self._data["status"])
-
     async def get_status(self: Self) -> ADCMEntityStatus:
         response = await self._requester.get(*self.get_own_path())
         return ADCMEntityStatus(response.as_dict()["status"])
@@ -165,7 +161,7 @@ class Host(InteractiveChildObject[Cluster | None]):
     @cached_property
     def cluster(self: Self) -> ClustersNode | None:
         if not self._data["cluster"]:
-            return
+            return None
         return ClustersNode(
             path=("clusters", self._data["cluster"]["id"], *self.get_own_path()), requester=self._requester
         )
