@@ -60,10 +60,12 @@ ignore = [
 
 [tool.pyright]
 include = [
-    "adcm_aio_client",
+    "adcm_aio_client", "tests"
 ]
-exclude = [
-    "adcm_aio_client/tests/**"
+
+executionEnvironments = [
+    { root = "." },
+    { root = "tests", extraPaths = [ "." ] },
 ]
 
 typeCheckingMode = "standard"
