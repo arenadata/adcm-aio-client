@@ -7,19 +7,29 @@ from adcm_aio_client.core.objects._accessors import (
     PaginatedChildAccessor,
 )
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
-from adcm_aio_client.core.objects._common import Deletable
+from adcm_aio_client.core.objects._common import (
+    Deletable,
+    WithActionHostGroups,
+    WithActions,
+    WithConfig,
+    WithConfigGroups,
+    WithUpgrades,
+)
+from adcm_aio_client.core.objects._imports import ClusterImports
+from adcm_aio_client.core.objects._mapping import ClusterMapping
 from adcm_aio_client.core.types import Endpoint
 
 
 class Bundle(Deletable, InteractiveObject): ...
 
 
-class Cluster(Deletable, InteractiveObject):
-    # data-based properties
+class Host(Deletable, InteractiveObject): ...
 
-    @property
-    def id(self: Self) -> int:
-        return int(self._data["id"])
+
+class Cluster(
+    Deletable, WithActions, WithUpgrades, WithConfig, WithActionHostGroups, WithConfigGroups, InteractiveObject
+):
+    # data-based properties
 
     @property
     def name(self: Self) -> str:
@@ -51,25 +61,28 @@ class Cluster(Deletable, InteractiveObject):
         return response.as_dict()["status"]
 
     async def set_ansible_forks(self: Self, value: int) -> Self:
-        # todo
-        ...
+        await self._requester.post(
+            *self.get_own_path(), "ansible-config", data={"config": {"defaults": {"forks": value}}, "adcmMeta": {}}
+        )
+        return self
 
     # nodes and managers to access
+
+    @cached_property
+    def mapping(self: Self) -> ClusterMapping:
+        return ClusterMapping()
 
     @cached_property
     def services(self: Self) -> "ServicesNode":
         return ServicesNode(parent=self, path=(*self.get_own_path(), "services"), requester=self._requester)
 
-    # todo IMPLEMENT:
-    #  Nodes:
-    #  - hosts: "ClusterHostsNode"
-    #  - imports (probably not an accessor node, but some cool class)
-    #  - actions
-    #  - upgrades
-    #  - config-groups
-    #  Managers:
-    #  - config
-    #  - mapping
+    @cached_property
+    def hosts(self: Self) -> "HostsInClusterNode":
+        return HostsInClusterNode(path=(*self.get_own_path(), "hosts"), requester=self._requester)
+
+    @cached_property
+    def imports(self: Self) -> ClusterImports:
+        return ClusterImports()
 
     def get_own_path(self: Self) -> Endpoint:
         return "clusters", self.id
@@ -80,6 +93,10 @@ class ClustersNode(PaginatedAccessor[Cluster, None]):
 
     def get_own_path(self: Self) -> Endpoint:
         return ("clusters",)
+
+
+class HostsInClusterNode(PaginatedAccessor[Host, None]):
+    class_type = Host
 
 
 class Service(InteractiveChildObject[Cluster]):
