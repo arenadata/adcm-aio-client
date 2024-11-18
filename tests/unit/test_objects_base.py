@@ -1,12 +1,14 @@
-import pytest
-
 from functools import cached_property
 from typing import Self
+
+import pytest
+
 from adcm_aio_client.core.objects._base import InteractiveObject
 from adcm_aio_client.core.types import Endpoint
 from tests.unit.mocks.requesters import QueueRequester
 
 pytestmark = [pytest.mark.asyncio]
+
 
 async def test_cache_cleaning(queue_requester: QueueRequester) -> None:
     class ObjectA(InteractiveObject):
@@ -35,6 +37,3 @@ async def test_cache_cleaning(queue_requester: QueueRequester) -> None:
 
     assert instance.plain == instance.complex
     assert instance.complex == data_2["name"]
-
-
-
