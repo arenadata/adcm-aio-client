@@ -32,10 +32,6 @@ class Cluster(
     # data-based properties
 
     @property
-    def id(self: Self) -> int:
-        return int(self._data["id"])
-
-    @property
     def name(self: Self) -> str:
         return str(self._data["name"])
 
