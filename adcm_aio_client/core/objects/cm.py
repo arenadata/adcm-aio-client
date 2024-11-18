@@ -1,7 +1,6 @@
 from enum import Enum
 from functools import cached_property
 from typing import Literal, Self
-import json
 
 from adcm_aio_client.core.objects._accessors import (
     NonPaginatedChildAccessor,
@@ -166,3 +165,33 @@ class HostsNode(PaginatedAccessor[Host, None]):
 
 class HostsInClusterNode(PaginatedAccessor[Host, None]):
     class_type = Host
+
+class HostProvider(Deletable, InteractiveObject):
+    # data-based properties
+
+    @property
+    def id(self: Self) -> int:
+        return int(self._data["id"])
+
+    @property
+    def name(self: Self) -> str:
+        return str(self._data["name"])
+
+    @property
+    def description(self: Self) -> str:
+        return str(self._data["description"])
+
+    @property
+    def is_upgradable(self: Self) -> str:
+        return str(self._data["isUpgradable"])
+
+    @property
+    def main_info(self: Self) -> str:
+        return str(self._data["mainInfo"])
+
+    def get_own_path(self: Self) -> Endpoint:
+        return "hostproviders", self.id
+
+    @cached_property
+    def prototype(self: Self) -> "PrototypeNode":
+        return PrototypeNode(parent=self, path=(*self.get_own_path(), "prototypes"), requester=self._requester)
