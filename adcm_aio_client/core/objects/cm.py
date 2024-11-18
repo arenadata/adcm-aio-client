@@ -1,6 +1,7 @@
 from enum import Enum
 from functools import cached_property
-from typing import Self
+from typing import Literal, Self
+import json
 
 from adcm_aio_client.core.objects._accessors import (
     NonPaginatedChildAccessor,
