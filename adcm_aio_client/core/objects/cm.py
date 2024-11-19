@@ -21,6 +21,17 @@ from adcm_aio_client.core.objects._mapping import ClusterMapping
 from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint
 
 
+class ADCM(InteractiveObject, WithActions, WithConfig):
+    @cached_property
+    async def version(self: Self) -> str:
+        # TODO: override root_path for being without /api/v2
+        response = await self._requester.get("versions")
+        return response.as_dict()["adcm"]["version"]
+
+    def get_own_path(self: Self) -> Endpoint:
+        return ("adcm",)
+
+
 class Bundle(Deletable, InteractiveObject): ...
 
 
