@@ -100,6 +100,7 @@ class ClustersNode(PaginatedAccessor[Cluster, None]):
 
 
 class Service(InteractiveChildObject[Cluster]):
+
     def get_own_path(self: Self) -> Endpoint:
         return (*self._parent.get_own_path(), "services", self.id)
 
@@ -113,6 +114,7 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
 
 
 class Component(InteractiveChildObject[Service]):
+
     def get_own_path(self: Self) -> Endpoint:
         return (*self._parent.get_own_path(), "components", self.id)
 
@@ -168,10 +170,6 @@ class HostsInClusterNode(PaginatedAccessor[Host, None]):
 
 class HostProvider(Deletable, InteractiveObject):
     # data-based properties
-
-    @property
-    def id(self: Self) -> int:
-        return int(self._data["id"])
 
     @property
     def name(self: Self) -> str:
