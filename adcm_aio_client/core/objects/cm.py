@@ -8,11 +8,11 @@ from adcm_aio_client.core.objects._accessors import (
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
 from adcm_aio_client.core.objects._common import (
     Deletable,
-    HasStatus,
     WithActionHostGroups,
     WithActions,
     WithConfig,
     WithConfigGroups,
+    WithStatus,
     WithUpgrades,
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
@@ -27,7 +27,7 @@ class Host(Deletable, InteractiveObject): ...
 
 
 class Cluster(
-    HasStatus,
+    WithStatus,
     Deletable,
     WithActions,
     WithUpgrades,
@@ -102,7 +102,7 @@ class HostsInClusterNode(PaginatedAccessor[Host, None]):
 
 
 class Service(
-    HasStatus,
+    WithStatus,
     Deletable,
     WithActions,
     WithConfig,

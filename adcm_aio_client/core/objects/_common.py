@@ -10,7 +10,7 @@ class Deletable(WithRequester, AwareOfOwnPath):
         await self._requester.delete(*self.get_own_path())
 
 
-class HasStatus(WithRequester, AwareOfOwnPath):
+class WithStatus(WithRequester, AwareOfOwnPath):
     async def get_status(self: Self) -> ADCMEntityStatus:
         response = await self._requester.get(*self.get_own_path())
         return ADCMEntityStatus(response.as_dict()["status"])

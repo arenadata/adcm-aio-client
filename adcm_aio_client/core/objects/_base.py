@@ -48,7 +48,7 @@ class InteractiveObject(WithRequester, AwareOfOwnPath):
 
     def _clear_cache(self: Self) -> None:
         for name in self._delete_on_refresh:
-            # works for cached_property
+            # Works for cached_property. Suppresses errors on deleting values not yet cached (absent in self.__dict__)
             with suppress(AttributeError):
                 delattr(self, name)
 
