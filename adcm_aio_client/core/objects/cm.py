@@ -147,6 +147,10 @@ class Service(
     def display_name(self: Self) -> str:
         return self._data["displayName"]
 
+    @cached_property
+    def cluster(self: Self) -> Cluster:
+        return self._parent  # TODO: must be refreshable via `self.refresh()`
+
     def get_own_path(self: Self) -> Endpoint:
         return *self._parent.get_own_path(), self.PATH_PREFIX, self.id
 
