@@ -2,11 +2,18 @@ from functools import cached_property
 from typing import Self
 
 from adcm_aio_client.core.objects._base import AwareOfOwnPath, WithRequester
+from adcm_aio_client.core.types import ADCMEntityStatus
 
 
 class Deletable(WithRequester, AwareOfOwnPath):
     async def delete(self: Self) -> None:
         await self._requester.delete(*self.get_own_path())
+
+
+class HasStatus(WithRequester, AwareOfOwnPath):
+    async def get_status(self: Self) -> ADCMEntityStatus:
+        response = await self._requester.get(*self.get_own_path())
+        return ADCMEntityStatus(response.as_dict()["status"])
 
 
 # todo whole section lacking implementation (and maybe code move is required)

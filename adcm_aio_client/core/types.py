@@ -11,6 +11,7 @@
 # limitations under the License.
 
 from dataclasses import asdict, dataclass
+from enum import Enum
 from typing import Optional, Protocol, Self
 
 # Init / Authorization
@@ -67,3 +68,8 @@ class WithRequester(Protocol):
 
 class AwareOfOwnPath(Protocol):
     def get_own_path(self: Self) -> Endpoint: ...
+
+
+class ADCMEntityStatus(str, Enum):  # TODO: stolen from ADCM-6118. unify after merge
+    UP = "up"
+    DOWN = "down"

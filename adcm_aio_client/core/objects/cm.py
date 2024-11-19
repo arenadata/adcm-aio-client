@@ -1,14 +1,14 @@
 from functools import cached_property
-from typing import Literal, Self
+from typing import Self
 
 from adcm_aio_client.core.objects._accessors import (
-    NonPaginatedChildAccessor,
     PaginatedAccessor,
     PaginatedChildAccessor,
 )
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
 from adcm_aio_client.core.objects._common import (
     Deletable,
+    HasStatus,
     WithActionHostGroups,
     WithActions,
     WithConfig,
@@ -27,7 +27,14 @@ class Host(Deletable, InteractiveObject): ...
 
 
 class Cluster(
-    Deletable, WithActions, WithUpgrades, WithConfig, WithActionHostGroups, WithConfigGroups, InteractiveObject
+    HasStatus,
+    Deletable,
+    WithActions,
+    WithUpgrades,
+    WithConfig,
+    WithActionHostGroups,
+    WithConfigGroups,
+    InteractiveObject,
 ):
     # data-based properties
 
@@ -55,11 +62,6 @@ class Cluster(
         return self._construct(what=Bundle, from_data=response.as_dict())
 
     # object-specific methods
-
-    async def get_status(self: Self) -> Literal["up", "down"]:
-        response = await self._requester.get(*self.get_own_path())
-        return response.as_dict()["status"]
-
     async def set_ansible_forks(self: Self, value: int) -> Self:
         await self._requester.post(
             *self.get_own_path(), "ansible-config", data={"config": {"defaults": {"forks": value}}, "adcmMeta": {}}
@@ -99,13 +101,29 @@ class HostsInClusterNode(PaginatedAccessor[Host, None]):
     class_type = Host
 
 
-class Service(InteractiveChildObject[Cluster]):
+class Service(
+    HasStatus,
+    Deletable,
+    WithActions,
+    WithConfig,
+    WithActionHostGroups,
+    WithConfigGroups,
+    InteractiveChildObject[Cluster],
+):
     @property
     def id(self: Self) -> int:
         return int(self._data["id"])
 
+    @property
+    def name(self: Self) -> str:
+        return self._data["name"]
+
+    @property
+    def display_name(self: Self) -> str:
+        return self._data["displayName"]
+
     def get_own_path(self: Self) -> Endpoint:
-        return (*self._parent.get_own_path(), "services", self.id)
+        return *self._parent.get_own_path(), "services", self.id
 
     @cached_property
     def components(self: Self) -> "ComponentsNode":
@@ -125,5 +143,5 @@ class Component(InteractiveChildObject[Service]):
         return (*self._parent.get_own_path(), "components", self.id)
 
 
-class ComponentsNode(NonPaginatedChildAccessor[Service, Component, None]):
+class ComponentsNode(PaginatedChildAccessor[Service, Component, None]):
     class_type = Component
