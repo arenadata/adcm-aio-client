@@ -99,9 +99,6 @@ class ClustersNode(PaginatedAccessor[Cluster, None]):
 
 
 class Service(InteractiveChildObject[Cluster]):
-    @property
-    def id(self: Self) -> int:
-        return int(self._data["id"])
 
     def get_own_path(self: Self) -> Endpoint:
         return (*self._parent.get_own_path(), "services", self.id)
@@ -116,9 +113,6 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
 
 
 class Component(InteractiveChildObject[Service]):
-    @property
-    def id(self: Self) -> int:
-        return int(self._data["id"])
 
     def get_own_path(self: Self) -> Endpoint:
         return (*self._parent.get_own_path(), "components", self.id)
@@ -132,9 +126,6 @@ class HostProvidersNode(PaginatedChildAccessor): ...
 
 
 class Host(Deletable, InteractiveChildObject):
-    @property
-    def id(self: Self) -> int:
-        return int(self._data["id"])
 
     @property
     def name(self: Self) -> str:
