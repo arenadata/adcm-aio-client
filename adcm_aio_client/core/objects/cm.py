@@ -139,6 +139,14 @@ class Service(
     def cluster(self: Self) -> Cluster:
         return self._parent
 
+    @property
+    def name(self: Self) -> str:
+        return self._data["name"]
+
+    @property
+    def display_name(self: Self) -> str:
+        return self._data["displayName"]
+
     def get_own_path(self: Self) -> Endpoint:
         return *self._parent.get_own_path(), self.PATH_PREFIX, self.id
 
