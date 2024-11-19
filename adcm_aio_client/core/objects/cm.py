@@ -29,9 +29,6 @@ class ADCMEntityStatus(str, Enum):
 class Bundle(Deletable, InteractiveObject): ...
 
 
-class Host(Deletable, InteractiveObject): ...
-
-
 class Cluster(
     Deletable, WithActions, WithUpgrades, WithConfig, WithActionHostGroups, WithConfigGroups, InteractiveObject
 ):
@@ -101,10 +98,6 @@ class ClustersNode(PaginatedAccessor[Cluster, None]):
         return ("clusters",)
 
 
-class HostsInClusterNode(PaginatedAccessor[Host, None]):
-    class_type = Host
-
-
 class Service(InteractiveChildObject[Cluster]):
     @property
     def id(self: Self) -> int:
@@ -135,13 +128,10 @@ class ComponentsNode(NonPaginatedChildAccessor[Service, Component, None]):
     class_type = Component
 
 
-class ConfigsNode(PaginatedChildAccessor): ...
-
-
 class HostProvidersNode(PaginatedChildAccessor): ...
 
 
-class Host(InteractiveChildObject):
+class Host(Deletable, InteractiveChildObject):
     @property
     def id(self: Self) -> int:
         return int(self._data["id"])
@@ -159,16 +149,10 @@ class Host(InteractiveChildObject):
         return ADCMEntityStatus(response.as_dict()["status"])
 
     @cached_property
-    def cluster(self: Self) -> ClustersNode | None:
+    def cluster(self: Self) -> Cluster | None:
         if not self._data["cluster"]:
             return None
-        return ClustersNode(
-            path=("clusters", self._data["cluster"]["id"], *self.get_own_path()), requester=self._requester
-        )
-
-    @cached_property
-    def config(self: Self) -> "ConfigsNode":
-        return ConfigsNode(parent=self, path=(*self.get_own_path(), "config"), requester=self._requester)
+        return Cluster(requester=self._requester, data=self._data["cluster"])
 
     @cached_property
     def hostprovider(self: Self) -> "HostProvidersNode":
@@ -182,3 +166,7 @@ class HostsNode(PaginatedAccessor[Host, None]):
     class_type = Host
 
     # TODO: define def __init__(self, hostprovider: Hostprovider, name: str, cluster: Cluster = None): ...
+
+
+class HostsInClusterNode(PaginatedAccessor[Host, None]):
+    class_type = Host
