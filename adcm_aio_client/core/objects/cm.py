@@ -1,6 +1,9 @@
 from functools import cached_property
 from typing import Self
 
+from asyncstdlib.functools import cached_property as async_cached_property
+
+from adcm_aio_client.core.errors import NotFoundError
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
     PaginatedChildAccessor,
@@ -138,13 +141,48 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
     class_type = Service
 
 
-class Component(InteractiveChildObject[Service]):
+class Component(
+    WithStatus, WithActions, WithConfig, WithActionHostGroups, WithConfigGroups, InteractiveChildObject[Service]
+):
     @property
     def id(self: Self) -> int:
         return int(self._data["id"])
 
+    @property
+    def name(self: Self) -> int:
+        return int(self._data["name"])
+
+    @property
+    def display_name(self: Self) -> int:
+        return int(self._data["displayName"])
+
+    @async_cached_property
+    async def constraint(self: Self) -> list[int | str]:
+        response = (await self._requester.get(*self.cluster.get_own_path(), "mapping", "components")).as_list()
+        for component in response:
+            if component["id"] == self.id:
+                return component["constraints"]
+
+        raise NotFoundError
+
+    @cached_property
+    def service(self: Self) -> Service:
+        return self._parent
+
+    @cached_property
+    def cluster(self: Self) -> Cluster:
+        return self._parent._parent
+
+    @cached_property
+    def hosts(self: Self) -> HostsInClusterNode:
+        return HostsInClusterNode(
+            path=(*self.cluster.get_own_path(), "hosts"),
+            requester=self._requester,
+            # filter=Filter({"componentId": self.id}),  # TODO: implement
+        )
+
     def get_own_path(self: Self) -> Endpoint:
-        return (*self._parent.get_own_path(), "components", self.id)
+        return *self._parent.get_own_path(), "components", self.id
 
 
 class ComponentsNode(PaginatedChildAccessor[Service, Component, None]):
