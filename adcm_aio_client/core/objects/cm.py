@@ -167,7 +167,6 @@ class Component(
     WithStatus, WithActions, WithConfig, WithActionHostGroups, WithConfigGroups, InteractiveChildObject[Service]
 ):
     PATH_PREFIX = "components"
-
     @property
     def name(self: Self) -> str:
         return self._data["name"]
@@ -199,6 +198,39 @@ class Component(
             path=(*self.cluster.get_own_path(), "hosts"),
             requester=self._requester,
             accessor_filter={"componentId": self.id},
+        )
+
+    @property
+    def name(self: Self) -> int:
+        return int(self._data["name"])
+
+    @property
+    def display_name(self: Self) -> int:
+        return int(self._data["displayName"])
+
+    @async_cached_property
+    async def constraint(self: Self) -> list[int | str]:
+        response = (await self._requester.get(*self.cluster.get_own_path(), "mapping", "components")).as_list()
+        for component in response:
+            if component["id"] == self.id:
+                return component["constraints"]
+
+        raise NotFoundError
+
+    @cached_property
+    def service(self: Self) -> Service:
+        return self._parent
+
+    @cached_property
+    def cluster(self: Self) -> Cluster:
+        return self._parent._parent
+
+    @cached_property
+    def hosts(self: Self) -> HostsInClusterNode:
+        return HostsInClusterNode(
+            path=(*self.cluster.get_own_path(), "hosts"),
+            requester=self._requester,
+            # filter=Filter({"componentId": self.id}),  # TODO: implement
         )
 
     def get_own_path(self: Self) -> Endpoint:
