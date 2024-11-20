@@ -57,7 +57,19 @@ class RootInteractiveObject(InteractiveObject):
     PATH_PREFIX: str
 
     def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
+        # change here
+        return self._build_own_path(self.id)
+
+    # let's add this one
+    @classmethod
+    async def with_id(cls: type[Self], requester: Requester, object_id: int) -> Self:
+        object_path = cls._build_own_path(object_id)
+        response = await requester.get(*object_path)
+        return cls(requester=requester, data=response.as_dict())
+
+    @classmethod
+    def _build_own_path(cls: type[Self], object_id: int) -> Endpoint:
+        return cls.PATH_PREFIX, object_id
 
 
 class InteractiveChildObject[Parent](InteractiveObject):
