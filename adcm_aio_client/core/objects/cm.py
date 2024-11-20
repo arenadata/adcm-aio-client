@@ -125,7 +125,7 @@ class Service(
     WithConfigGroups,
     InteractiveChildObject[Cluster],
 ):
-    # PATH_PREFIX = "services"
+    PATH_PREFIX = "services"
 
     @property
     def name(self: Self) -> str:
