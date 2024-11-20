@@ -124,7 +124,7 @@ class Service(
 
     @cached_property
     def cluster(self: Self) -> Cluster:
-        return self._parent  # TODO: must be refreshable via `self.refresh()`
+        return self._parent
 
     def get_own_path(self: Self) -> Endpoint:
         return *self._parent.get_own_path(), "services", self.id
