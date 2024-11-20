@@ -123,9 +123,26 @@ class ComponentsNode(NonPaginatedChildAccessor[Service, Component, None]):
 
 class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInteractiveObject):
     PATH_PREFIX = "hostproviders"
+    # data-based properties
+
+    @property
+    def name(self: Self) -> str:
+        return str(self._data["name"])
+
+    @property
+    def description(self: Self) -> str:
+        return str(self._data["description"])
+
+    @property
+    def display_name(self: Self) -> str:
+        return str(self._data["prototype"]["displayName"])
+
+    def get_own_path(self: Self) -> Endpoint:
+        return self.PATH_PREFIX, self.id
 
 
-class HostProvidersNode(PaginatedChildAccessor): ...
+class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
+    class_type = HostProvider
 
 
 class Host(Deletable, RootInteractiveObject):
@@ -159,8 +176,6 @@ class Host(Deletable, RootInteractiveObject):
 
 class HostsNode(PaginatedAccessor[Host, None]):
     class_type = Host
-
-    # TODO: define def __init__(self, hostprovider: Hostprovider, name: str, cluster: Cluster = None): ...
 
 
 class HostsInClusterNode(PaginatedAccessor[Host, None]):

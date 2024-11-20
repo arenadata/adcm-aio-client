@@ -13,7 +13,7 @@
 from functools import cached_property
 from typing import Self
 
-from adcm_aio_client.core.objects.cm import ClustersNode, HostsNode
+from adcm_aio_client.core.objects.cm import ClustersNode, HostProvidersNode, HostsNode
 from adcm_aio_client.core.requesters import Requester
 from adcm_aio_client.core.types import AuthToken, Cert, Credentials, Verify
 
@@ -29,6 +29,10 @@ class ADCMClient:
     @cached_property
     def hosts(self: Self) -> HostsNode:
         return HostsNode(path=(), requester=self._requester)
+
+    @cached_property
+    def hostproviders(self: Self) -> HostProvidersNode:
+        return HostProvidersNode(path=(), requester=self._requester)
 
 
 async def build_client(
