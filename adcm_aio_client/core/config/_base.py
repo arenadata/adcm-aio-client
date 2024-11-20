@@ -5,7 +5,7 @@ from functools import partial
 from typing import Any, Callable, Iterable, Self, Union, overload
 import json
 
-from adcm_aio_client.core.config.errors import ParameterNotFoundError, ParameterTypeError
+from adcm_aio_client.core.config.errors import ParameterNotFoundError, ParameterTypeError, ParameterValueTypeError
 from adcm_aio_client.core.config.types import (
     AnyParameterName,
     LevelNames,
@@ -26,9 +26,27 @@ class Callbacks:
     set_activation_attribute: SetActivationStateCallback
 
 
+class ValueWrapper[InnerType: ParameterValueOrNone]:
+    __slots__ = ("_value", "_set_value")
+
+    def __init__(self: Self, value: InnerType, set_value_callback: SetValueCallback) -> None:
+        self._value = value
+        self._set_value = set_value_callback
+
+    @property
+    def value(self: Self) -> InnerType:
+        return self._value
+
+    def set(self: Self, value: InnerType) -> Self:
+        self._set_value(value)
+        self._value = value
+        return self
+
+
 class _ParametersGroup:
     def __init__(self: Self, spec: dict, callbacks: Callbacks, previous_levels: LevelNames = ()) -> None:
-        self._spec = spec
+        # for now we assume it's always there
+        self._spec = spec["parameters"]
         self._previous_levels = previous_levels
         self._callbacks = callbacks
         self._names_mapping: dict[ParameterDisplayName, ParameterName] = {}
@@ -39,6 +57,11 @@ class _ParametersGroup:
     def _current_config_level(self: Self) -> dict: ...
 
     @overload
+    def __getitem__[InnerType: ParameterValueOrNone](
+        self: Self, item: tuple[AnyParameterName, type[ValueWrapper], type[InnerType]]
+    ) -> ValueWrapper[InnerType]: ...
+
+    @overload
     def __getitem__[ExpectedType: "ParameterWrapper"](
         self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
     ) -> ExpectedType: ...
@@ -46,14 +69,23 @@ class _ParametersGroup:
     @overload
     def __getitem__(self: Self, item: AnyParameterName) -> "ParameterWrapper": ...
 
-    def __getitem__[ExpectedType: "ParameterWrapper"](
-        self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
-    ) -> Union[ExpectedType, "ParameterWrapper"]:
+    def __getitem__[ExpectedType: "ParameterWrapper", ValueType: ParameterValueOrNone](
+        self: Self,
+        item: AnyParameterName
+        | tuple[AnyParameterName, type[ExpectedType]]
+        | tuple[AnyParameterName, type[ValueWrapper], type[ValueType]],
+    ) -> Union[ValueWrapper[ValueType], ExpectedType, "ParameterWrapper"]:
+        check_internal = False
+        internal_type = None
         if isinstance(item, str):
             key = item
             expected_type = None
-        else:
+        elif len(item) == 2:
             key, expected_type = item
+        else:
+            key, _, internal_type = item
+            expected_type = ValueWrapper
+            check_internal = True
 
         level_name = self._find_technical_name(display_name=key)
         if not level_name:
@@ -71,9 +103,24 @@ class _ParametersGroup:
 
             self._wrappers[level_name] = initialized_wrapper
 
-        if expected_type is not None and not isinstance(initialized_wrapper, expected_type):
-            message = f"Unexpected type of {key}: {type(initialized_wrapper)}.\nExpected: {expected_type}"
-            raise ParameterTypeError(message)
+        if expected_type is not None:
+            if not isinstance(initialized_wrapper, expected_type):
+                message = f"Unexpected type of {key}: {type(initialized_wrapper)}.\nExpected: {expected_type}"
+                raise ParameterTypeError(message)
+
+            if check_internal:
+                if not isinstance(initialized_wrapper, ValueWrapper):
+                    message = f"Internal type can be checked only for ValueWrapper, not {type(initialized_wrapper)}"
+                    raise ParameterTypeError(message)
+
+                value = initialized_wrapper.value
+                if internal_type is None:
+                    if value is not None:
+                        message = f"Value expected to be None, not {value}"
+                        raise ParameterValueTypeError(message)
+                elif not isinstance(value, internal_type):
+                    message = f"Unexpected type of value of {key}: {type(value)}.\nExpected: {internal_type}"
+                    raise ParameterValueTypeError(message)
 
         return initialized_wrapper
 
@@ -82,15 +129,15 @@ class _ParametersGroup:
         if cached_name:
             return cached_name
 
-        for name, parameter_data in self._spec["properties"]:
+        for name, parameter_data in self._spec.items():
             if parameter_data.get("title") == display_name:
                 self._names_mapping[display_name] = name
                 return name
 
         return None
 
-    def _get_parameter_spec(self: Self, name: ParameterName) -> dict:
-        value = self._spec[name]
+    def _get_parameter_spec(self: Self, name: ParameterName, parameters_spec: dict | None = None) -> dict:
+        value = (parameters_spec or self._spec)[name]
         if "oneOf" not in value:
             return value
 
@@ -140,23 +187,6 @@ class _ParametersGroup:
 type ParameterWrapper = ValueWrapper | RegularGroupWrapper | ActivatableGroupWrapper
 
 
-class ValueWrapper[InnerType: ParameterValueOrNone]:
-    __slots__ = ("_value", "_set_value")
-
-    def __init__(self: Self, value: InnerType, set_value_callback: SetValueCallback) -> None:
-        self._value = value
-        self._set_value = set_value_callback
-
-    @property
-    def value(self: Self) -> InnerType:
-        return self._value
-
-    def set(self: Self, value: InnerType) -> Self:
-        self._set_value(value)
-        self._value = value
-        return self
-
-
 class RegularGroupWrapper(_ParametersGroup):
     def __init__(
         self: Self, config_level_data: dict, spec: dict, callbacks: Callbacks, previous_levels: LevelNames
@@ -187,18 +217,18 @@ class EditableConfig(_ParametersGroup):
         data: dict,
         spec: dict,
     ) -> None:
-        self._initial_data = data
-        self._json_fields: set[tuple[ParameterName, ...]] = set()
-        self._convert_payload_formated_json_fields_inplace(self._initial_data["config"], prefix=())
-
-        self._changed_data = None
-
         super().__init__(
             spec=spec,
             callbacks=Callbacks(
                 set_value=self._set_parameter_value, set_activation_attribute=self._set_activation_attribute
             ),
         )
+
+        self._initial_data = data
+        self._json_fields: set[tuple[ParameterName, ...]] = set()
+        self._convert_payload_formated_json_fields_inplace(self._spec, self._initial_data["config"], prefix=())
+
+        self._changed_data = None
 
     def to_payload(self: Self) -> dict:
         payload = deepcopy(self._current_data)
@@ -241,15 +271,19 @@ class EditableConfig(_ParametersGroup):
 
         return self._changed_data
 
-    def _convert_payload_formated_json_fields_inplace(self: Self, data: dict, prefix: LevelNames) -> None:
+    def _convert_payload_formated_json_fields_inplace(
+        self: Self, parameters_spec: dict, data: dict, prefix: LevelNames
+    ) -> None:
         for key, value in data.items():
-            parameter_spec = self._get_parameter_spec(key)
+            parameter_spec = self._get_parameter_spec(key, parameters_spec=parameters_spec)
             level_names = (*prefix, key)
             if parameter_spec.get("format") == "json":
-                set_nested_config_value(data, level_names, self._json_value_from_payload_format(value))
+                set_nested_config_value(data, (key,), self._json_value_from_payload_format(value))
                 self._json_fields.add(level_names)
             elif isinstance(value, dict) and self._parameter_is_group(parameter_spec):
-                self._convert_payload_formated_json_fields_inplace(data=value, prefix=level_names)
+                self._convert_payload_formated_json_fields_inplace(
+                    parameters_spec=parameters_spec[key]["parameters"], data=value, prefix=level_names
+                )
 
     def _convert_json_fields_to_payload_format_inplace(self: Self, data: dict) -> None:
         for json_field_name in self._json_fields:

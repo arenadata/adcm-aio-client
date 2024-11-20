@@ -48,7 +48,7 @@ def example_config() -> tuple[dict, dict]:
                 }
             },
             "optional_group": group_like_param_schema
-            | {"properties": {"param": regular_param_schema}, "adcmMeta": {"activation": {"isAllowChange": True}}},
+            | {"parameters": {"param": regular_param_schema}, "adcmMeta": {"activation": {"isAllowChange": True}}},
         }
     }
 
@@ -57,7 +57,6 @@ def example_config() -> tuple[dict, dict]:
 
 def test_config_edit_by_name(example_config: tuple[dict, dict]) -> None:
     data, schema = example_config
-
     new_inner_json = {
         "complex": [],
         "jsonfield": 23,
@@ -85,11 +84,12 @@ def test_config_edit_by_name(example_config: tuple[dict, dict]) -> None:
     # todo:
     #  - check no POST requests are performed
 
-    config = EditableConfig(data=data, spec=schema)
+    # deepcopy, because we want our "source" to be intact
+    # and unchanged by json formating
+    config = EditableConfig(data=deepcopy(data), spec=schema)
 
     config_for_save = config.to_payload()
     assert config_for_save == data
-    assert config_for_save is not data
 
     # Edit "root" values
 
@@ -97,14 +97,14 @@ def test_config_edit_by_name(example_config: tuple[dict, dict]) -> None:
 
     # inner type won't be checked (list),
     # but here we pretend "to be 100% sure" it's `list`, not `None`
-    config["root_list", ValueWrapper].set([*config["root_list", ValueWrapper[list]].value, new_config["root_list"][-1]])
+    config["root_list", ValueWrapper].set([*config["root_list", ValueWrapper, list].value, new_config["root_list"][-1]])
 
     root_dict = config["root_dict"]
     assert isinstance(root_dict, ValueWrapper)
     assert isinstance(root_dict.value, dict)
     root_dict.set(None)
     assert root_dict.value is None
-    assert config["root_dict"] is None
+    assert config["root_dict", ValueWrapper].value is None
 
     # Edit group ("nested") values
 
@@ -114,7 +114,7 @@ def test_config_edit_by_name(example_config: tuple[dict, dict]) -> None:
     main_group = config["main"]
     assert isinstance(main_group, RegularGroupWrapper)
     main_group["inner_dict", ValueWrapper].set(
-        {**main_group["inner_dict", ValueWrapper[dict]].value, "additional": "keys", "are": "welcome"}
+        {**main_group["inner_dict", ValueWrapper, dict].value, "additional": "keys", "are": "welcome"}
     )
 
     activatable_group = config["optional_group"]
@@ -133,21 +133,17 @@ def test_config_edit_by_name(example_config: tuple[dict, dict]) -> None:
     json_field.set(new_value)
 
     # swap value type with direct set
-    assert isinstance(config["root_json", ValueWrapper[dict]].value, dict)
+    assert isinstance(config["root_json", ValueWrapper, dict].value, dict)
     config["root_json", ValueWrapper].set(["now", "I am", "cool"])
 
     # Type change specifics
 
     param = config["root_str"]
     assert isinstance(param, ValueWrapper)
-    assert isinstance(param.value, str)
-
-    param.set(None)
-    assert config["root_str"] is None
-    assert isinstance(param.value, str)
+    assert param.value is None
 
     param.set("newstring")
-    assert isinstance(config["root_str"], str)
+    assert isinstance(config["root_str", ValueWrapper].value, str)
 
     # Check all values are changed
 
