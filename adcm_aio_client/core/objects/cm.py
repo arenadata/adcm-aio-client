@@ -7,7 +7,7 @@ from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
     PaginatedChildAccessor,
 )
-from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
+from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject, RootInteractiveObject
 from adcm_aio_client.core.objects._common import (
     Deletable,
     WithActionHostGroups,
@@ -30,8 +30,9 @@ class Bundle(Deletable, InteractiveObject): ...
 
 
 class Cluster(
-    Deletable, WithActions, WithUpgrades, WithConfig, WithActionHostGroups, WithConfigGroups, InteractiveObject
+    Deletable, WithActions, WithUpgrades, WithConfig, WithActionHostGroups, WithConfigGroups, RootInteractiveObject
 ):
+    PATH_PREFIX = "clusters"
     # data-based properties
 
     @property
@@ -88,7 +89,7 @@ class Cluster(
         return ClusterImports()
 
     def get_own_path(self: Self) -> Endpoint:
-        return "clusters", self.id
+        return self.PATH_PREFIX, self.id
 
 
 class ClustersNode(PaginatedAccessor[Cluster, None]):
@@ -99,7 +100,6 @@ class ClustersNode(PaginatedAccessor[Cluster, None]):
 
 
 class Service(InteractiveChildObject[Cluster]):
-
     def get_own_path(self: Self) -> Endpoint:
         return (*self._parent.get_own_path(), "services", self.id)
 
@@ -113,7 +113,6 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
 
 
 class Component(InteractiveChildObject[Service]):
-
     def get_own_path(self: Self) -> Endpoint:
         return (*self._parent.get_own_path(), "components", self.id)
 
@@ -122,10 +121,15 @@ class ComponentsNode(NonPaginatedChildAccessor[Service, Component, None]):
     class_type = Component
 
 
+class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInteractiveObject):
+    PATH_PREFIX = "hostproviders"
+
+
 class HostProvidersNode(PaginatedChildAccessor): ...
 
 
-class Host(Deletable, InteractiveChildObject):
+class Host(Deletable, RootInteractiveObject):
+    PATH_PREFIX = "hosts"
 
     @property
     def name(self: Self) -> str:
@@ -140,17 +144,17 @@ class Host(Deletable, InteractiveChildObject):
         return ADCMEntityStatus(response.as_dict()["status"])
 
     @cached_property
-    def cluster(self: Self) -> Cluster | None:
+    async def cluster(self: Self) -> Cluster | None:
         if not self._data["cluster"]:
             return None
-        return Cluster(requester=self._requester, data=self._data["cluster"])
+        return await Cluster.with_id(requester=self._requester, object_id=self._data["cluster"]["id"])
 
     @cached_property
-    def hostprovider(self: Self) -> "HostProvidersNode":
-        return HostProvidersNode(parent=None, path=(*self.get_own_path(), "hostprovider"), requester=self._requester)
+    async def hostprovider(self: Self) -> HostProvider:
+        return await HostProvider.with_id(requester=self._requester, object_id=self._data["hostprovider"]["id"])
 
     def get_own_path(self: Self) -> Endpoint:
-        return "hosts", self.id
+        return self.PATH_PREFIX, self.id
 
 
 class HostsNode(PaginatedAccessor[Host, None]):
