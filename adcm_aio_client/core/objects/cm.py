@@ -1,12 +1,13 @@
+from enum import Enum
 from functools import cached_property
-from typing import Literal, Self
+from typing import Self
 
 from adcm_aio_client.core.objects._accessors import (
     NonPaginatedChildAccessor,
     PaginatedAccessor,
     PaginatedChildAccessor,
 )
-from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
+from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject, RootInteractiveObject
 from adcm_aio_client.core.objects._common import (
     Deletable,
     WithActionHostGroups,
@@ -20,15 +21,18 @@ from adcm_aio_client.core.objects._mapping import ClusterMapping
 from adcm_aio_client.core.types import Endpoint
 
 
+class ADCMEntityStatus(str, Enum):
+    UP = "up"
+    DOWN = "down"
+
+
 class Bundle(Deletable, InteractiveObject): ...
 
 
-class Host(Deletable, InteractiveObject): ...
-
-
 class Cluster(
-    Deletable, WithActions, WithUpgrades, WithConfig, WithActionHostGroups, WithConfigGroups, InteractiveObject
+    Deletable, WithActions, WithUpgrades, WithConfig, WithActionHostGroups, WithConfigGroups, RootInteractiveObject
 ):
+    PATH_PREFIX = "clusters"
     # data-based properties
 
     @property
@@ -56,9 +60,9 @@ class Cluster(
 
     # object-specific methods
 
-    async def get_status(self: Self) -> Literal["up", "down"]:
+    async def get_status(self: Self) -> ADCMEntityStatus:
         response = await self._requester.get(*self.get_own_path())
-        return response.as_dict()["status"]
+        return ADCMEntityStatus(response.as_dict()["status"])
 
     async def set_ansible_forks(self: Self, value: int) -> Self:
         await self._requester.post(
@@ -85,7 +89,7 @@ class Cluster(
         return ClusterImports()
 
     def get_own_path(self: Self) -> Endpoint:
-        return "clusters", self.id
+        return self.PATH_PREFIX, self.id
 
 
 class ClustersNode(PaginatedAccessor[Cluster, None]):
@@ -95,15 +99,7 @@ class ClustersNode(PaginatedAccessor[Cluster, None]):
         return ("clusters",)
 
 
-class HostsInClusterNode(PaginatedAccessor[Host, None]):
-    class_type = Host
-
-
 class Service(InteractiveChildObject[Cluster]):
-    @property
-    def id(self: Self) -> int:
-        return int(self._data["id"])
-
     def get_own_path(self: Self) -> Endpoint:
         return (*self._parent.get_own_path(), "services", self.id)
 
@@ -117,13 +113,70 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
 
 
 class Component(InteractiveChildObject[Service]):
-    @property
-    def id(self: Self) -> int:
-        return int(self._data["id"])
-
     def get_own_path(self: Self) -> Endpoint:
         return (*self._parent.get_own_path(), "components", self.id)
 
 
 class ComponentsNode(NonPaginatedChildAccessor[Service, Component, None]):
     class_type = Component
+
+
+class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInteractiveObject):
+    PATH_PREFIX = "hostproviders"
+    # data-based properties
+
+    @property
+    def name(self: Self) -> str:
+        return str(self._data["name"])
+
+    @property
+    def description(self: Self) -> str:
+        return str(self._data["description"])
+
+    @property
+    def display_name(self: Self) -> str:
+        return str(self._data["prototype"]["displayName"])
+
+    def get_own_path(self: Self) -> Endpoint:
+        return self.PATH_PREFIX, self.id
+
+
+class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
+    class_type = HostProvider
+
+
+class Host(Deletable, RootInteractiveObject):
+    PATH_PREFIX = "hosts"
+
+    @property
+    def name(self: Self) -> str:
+        return str(self._data["name"])
+
+    @property
+    def description(self: Self) -> str:
+        return str(self._data["description"])
+
+    async def get_status(self: Self) -> ADCMEntityStatus:
+        response = await self._requester.get(*self.get_own_path())
+        return ADCMEntityStatus(response.as_dict()["status"])
+
+    @cached_property
+    async def cluster(self: Self) -> Cluster | None:
+        if not self._data["cluster"]:
+            return None
+        return await Cluster.with_id(requester=self._requester, object_id=self._data["cluster"]["id"])
+
+    @cached_property
+    async def hostprovider(self: Self) -> HostProvider:
+        return await HostProvider.with_id(requester=self._requester, object_id=self._data["hostprovider"]["id"])
+
+    def get_own_path(self: Self) -> Endpoint:
+        return self.PATH_PREFIX, self.id
+
+
+class HostsNode(PaginatedAccessor[Host, None]):
+    class_type = Host
+
+
+class HostsInClusterNode(PaginatedAccessor[Host, None]):
+    class_type = Host
