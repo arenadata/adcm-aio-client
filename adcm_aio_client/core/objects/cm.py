@@ -1,6 +1,6 @@
 from enum import Enum
 from functools import cached_property
-from typing import Literal, Self
+from typing import Self
 
 from adcm_aio_client.core.objects._accessors import (
     NonPaginatedChildAccessor,
@@ -100,7 +100,6 @@ class ClustersNode(PaginatedAccessor[Cluster, None]):
 
 
 class Service(InteractiveChildObject[Cluster]):
-
     def get_own_path(self: Self) -> Endpoint:
         return (*self._parent.get_own_path(), "services", self.id)
 
@@ -114,7 +113,6 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
 
 
 class Component(InteractiveChildObject[Service]):
-
     def get_own_path(self: Self) -> Endpoint:
         return (*self._parent.get_own_path(), "components", self.id)
 
@@ -125,9 +123,26 @@ class ComponentsNode(NonPaginatedChildAccessor[Service, Component, None]):
 
 class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInteractiveObject):
     PATH_PREFIX = "hostproviders"
+    # data-based properties
+
+    @property
+    def name(self: Self) -> str:
+        return str(self._data["name"])
+
+    @property
+    def description(self: Self) -> str:
+        return str(self._data["description"])
+
+    @property
+    def display_name(self: Self) -> str:
+        return str(self._data["prototype"]["displayName"])
+
+    def get_own_path(self: Self) -> Endpoint:
+        return self.PATH_PREFIX, self.id
 
 
-class HostProvidersNode(PaginatedChildAccessor): ...
+class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
+    class_type = HostProvider
 
 
 class Host(Deletable, RootInteractiveObject):
@@ -162,38 +177,6 @@ class Host(Deletable, RootInteractiveObject):
 class HostsNode(PaginatedAccessor[Host, None]):
     class_type = Host
 
-    # TODO: define def __init__(self, hostprovider: Hostprovider, name: str, cluster: Cluster = None): ...
-
 
 class HostsInClusterNode(PaginatedAccessor[Host, None]):
     class_type = Host
-
-class HostProvider(Deletable, InteractiveObject):
-    # data-based properties
-
-    @property
-    def name(self: Self) -> str:
-        return str(self._data["name"])
-
-    @property
-    def description(self: Self) -> str:
-        return str(self._data["description"])
-
-    @property
-    def display_name(self: Self) -> str:
-        return str(self._data["prototype"]["displayName"])
-
-    @property
-    def is_upgradable(self: Self) -> str:
-        return str(self._data["isUpgradable"])
-
-    @property
-    def main_info(self: Self) -> str:
-        return str(self._data["mainInfo"])
-
-    def get_own_path(self: Self) -> Endpoint:
-        return "hostproviders", self.id
-
-
-class HostprovidersNode(PaginatedAccessor[HostProvider, None]):
-    class_type = HostProvider
