@@ -139,12 +139,12 @@ class Component(
     PATH_PREFIX = "components"
 
     @property
-    def name(self: Self) -> int:
-        return int(self._data["name"])
+    def name(self: Self) -> str:
+        return self._data["name"]
 
     @property
-    def display_name(self: Self) -> int:
-        return int(self._data["displayName"])
+    def display_name(self: Self) -> str:
+        return self._data["displayName"]
 
     @async_cached_property
     async def constraint(self: Self) -> list[int | str]:
