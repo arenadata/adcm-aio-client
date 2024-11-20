@@ -5,7 +5,6 @@ from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
     PaginatedChildAccessor,
 )
-from adcm_aio_client.core.types import ADCMEntityStatus
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject, RootInteractiveObject
 from adcm_aio_client.core.objects._common import (
     Deletable,
@@ -18,7 +17,7 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
-from adcm_aio_client.core.types import Endpoint
+from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint
 
 
 class Bundle(Deletable, InteractiveObject): ...
@@ -32,7 +31,7 @@ class Cluster(
     WithConfig,
     WithActionHostGroups,
     WithConfigGroups,
-    InteractiveObject,
+    RootInteractiveObject,
 ):
     PATH_PREFIX = "clusters"
     # data-based properties
@@ -96,10 +95,6 @@ class ClustersNode(PaginatedAccessor[Cluster, None]):
         return ("clusters",)
 
 
-class HostsInClusterNode(PaginatedAccessor[Host, None]):
-    class_type = Host
-
-
 class Service(
     WithStatus,
     Deletable,
@@ -109,10 +104,6 @@ class Service(
     WithConfigGroups,
     InteractiveChildObject[Cluster],
 ):
-    @property
-    def id(self: Self) -> int:
-        return int(self._data["id"])
-
     @property
     def name(self: Self) -> str:
         return self._data["name"]
