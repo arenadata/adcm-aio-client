@@ -1,4 +1,5 @@
 from collections import deque
+from contextlib import suppress
 from functools import cached_property
 from typing import Any, Self
 
@@ -47,8 +48,9 @@ class InteractiveObject(WithRequester, AwareOfOwnPath):
 
     def _clear_cache(self: Self) -> None:
         for name in self._delete_on_refresh:
-            # works for cached_property
-            delattr(self, name)
+            # Works for cached_property. Suppresses errors on deleting values not yet cached (absent in self.__dict__)
+            with suppress(AttributeError):
+                delattr(self, name)
 
 
 class RootInteractiveObject(InteractiveObject):
