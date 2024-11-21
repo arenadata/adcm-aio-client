@@ -7,7 +7,6 @@ from adcm_aio_client.core.config._base import ActivatableGroupWrapper, EditableC
 from tests.unit.conftest import RESPONSES
 
 
-
 @pytest.fixture()
 def example_config() -> tuple[dict, dict]:
     config = json.loads((RESPONSES / "test_config_example_config.json").read_text())
