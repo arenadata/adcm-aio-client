@@ -22,7 +22,7 @@ from adcm_aio_client.core.types import Endpoint, QueryParameters, Requester, Req
 type AccessorFilter = QueryParameters | None
 
 
-class Accessor[ReturnObject: InteractiveObject, Filter](ABC):
+class Accessor[ReturnObject: InteractiveObject, Filter: dict | None](ABC):
     class_type: type[ReturnObject]
 
     def __init__(self: Self, path: Endpoint, requester: Requester, accessor_filter: AccessorFilter = None) -> None:
@@ -72,7 +72,7 @@ class Accessor[ReturnObject: InteractiveObject, Filter](ABC):
         return self.class_type(requester=self._requester, data=data)
 
 
-class PaginatedAccessor[ReturnObject: InteractiveObject, Filter](Accessor[ReturnObject, Filter]):
+class PaginatedAccessor[ReturnObject: InteractiveObject, Filter: dict | None](Accessor[ReturnObject, Filter]):
     async def iter(self: Self) -> AsyncGenerator[ReturnObject, None]:
         start, step = 0, 10
         while True:

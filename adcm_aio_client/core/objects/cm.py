@@ -188,23 +188,6 @@ class Component(
             accessor_filter={"componentId": self.id},
         )
 
-    @property
-    def name(self: Self) -> str:
-        return self._data["name"]
-
-    @property
-    def display_name(self: Self) -> str:
-        return self._data["displayName"]
-
-    @async_cached_property
-    async def constraint(self: Self) -> list[int | str]:
-        response = (await self._requester.get(*self.cluster.get_own_path(), "mapping", "components")).as_list()
-        for component in response:
-            if component["id"] == self.id:
-                return component["constraints"]
-
-        raise NotFoundError
-
     @cached_property
     def service(self: Self) -> Service:
         return self._parent
