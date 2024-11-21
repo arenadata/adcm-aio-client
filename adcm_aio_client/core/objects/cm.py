@@ -1,9 +1,7 @@
-from enum import Enum
 from functools import cached_property
 from typing import Self
 
 from adcm_aio_client.core.objects._accessors import (
-    NonPaginatedChildAccessor,
     PaginatedAccessor,
     PaginatedChildAccessor,
 )
@@ -14,23 +12,26 @@ from adcm_aio_client.core.objects._common import (
     WithActions,
     WithConfig,
     WithConfigGroups,
+    WithStatus,
     WithUpgrades,
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
-from adcm_aio_client.core.types import Endpoint
-
-
-class ADCMEntityStatus(str, Enum):
-    UP = "up"
-    DOWN = "down"
+from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint
 
 
 class Bundle(Deletable, InteractiveObject): ...
 
 
 class Cluster(
-    Deletable, WithActions, WithUpgrades, WithConfig, WithActionHostGroups, WithConfigGroups, RootInteractiveObject
+    WithStatus,
+    Deletable,
+    WithActions,
+    WithUpgrades,
+    WithConfig,
+    WithActionHostGroups,
+    WithConfigGroups,
+    RootInteractiveObject,
 ):
     PATH_PREFIX = "clusters"
     # data-based properties
@@ -59,11 +60,6 @@ class Cluster(
         return self._construct(what=Bundle, from_data=response.as_dict())
 
     # object-specific methods
-
-    async def get_status(self: Self) -> ADCMEntityStatus:
-        response = await self._requester.get(*self.get_own_path())
-        return ADCMEntityStatus(response.as_dict()["status"])
-
     async def set_ansible_forks(self: Self, value: int) -> Self:
         await self._requester.post(
             *self.get_own_path(), "ansible-config", data={"config": {"defaults": {"forks": value}}, "adcmMeta": {}}
@@ -99,9 +95,31 @@ class ClustersNode(PaginatedAccessor[Cluster, None]):
         return ("clusters",)
 
 
-class Service(InteractiveChildObject[Cluster]):
+class Service(
+    WithStatus,
+    Deletable,
+    WithActions,
+    WithConfig,
+    WithActionHostGroups,
+    WithConfigGroups,
+    InteractiveChildObject[Cluster],
+):
+    PATH_PREFIX = "services"
+
+    @property
+    def name(self: Self) -> str:
+        return self._data["name"]
+
+    @property
+    def display_name(self: Self) -> str:
+        return self._data["displayName"]
+
+    @cached_property
+    def cluster(self: Self) -> Cluster:
+        return self._parent
+
     def get_own_path(self: Self) -> Endpoint:
-        return (*self._parent.get_own_path(), "services", self.id)
+        return *self._parent.get_own_path(), "services", self.id
 
     @cached_property
     def components(self: Self) -> "ComponentsNode":
@@ -117,7 +135,7 @@ class Component(InteractiveChildObject[Service]):
         return (*self._parent.get_own_path(), "components", self.id)
 
 
-class ComponentsNode(NonPaginatedChildAccessor[Service, Component, None]):
+class ComponentsNode(PaginatedChildAccessor[Service, Component, None]):
     class_type = Component
 
 
