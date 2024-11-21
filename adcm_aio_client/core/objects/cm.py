@@ -122,7 +122,7 @@ class Service(
         return self._parent
 
     def get_own_path(self: Self) -> Endpoint:
-        return *self._parent.get_own_path(), "services", self.id
+        return *self._parent.get_own_path(), self.PATH_PREFIX, self.id
 
     @cached_property
     def components(self: Self) -> "ComponentsNode":
@@ -161,14 +161,14 @@ class Component(
 
     @cached_property
     def cluster(self: Self) -> Cluster:
-        return self._parent._parent
+        return self.service.cluster
 
     @cached_property
     def hosts(self: Self) -> "HostsInClusterNode":
-        return HostsInClusterNode(
+        return HostsInClusterNode(  # TODO: new ComponentHostsNode
             path=(*self.cluster.get_own_path(), "hosts"),
             requester=self._requester,
-            # filter=Filter({"componentId": self.id}),  # TODO: implement
+            # filter=Filter({"componentId": self.id}),
         )
 
     def get_own_path(self: Self) -> Endpoint:
