@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import Self
+from typing import Iterable, Self
 
 from asyncstdlib.functools import cached_property as async_cached_property
 
@@ -164,11 +164,9 @@ class Component(
         return self.service.cluster
 
     @cached_property
-    def hosts(self: Self) -> "HostsInClusterNode":
-        return HostsInClusterNode(  # TODO: new ComponentHostsNode
-            path=(*self.cluster.get_own_path(), "hosts"),
-            requester=self._requester,
-            # filter=Filter({"componentId": self.id}),
+    def hosts(self: Self) -> "HostsNode":
+        return HostsNode(
+            path=(*self.cluster.get_own_path(), "hosts"), requester=self._requester, filters={"componentId": self.id}
         )
 
     def get_own_path(self: Self) -> Endpoint:
@@ -194,6 +192,10 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInterac
     @property
     def display_name(self: Self) -> str:
         return str(self._data["prototype"]["displayName"])
+
+    @cached_property
+    def hosts(self: Self) -> "HostsNode":
+        return HostsNode(path=("hosts",), requester=self._requester, filters={"hostproviderName": self.name})
 
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
@@ -232,9 +234,29 @@ class Host(Deletable, RootInteractiveObject):
         return self.PATH_PREFIX, self.id
 
 
-class HostsNode(PaginatedAccessor[Host, None]):
+class HostsNode(PaginatedAccessor[Host, dict | None]):
     class_type = Host
 
 
-class HostsInClusterNode(PaginatedAccessor[Host, None]):
-    class_type = Host
+class HostsInClusterNode(HostsNode):
+    async def add(self: Self, host: Host | Iterable[Host] | None = None, **filters: dict) -> None:
+        hosts = await self._get_hosts_from_arg_or_filter(host=host, **filters)
+
+        await self._requester.post(*self._path, data=[{"hostId": host.id} for host in hosts])
+
+    async def remove(self: Self, host: Host | Iterable[Host] | None = None, **filters: dict) -> None:
+        for host_ in await self._get_hosts_from_arg_or_filter(host=host, **filters):
+            await self._requester.delete(*self._path, host_.id)
+
+    async def _get_hosts_from_arg_or_filter(
+        self: Self, host: Host | Iterable[Host] | None = None, **filters: dict
+    ) -> Iterable[Host]:
+        if all((host, filters)):
+            raise ValueError("`host` and `filters` arguments are mutually exclusive.")
+
+        if host:
+            hosts = [host] if isinstance(host, Host) else host
+        else:
+            hosts = await self.filter(**filters)
+
+        return hosts

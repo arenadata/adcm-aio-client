@@ -24,15 +24,15 @@ class ADCMClient:
 
     @cached_property
     def clusters(self: Self) -> ClustersNode:
-        return ClustersNode(path=(), requester=self._requester)
+        return ClustersNode(path=("clusters",), requester=self._requester)
 
     @cached_property
     def hosts(self: Self) -> HostsNode:
-        return HostsNode(path=(), requester=self._requester)
+        return HostsNode(path=("hosts",), requester=self._requester)
 
     @cached_property
     def hostproviders(self: Self) -> HostProvidersNode:
-        return HostProvidersNode(path=(), requester=self._requester)
+        return HostProvidersNode(path=("hostproviders",), requester=self._requester)
 
 
 async def build_client(
