@@ -4,53 +4,15 @@ import json
 import pytest
 
 from adcm_aio_client.core.config._base import ActivatableGroupWrapper, EditableConfig, RegularGroupWrapper, ValueWrapper
+from tests.unit.conftest import RESPONSES
+
 
 
 @pytest.fixture()
 def example_config() -> tuple[dict, dict]:
-    regular_param_schema = {}
-    group_like_param_schema = {
-        "parameters": {},
-        "additionalProperties": False,
-        "default": {},
-        "adcmMeta": {},
-        "type": "object",
-    }
-    json_like_param_schema = {"format": "json"}
+    config = json.loads((RESPONSES / "test_config_example_config.json").read_text())
 
-    config = {
-        "config": {
-            "root_int": 100,
-            "root_list": ["first", "second", "third"],
-            "root_dict": {"k1": "v1", "k2": "v2"},
-            "duplicate": "hehe",
-            "root_json": json.dumps({}),
-            "main": {
-                "inner_str": "evil",
-                "inner_dict": {"a": "b"},
-                "inner_json": json.dumps({"complex": [], "jsonfield": 23, "server": "bestever"}),
-                "duplicate": 44,
-            },
-            "optional_group": {"param": 44.44},
-            "root_str": None,
-        },
-        "adcmMeta": {"/optional_group": {"isActive": False}},
-    }
-    schema = {
-        "parameters": {
-            **{key: regular_param_schema for key in config["config"]},
-            "root_json": json_like_param_schema,
-            "main": group_like_param_schema
-            | {
-                "parameters": {
-                    **{key: regular_param_schema for key in config["config"]["main"]},
-                    "inner_json": json_like_param_schema,
-                }
-            },
-            "optional_group": group_like_param_schema
-            | {"parameters": {"param": regular_param_schema}, "adcmMeta": {"activation": {"isAllowChange": True}}},
-        }
-    }
+    schema = json.loads((RESPONSES / "test_config_example_config_schema.json").read_text())
 
     return config, schema
 

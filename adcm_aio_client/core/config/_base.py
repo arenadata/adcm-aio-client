@@ -46,7 +46,7 @@ class ValueWrapper[InnerType: ParameterValueOrNone]:
 class _ParametersGroup:
     def __init__(self: Self, spec: dict, callbacks: Callbacks, previous_levels: LevelNames = ()) -> None:
         # for now we assume it's always there
-        self._spec = spec["parameters"]
+        self._spec = spec["properties"]
         self._previous_levels = previous_levels
         self._callbacks = callbacks
         self._names_mapping: dict[ParameterDisplayName, ParameterName] = {}
@@ -165,7 +165,7 @@ class _ParametersGroup:
             level_data = value
             previous_levels = (*self._previous_levels, name)
 
-            is_activatable = spec["adcmMeta"].get("activation", {}).get("isAllowChange")
+            is_activatable = (spec["adcmMeta"].get("activation") or {}).get("isAllowChange")
             if is_activatable:
                 return ActivatableGroupWrapper(
                     config_level_data=level_data, spec=spec, callbacks=self._callbacks, previous_levels=previous_levels
@@ -282,7 +282,7 @@ class EditableConfig(_ParametersGroup):
                 self._json_fields.add(level_names)
             elif isinstance(value, dict) and self._parameter_is_group(parameter_spec):
                 self._convert_payload_formated_json_fields_inplace(
-                    parameters_spec=parameters_spec[key]["parameters"], data=value, prefix=level_names
+                    parameters_spec=parameters_spec[key]["properties"], data=value, prefix=level_names
                 )
 
     def _convert_json_fields_to_payload_format_inplace(self: Self, data: dict) -> None:
