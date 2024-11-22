@@ -1,4 +1,2 @@
 *.* @a-alferov
-poetry.lock @Sealwing
-pyproject.toml @Sealwing
 *.py @Sealwing @DanBalalan @Starovoitov
