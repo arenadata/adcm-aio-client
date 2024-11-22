@@ -1,7 +1,8 @@
 from functools import cached_property
 from typing import Iterable, Self
+import asyncio
 
-from adcm_aio_client.core.errors import NotFoundError
+from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
     PaginatedChildAccessor,
@@ -246,6 +247,9 @@ class Host(Deletable, RootInteractiveObject):
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
 
+    def __str__(self: Self) -> str:
+        return f"<{self.__class__.__name__} #{self.id} {self.name}>"
+
 
 class HostsNode(PaginatedAccessor[Host, dict | None]):
     class_type = Host
@@ -258,8 +262,20 @@ class HostsInClusterNode(HostsNode):
         await self._requester.post(*self._path, data=[{"hostId": host.id} for host in hosts])
 
     async def remove(self: Self, host: Host | Iterable[Host] | None = None, **filters: dict) -> None:
-        for host_ in await self._get_hosts_from_arg_or_filter(host=host, **filters):
-            await self._requester.delete(*self._path, host_.id)
+        hosts = await self._get_hosts_from_arg_or_filter(host=host, **filters)
+
+        results = await asyncio.gather(
+            *(self._requester.delete(*self._path, host_.id) for host_ in hosts), return_exceptions=True
+        )
+
+        errors = set()
+        for host_, result in zip(hosts, results):
+            if isinstance(result, ResponseError):
+                errors.add(str(host_))
+
+        if errors:
+            errors = ", ".join(errors)
+            raise OperationError(f"Some hosts can't be deleted from cluster: {errors}")
 
     async def _get_hosts_from_arg_or_filter(
         self: Self, host: Host | Iterable[Host] | None = None, **filters: dict
