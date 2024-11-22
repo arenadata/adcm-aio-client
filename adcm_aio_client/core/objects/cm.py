@@ -22,6 +22,10 @@ from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint
 
 
 class ADCM(InteractiveObject, WithActions, WithConfig):
+    @property
+    def id(self: Self) -> int:
+        return 1
+
     @cached_property
     async def version(self: Self) -> str:
         # TODO: override root_path for being without /api/v2
