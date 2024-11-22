@@ -70,7 +70,7 @@ class Cluster(
     # todo think how such properties will be invalidated when data is updated
     #  during `refresh()` / `reread()` calls.
     #  See cache invalidation or alternatives in documentation for `cached_property`
-    @async_cached_property
+    @cached_property
     async def bundle(self: Self) -> Bundle:
         prototype_id = self._data["prototype"]["id"]
         response = await self._requester.get("prototypes", prototype_id)
@@ -257,13 +257,13 @@ class Host(Deletable, RootInteractiveObject):
         response = await self._requester.get(*self.get_own_path())
         return ADCMEntityStatus(response.as_dict()["status"])
 
-    @async_cached_property
+    @cached_property
     async def cluster(self: Self) -> Cluster | None:
         if not self._data["cluster"]:
             return None
         return await Cluster.with_id(requester=self._requester, object_id=self._data["cluster"]["id"])
 
-    @async_cached_property
+    @cached_property
     async def hostprovider(self: Self) -> HostProvider:
         return await HostProvider.with_id(requester=self._requester, object_id=self._data["hostprovider"]["id"])
 
