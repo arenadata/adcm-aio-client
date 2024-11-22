@@ -13,9 +13,10 @@
 from functools import cached_property
 from typing import Self
 
-from adcm_aio_client.core.objects.cm import ADCM, ClustersNode, HostProvidersNode, HostsAccessor
-from adcm_aio_client.core.requesters import Requester
-from adcm_aio_client.core.types import AuthToken, Cert, Credentials, Verify
+from adcm_aio_client.core.objects.cm import ADCM, HostProvidersNode, HostsAccessor
+from adcm_aio_client.core.objects.cm import ClustersNode
+from adcm_aio_client.core.requesters import DefaultRequester
+from adcm_aio_client.core.types import AuthToken, Cert, Credentials, Requester, Verify
 
 
 class ADCMClient:
@@ -40,11 +41,15 @@ class ADCMClient:
 
 
 async def build_client(
-    url: str | list[str],
-    credentials: Credentials | AuthToken,
+    url: str,
+    credentials: Credentials | AuthToken,  # noqa: ARG001
     *,
-    verify: Verify | None = None,
-    cert: Cert | None = None,
-    timeout: int | None = None,
-    retries: int | None = None,
-) -> ADCMClient: ...
+    verify: Verify | None = None,  # noqa: ARG001
+    cert: Cert | None = None,  # noqa: ARG001
+    timeout: float = 0.5,
+    retries: int = 5,
+    retry_interval: float = 5.0,
+) -> ADCMClient:
+    requester = DefaultRequester(base_url=url, retries=retries, retry_interval=retry_interval, timeout=timeout)
+    await requester.login(credentials=Credentials(username="admin", password="admin"))  # noqa: S106
+    return ADCMClient(requester=requester)
