@@ -18,7 +18,7 @@ class InteractiveObject(WithRequester, AwareOfOwnPath):
         for name in dir(cls):
             # None is for declared, but unset values
             attr = getattr(cls, name, None)
-            if isinstance(attr, cached_property):
+            if isinstance(attr, cached_property):  # TODO: asyncstdlib.functools.CachedProperty
                 cls._delete_on_refresh.append(name)
 
     def __init__(self: Self, requester: Requester, data: dict[str, Any]) -> None:
