@@ -154,10 +154,10 @@ class DefaultRequester(Requester):
     async def get(self: Self, *path: PathPart, query: QueryParameters | None = None) -> HTTPXRequesterResponse:
         return await self.request(*path, method=self.client.get, params=query or {})
 
-    async def post(self: Self, *path: PathPart, data: Json) -> HTTPXRequesterResponse:
+    async def post(self: Self, *path: PathPart, data: dict | list) -> HTTPXRequesterResponse:
         return await self.request(*path, method=self.client.post, json=data)
 
-    async def patch(self: Self, *path: PathPart, data: Json) -> HTTPXRequesterResponse:
+    async def patch(self: Self, *path: PathPart, data: dict | list) -> HTTPXRequesterResponse:
         return await self.request(*path, method=self.client.patch, json=data)
 
     async def delete(self: Self, *path: PathPart) -> HTTPXRequesterResponse:
