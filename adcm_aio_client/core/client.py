@@ -13,9 +13,10 @@
 from functools import cached_property
 from typing import Self
 
-from adcm_aio_client.core.objects.cm import ADCM, ClustersNode, HostProvidersNode, HostsAccessor
-from adcm_aio_client.core.requesters import DefaultRequester
-from adcm_aio_client.core.types import AuthToken, Cert, Credentials, Requester, Verify
+from adcm_aio_client.core.objects.cm import ADCM, ClustersNode, HostProvidersNode
+from adcm_aio_client.core.objects.cm import HostsAccessor
+from adcm_aio_client.core.requesters import Requester
+from adcm_aio_client.core.types import AuthToken, Cert, Credentials, Verify
 
 
 class ADCMClient:
@@ -37,6 +38,10 @@ class ADCMClient:
     @cached_property
     def adcm(self: Self) -> ADCM:
         return ADCM(requester=self._requester, data={})
+
+    @cached_property
+    def bundles(self: Self) -> BundlesNode:
+        return BundlesNode(path=(), requester=self._requester)
 
 
 async def build_client(
