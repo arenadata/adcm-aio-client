@@ -1,44 +1,11 @@
-import json
-from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Protocol, Self, overload
 from copy import deepcopy
-from operator import itemgetter
-from collections import deque
-
+from dataclasses import dataclass, field
+from typing import Any, Callable, Iterable, Protocol, Self, overload
+import json
 import asyncio
 
 from adcm_aio_client.core.errors import RequesterError
 from adcm_aio_client.core.types import AwareOfOwnPath, Requester
-
-@dataclass(slots=True)
-class ValueChange[T]:
-    previous: T
-    current: T
-
-
-class Changes:
-    values: ValueChange
-    attributes: ValueChange[dict[str, bool]]
-
-class MergeStrategy(Protocol):
-    def __call__(self: Self, source: "ConfigData", changed: "ConfigData", remote: "ConfigData") -> "ConfigData":
-        ...
-
-def apply_local_changes(source: "ConfigData", changed: "ConfigData", remote: "ConfigData") -> "ConfigData":
-    if source.id == remote.id:
-        return changed
-
-    # todo implement actual merge
-    return changed
-    
-
-def apply_remote_changes(source: "ConfigData", changed: "ConfigData", remote: "ConfigData") -> "ConfigData":
-    # todo implement actual merge
-    return remote
-
-
-class ConfigDiff: ...
-
 
 # External Section
 # these functions are heavily inspired by configuration rework in ADCM (ADCM-6034)
@@ -87,6 +54,10 @@ def level_names_to_full_name(levels: LevelNames) -> str:
     return ensure_full_name("/".join(levels))
 
 
+def full_name_to_level_names(full: ParameterFullName) -> tuple[ParameterLevelName, ...]:
+    return tuple(filter(bool, full.split("/")))
+
+
 def ensure_full_name(name: str) -> str:
     if not name.startswith(ROOT_PREFIX):
         return f"{ROOT_PREFIX}{name}"
@@ -95,6 +66,95 @@ def ensure_full_name(name: str) -> str:
 
 
 # External Section End
+
+# Special sentinel object to mark value/attribute as missing in previous/current
+
+
+@dataclass(slots=True)
+class ValueChange:
+    previous: Any
+    current: Any
+
+
+@dataclass(slots=True)
+class ConfigDifference:
+    values: dict[LevelNames, ValueChange] = field(default_factory=dict)
+    attributes: dict[LevelNames, ValueChange] = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        # todo
+        ...
+
+
+def find_config_difference(previous: "ConfigData", current: "ConfigData", schema: "ConfigSchema") -> ConfigDifference:
+    diff = ConfigDifference()
+
+    _fill_values_diff_at_level(level=(), diff=diff, previous=previous.values, current=current.values, schema=schema)
+    _fill_attributes_diff(diff=diff, previous=previous.attributes, current=current.attributes, schema=schema)
+
+    return diff
+
+
+def _fill_values_diff_at_level(
+    level: LevelNames, diff: ConfigDifference, previous: dict, current: dict, schema: "ConfigSchema"
+) -> None:
+    missing = object()
+    for key, cur_value in current.items():
+        level_names = (*level, key)
+        prev_value = previous.get(key, missing)
+
+        if prev_value is missing:
+            # there may be collision between two None's, but for now we'll consider it a "special case"
+            diff.values[level_names] = ValueChange(previous=None, current=cur_value)
+            continue
+
+        if cur_value == prev_value:
+            continue
+
+        if not (schema.is_group(level_names) and isinstance(prev_value, dict) and (isinstance(cur_value, dict))):
+            diff.values[level_names] = ValueChange(previous=prev_value, current=cur_value)
+            continue
+
+        _fill_values_diff_at_level(diff=diff, level=level_names, previous=prev_value, current=cur_value, schema=schema)
+
+
+def _fill_attributes_diff(diff: ConfigDifference, previous: dict, current: dict, schema: "ConfigSchema") -> None:
+    missing = object()
+    for full_name, cur_value in current.items():
+        prev_value = previous.get(full_name, missing)
+        if cur_value == prev_value:
+            continue
+
+        level_names = full_name_to_level_names(full_name)
+
+        if prev_value is missing:
+            prev_value = None
+
+        diff.attributes[level_names] = ValueChange(previous=prev_value, current=cur_value)
+
+
+class MergeStrategy(Protocol):
+    # todo
+    def __call__(
+        self: Self,
+        local_changes: ConfigDifference,
+    ) -> "ConfigData": ...
+
+
+def apply_local_changes(source: "ConfigData", changed: "ConfigData", remote: "ConfigData") -> "ConfigData":
+    if source.id == remote.id:
+        return changed
+
+    # todo implement actual merge
+    return changed
+
+
+def apply_remote_changes(source: "ConfigData", changed: "ConfigData", remote: "ConfigData") -> "ConfigData":
+    # todo implement actual merge
+    return remote
+
+
+class ConfigDiff: ...
 
 
 def is_group_v2(attributes: dict) -> bool:
@@ -184,10 +244,12 @@ class ConfigData:
 
     @classmethod
     def from_v2_response(cls: type[Self], data_in_v2_format: dict) -> Self:
-        return cls(id=int(data_in_v2_format["id"]),
-                   description=str(data_in_v2_format["description"]),
-                   values=data_in_v2_format["config"],
-                   attributes=data_in_v2_format["adcmMeta"])
+        return cls(
+            id=int(data_in_v2_format["id"]),
+            description=str(data_in_v2_format["description"]),
+            values=data_in_v2_format["config"],
+            attributes=data_in_v2_format["adcmMeta"],
+        )
 
     @property
     def values(self: Self) -> dict:
@@ -299,12 +361,13 @@ type ConfigEntry = Value | Group | ActivatableGroup
 
 
 class ObjectConfig:
-    def __init__(self, 
-                 config: ConfigData, 
-                 schema: ConfigSchema,
-                 parent: AwareOfOwnPath, 
-                 requester: Requester,
-                 ) -> None:
+    def __init__(
+        self,
+        config: ConfigData,
+        schema: ConfigSchema,
+        parent: AwareOfOwnPath,
+        requester: Requester,
+    ) -> None:
         self._schema = schema
         self._initial_config: ConfigData = self._parse_json_fields_inplace_safe(config)
         self._editable_config: ConfigWrapper = self._init_editable_config(self._initial_config)
@@ -402,13 +465,13 @@ class ObjectConfig:
 
         current_config_entry = get_current_config(results=history_response.as_dict()["results"])
         config_id = current_config_entry["id"]
-        
+
         if config_id == self.id:
             return self._initial_config
 
         config_response = await self._requester.get(*configs_path, config_id)
 
-        config_data =  ConfigData.from_v2_response(data_in_v2_format=config_response.as_dict())
+        config_data = ConfigData.from_v2_response(data_in_v2_format=config_response.as_dict())
 
         return self._parse_json_fields_inplace_safe(config_data)
 
