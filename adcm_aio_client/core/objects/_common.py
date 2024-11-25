@@ -24,8 +24,7 @@ class WithConfig(WithRequester, AwareOfOwnPath):
         return await self.config_history.current()
 
     @cached_property
-    def config_history(self: Self) -> ConfigHistoryNode:
-        ...
+    def config_history(self: Self) -> ConfigHistoryNode: ...
 
 
 class WithActions(WithRequester, AwareOfOwnPath):
