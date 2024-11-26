@@ -38,6 +38,10 @@ class ADCM(InteractiveObject, WithActions, WithConfig):
         response = await self._requester.get("versions")
         return response.as_dict()["adcm"]["version"]
 
+    @cached_property
+    def actions(self: Self) -> "ActionsAccessor":
+        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
+
     def get_own_path(self: Self) -> Endpoint:
         return ("adcm",)
 
