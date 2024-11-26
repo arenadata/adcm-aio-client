@@ -62,8 +62,13 @@ class Requester(Protocol):
 # Objects
 
 
-class WithRequester(Protocol):
+class WithProtectedRequester(Protocol):
     _requester: Requester
+
+
+class WithRequesterProperty(Protocol):
+    @property
+    def requester(self: Self) -> Requester: ...
 
 
 class AwareOfOwnPath(Protocol):

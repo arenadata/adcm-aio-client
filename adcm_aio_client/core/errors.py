@@ -83,3 +83,12 @@ class MultipleObjectsReturnedError(AccessorError):
 
 class ObjectDoesNotExistError(AccessorError):
     pass
+
+
+# Config
+
+
+class ConfigError(ADCMClientError): ...
+
+
+class ConfigComparisonError(ConfigError): ...
