@@ -1,7 +1,8 @@
 from functools import cached_property
-from typing import Self
+from typing import Iterable, Self
+import asyncio
 
-from adcm_aio_client.core.errors import NotFoundError
+from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
     PaginatedChildAccessor,
@@ -19,6 +20,8 @@ from adcm_aio_client.core.objects._common import (
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
 from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint
+
+type Filter = object  # TODO: implement
 
 
 class ADCM(InteractiveObject, WithActions, WithConfig):
@@ -177,11 +180,11 @@ class Component(
         return self.service.cluster
 
     @cached_property
-    def hosts(self: Self) -> "HostsInClusterNode":
-        return HostsInClusterNode(  # TODO: new ComponentHostsNode
+    def hosts(self: Self) -> "HostsAccessor":
+        return HostsAccessor(
             path=(*self.cluster.get_own_path(), "hosts"),
             requester=self._requester,
-            # filter=Filter({"componentId": self.id}),
+            accessor_filter={"componentId": self.id},
         )
 
     def get_own_path(self: Self) -> Endpoint:
@@ -207,6 +210,12 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInterac
     @property
     def display_name(self: Self) -> str:
         return str(self._data["prototype"]["displayName"])
+
+    @cached_property
+    def hosts(self: Self) -> "HostsAccessor":
+        return HostsAccessor(
+            path=("hosts",), requester=self._requester, accessor_filter={"hostproviderName": self.name}
+        )
 
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
@@ -244,10 +253,45 @@ class Host(Deletable, RootInteractiveObject):
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
 
+    def __str__(self: Self) -> str:
+        return f"<{self.__class__.__name__} #{self.id} {self.name}>"
 
-class HostsNode(PaginatedAccessor[Host, None]):
+
+class HostsAccessor(PaginatedAccessor[Host, dict | None]):
     class_type = Host
 
 
-class HostsInClusterNode(PaginatedAccessor[Host, None]):
-    class_type = Host
+class HostsInClusterNode(HostsAccessor):
+    async def add(self: Self, host: Host | Iterable[Host] | None = None, filters: Filter | None = None) -> None:
+        hosts = await self._get_hosts_from_arg_or_filter(host=host, filters=filters)
+
+        await self._requester.post(*self._path, data=[{"hostId": host.id} for host in hosts])
+
+    async def remove(self: Self, host: Host | Iterable[Host] | None = None, filters: Filter | None = None) -> None:
+        hosts = await self._get_hosts_from_arg_or_filter(host=host, filters=filters)
+
+        results = await asyncio.gather(
+            *(self._requester.delete(*self._path, host_.id) for host_ in hosts), return_exceptions=True
+        )
+
+        errors = set()
+        for host_, result in zip(hosts, results):
+            if isinstance(result, ResponseError):
+                errors.add(str(host_))
+
+        if errors:
+            errors = ", ".join(errors)
+            raise OperationError(f"Some hosts can't be deleted from cluster: {errors}")
+
+    async def _get_hosts_from_arg_or_filter(
+        self: Self, host: Host | Iterable[Host] | None = None, filters: Filter | None = None
+    ) -> Iterable[Host]:
+        if all((host, filters)):
+            raise ValueError("`host` and `filters` arguments are mutually exclusive.")
+
+        if host:
+            hosts = [host] if isinstance(host, Host) else host
+        else:
+            hosts = await self.filter(filters)  # type: ignore  # TODO
+
+        return hosts
