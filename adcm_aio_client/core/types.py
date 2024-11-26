@@ -73,3 +73,8 @@ class AwareOfOwnPath(Protocol):
 class ADCMEntityStatus(str, Enum):
     UP = "up"
     DOWN = "down"
+
+
+class MappingOperation(str, Enum):
+    ADD = "add"
+    REMOVE = "remove"

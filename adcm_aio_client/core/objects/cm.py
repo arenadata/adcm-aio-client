@@ -4,6 +4,7 @@ import asyncio
 
 from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
 from adcm_aio_client.core.objects._accessors import (
+    NonPaginatedChildAccessor,
     PaginatedAccessor,
     PaginatedChildAccessor,
 )
@@ -103,6 +104,10 @@ class Cluster(
     def imports(self: Self) -> ClusterImports:
         return ClusterImports()
 
+    @cached_property
+    def actions(self: Self) -> "ActionsAccessor":
+        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
+
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
 
@@ -143,6 +148,10 @@ class Service(
     @cached_property
     def components(self: Self) -> "ComponentsNode":
         return ComponentsNode(parent=self, path=(*self.get_own_path(), "components"), requester=self._requester)
+
+    @cached_property
+    def actions(self: Self) -> "ActionsAccessor":
+        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
 
 
 class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
@@ -187,6 +196,10 @@ class Component(
             accessor_filter={"componentId": self.id},
         )
 
+    @cached_property
+    def actions(self: Self) -> "ActionsAccessor":
+        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
+
     def get_own_path(self: Self) -> Endpoint:
         return *self._parent.get_own_path(), self.PATH_PREFIX, self.id
 
@@ -219,6 +232,10 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInterac
 
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
+
+    @cached_property
+    def actions(self: Self) -> "ActionsAccessor":
+        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
 
 
 class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
@@ -253,11 +270,15 @@ class Host(Deletable, RootInteractiveObject):
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
 
+    @cached_property
+    def actions(self: Self) -> "ActionsAccessor":
+        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
+
     def __str__(self: Self) -> str:
         return f"<{self.__class__.__name__} #{self.id} {self.name}>"
 
 
-class HostsAccessor(PaginatedAccessor[Host, dict | None]):
+class HostsAccessor(PaginatedAccessor[Host, None]):
     class_type = Host
 
 
@@ -295,3 +316,54 @@ class HostsInClusterNode(HostsAccessor):
             hosts = await self.filter(filters)  # type: ignore  # TODO
 
         return hosts
+
+
+class Action(InteractiveChildObject):
+    PATH_PREFIX = "actions"
+    _verbose = False
+
+    @cached_property
+    def name(self: Self) -> str:
+        return self._data["name"]
+
+    @cached_property
+    def display_name(self: Self) -> str:
+        return self._data["displayName"]
+
+    async def run(self: Self) -> dict:  # TODO: implement Task, return Task
+        return (await self._requester.post(*self.get_own_path(), "run", data={"isVerbose": self._verbose})).as_dict()
+
+    @property  # TODO: @async_cached_property
+    async def _mapping_rule(self: Self) -> list[dict]:
+        return (await self._rich_data)["hostComponentMapRules"]
+
+    @cached_property
+    def mapping(self: Self) -> "ActionMapping":
+        return ActionMapping()
+
+    def set_verbose(self: Self) -> Self:
+        self._verbose = True
+        return self
+
+    def validate(self: Self) -> None: ...  # TODO: implement
+
+    @property  # TODO: @async_cached_property, Config class
+    async def config(self: Self) -> ...:
+        return (await self._rich_data)["configuration"]
+
+    @property  # TODO: @async_cached_property
+    async def _rich_data(self: Self) -> dict:
+        return (await self._requester.get(*self.get_own_path())).as_dict()
+
+    def get_own_path(self: Self) -> Endpoint:
+        return *self._parent.get_own_path(), self.PATH_PREFIX, self.id
+
+
+class ActionMapping:
+    def add(self: Self) -> ...: ...
+
+    def remove(self: Self) -> ...: ...
+
+
+class ActionsAccessor(NonPaginatedChildAccessor[InteractiveObject, Action, None]):
+    class_type = Action
