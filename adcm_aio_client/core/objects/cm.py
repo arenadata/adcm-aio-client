@@ -21,7 +21,7 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
-from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint
+from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, Requester, WithProtectedRequester
 
 type Filter = object  # TODO: implement
 
@@ -41,7 +41,27 @@ class ADCM(InteractiveObject, WithActions, WithConfig):
         return ("adcm",)
 
 
-class License(InteractiveObject): ...
+class License(WithProtectedRequester):
+    def __init__(self: Self, requester: Requester, prototypes_data: dict) -> None:
+        self._license_prototype_id = prototypes_data["id"]
+        self._data = prototypes_data["license"]
+        self._requester = requester
+
+    @property
+    def text(self: Self) -> str:
+        return str(self._data["text"])
+
+    @property
+    def state(self: Self) -> Literal["absent", "accepted", "unaccepted"]:
+        return self._data["status"]
+
+    async def accept(self: Self) -> str:
+        accept_response = await self._requester.post(
+            "prototypes", self._license_prototype_id, "license", "accept", data={}
+        )
+        if accept_response.response.status_code != 200:  # type: ignore
+            self._data["status"] = "accepted"
+        return self._data["status"]
 
 
 class Bundle(Deletable, RootInteractiveObject):
@@ -72,7 +92,7 @@ class Bundle(Deletable, RootInteractiveObject):
         return self._data["mainPrototype"]["type"]
 
     def license(self: Self) -> License:
-        return self._construct(what=License, from_data=self._data["mainPrototype"]["license"])
+        return License(self._requester, self._data["mainPrototype"])
 
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
