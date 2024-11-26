@@ -85,10 +85,16 @@ class ObjectDoesNotExistError(AccessorError):
     pass
 
 
-# Config
+class OperationError(AccessorError):
+    pass
 
+
+# Config
 
 class ConfigError(ADCMClientError): ...
 
 
 class ConfigComparisonError(ConfigError): ...
+
+  
+

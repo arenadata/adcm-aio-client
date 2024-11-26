@@ -18,13 +18,17 @@ from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoes
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
 from adcm_aio_client.core.types import Endpoint, QueryParameters, Requester, RequesterResponse
 
+# filter for narrowing response objects
+type AccessorFilter = QueryParameters | None
+
 
 class Accessor[ReturnObject: InteractiveObject, Filter](ABC):
     class_type: type[ReturnObject]
 
-    def __init__(self: Self, path: Endpoint, requester: Requester) -> None:
+    def __init__(self: Self, path: Endpoint, requester: Requester, accessor_filter: AccessorFilter = None) -> None:
         self._path = path
         self._requester = requester
+        self._accessor_filter = accessor_filter or {}
 
     @abstractmethod
     async def iter(self: Self) -> AsyncGenerator[ReturnObject, None]: ...
@@ -62,7 +66,7 @@ class Accessor[ReturnObject: InteractiveObject, Filter](ABC):
         return [self._create_object(obj) for obj in results]
 
     async def _request_endpoint(self: Self, query: QueryParameters) -> RequesterResponse:
-        return await self._requester.get(*self._path, query=query)
+        return await self._requester.get(*self._path, query={**query, **self._accessor_filter})
 
     def _create_object(self: Self, data: dict[str, Any]) -> ReturnObject:
         return self.class_type(requester=self._requester, data=data)
@@ -88,8 +92,10 @@ class PaginatedAccessor[ReturnObject: InteractiveObject, Filter](Accessor[Return
 
 
 class PaginatedChildAccessor[Parent, Child: InteractiveChildObject, Filter](PaginatedAccessor[Child, Filter]):
-    def __init__(self: Self, parent: Parent, path: Endpoint, requester: Requester) -> None:
-        super().__init__(path, requester)
+    def __init__(
+        self: Self, parent: Parent, path: Endpoint, requester: Requester, accessor_filter: AccessorFilter = None
+    ) -> None:
+        super().__init__(path, requester, accessor_filter)
         self._parent = parent
 
     def _create_object(self: Self, data: dict[str, Any]) -> Child:
@@ -97,8 +103,10 @@ class PaginatedChildAccessor[Parent, Child: InteractiveChildObject, Filter](Pagi
 
 
 class NonPaginatedChildAccessor[Parent, Child: InteractiveChildObject, Filter](Accessor[Child, Filter]):
-    def __init__(self: Self, parent: Parent, path: Endpoint, requester: Requester) -> None:
-        super().__init__(path, requester)
+    def __init__(
+        self: Self, parent: Parent, path: Endpoint, requester: Requester, accessor_filter: AccessorFilter = None
+    ) -> None:
+        super().__init__(path, requester, accessor_filter)
         self._parent = parent
 
     async def iter(self: Self) -> AsyncGenerator[Child, None]:
