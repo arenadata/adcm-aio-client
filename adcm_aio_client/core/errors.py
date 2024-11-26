@@ -83,3 +83,7 @@ class MultipleObjectsReturnedError(AccessorError):
 
 class ObjectDoesNotExistError(AccessorError):
     pass
+
+
+class OperationError(AccessorError):
+    pass
