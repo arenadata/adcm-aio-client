@@ -91,10 +91,8 @@ class OperationError(AccessorError):
 
 # Config
 
+
 class ConfigError(ADCMClientError): ...
 
 
 class ConfigComparisonError(ConfigError): ...
-
-  
-
