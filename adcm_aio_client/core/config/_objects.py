@@ -1,6 +1,6 @@
 from copy import deepcopy
 from functools import partial
-from typing import Any, Callable, Coroutine, Protocol, Self, overload
+from typing import Any, Callable, Coroutine, Protocol, Self, Union, overload
 import json
 import asyncio
 
@@ -37,17 +37,25 @@ class _ConfigWrapper:
 
 
 class _Group(_ConfigWrapper):
+    __slots__ = ("_name", "_schema", "_data", "_value_class", "_group_class", "_activatable_group_class")
+
+    def __init__(self: Self, name: LevelNames, data: ConfigData, schema: ConfigSchema) -> None:
+        super().__init__(name, data, schema)
+        self._value_class = Value
+        self._group_class = Group
+        self._activatable_group_class = ActivatableGroup
+
     @overload
-    def __getitem__[ExpectedType: "ConfigEntry"](
+    def __getitem__[ExpectedType: Union["ConfigEntry", "DesyncableConfigEntry"]](
         self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
     ) -> ExpectedType: ...
 
     @overload
-    def __getitem__(self: Self, item: AnyParameterName) -> "ConfigEntry": ...
+    def __getitem__(self: Self, item: AnyParameterName) -> Union["ConfigEntry", "DesyncableConfigEntry"]: ...
 
-    def __getitem__[ExpectedType: "ConfigEntry"](
+    def __getitem__[ExpectedType: Union["ConfigEntry", "DesyncableConfigEntry"]](
         self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
-    ) -> "ConfigEntry":
+    ) -> Union["ConfigEntry", "DesyncableConfigEntry"]:
         """
         Get config entry by given display name (or "technical" name).
 
@@ -67,9 +75,13 @@ class _Group(_ConfigWrapper):
 
         parameter_full_name = (*self._name, level_name)
 
-        class_ = Value
+        class_ = self._value_class
         if self._schema.is_group(parameter_full_name):
-            class_ = ActivatableGroup if self._schema.is_activatable_group(parameter_full_name) else Group
+            class_ = (
+                self._activatable_group_class
+                if self._schema.is_activatable_group(parameter_full_name)
+                else self._group_class
+            )
 
         return class_(name=parameter_full_name, data=self._data, schema=self._schema)
 
@@ -85,10 +97,35 @@ class Value[T](_ConfigWrapper):
         return self
 
 
+class _Desyncable(_ConfigWrapper):
+    def sync(self: Self) -> Self:
+        self._data.set_attribute(parameter=self._name, attribute="isSynced", value=True)
+        return self
+
+    def desync(self: Self) -> Self:
+        self._data.set_attribute(parameter=self._name, attribute="isSynced", value=False)
+        return self
+
+
+class DesyncableValue[T](_Desyncable, Value[T]):
+    def set(self: Self, value: Any) -> Self:  # noqa: ANN401
+        super().set(value)
+        self.desync()
+        return self
+
+
 class Group(_Group): ...
 
 
-class ActivatableGroup(Group):
+class DesyncableGroup(_Group):
+    def __init__(self: Self, name: LevelNames, data: ConfigData, schema: ConfigSchema) -> None:
+        super().__init__(name, data, schema)
+        self._value_class = DesyncableValue
+        self._group_class = DesyncableGroup
+        self._activatable_group_class = DesyncableActivatableGroup
+
+
+class _Activatable(_Group):
     def activate(self: Self) -> Self:
         self._data.set_attribute(parameter=self._name, attribute="isActive", value=True)
         return self
@@ -98,7 +135,22 @@ class ActivatableGroup(Group):
         return self
 
 
-class ConfigWrapper(Group):
+class ActivatableGroup(Group, _Activatable): ...
+
+
+class DesyncableActivatableGroup(_Desyncable, ActivatableGroup):
+    def activate(self: Self) -> Self:
+        super().activate()
+        self.desync()
+        return self
+
+    def deactivate(self: Self) -> Self:
+        super().deactivate()
+        self.desync()
+        return self
+
+
+class ConfigWrapper(_Group):
     @property
     def config(self: Self) -> ConfigData:
         return self._data
@@ -108,7 +160,20 @@ class ConfigWrapper(Group):
         return self._data
 
 
+class DesyncableConfigWrapper(DesyncableGroup): ...
+
+
 type ConfigEntry = Value | Group | ActivatableGroup
+type DesyncableConfigEntry = DesyncableValue | DesyncableGroup | DesyncableActivatableGroup
+
+# API Objects
+
+# todo implement
+# class ActionConfig:
+#    ...
+#
+# class HostGroupConfig:
+#    ...
 
 
 class ObjectConfig:
@@ -185,7 +250,7 @@ class ObjectConfig:
         return self
 
     def __getitem__(self: Self, item: AnyParameterName) -> ConfigEntry:
-        return self._current_config[item]
+        return self._current_config[item]  # type: ignore
 
     # Public For Internal Use Only
 
