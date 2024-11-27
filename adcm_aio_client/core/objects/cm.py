@@ -1,7 +1,6 @@
-import asyncio
 from functools import cached_property
-from typing import Iterable
-from typing import Literal, Self
+from typing import Iterable, Literal, Self
+import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
