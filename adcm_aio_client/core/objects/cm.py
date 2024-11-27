@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import Iterable, Self
+from typing import Any, Iterable, Self
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property
@@ -22,7 +22,7 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
-from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint
+from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, Requester
 
 type Filter = object  # TODO: implement
 
@@ -114,9 +114,6 @@ class Cluster(
     def actions(self: Self) -> "ActionsAccessor":
         return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
 
-    def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
-
 
 class ClustersNode(PaginatedAccessor[Cluster, None]):
     class_type = Cluster
@@ -147,9 +144,6 @@ class Service(
     @cached_property
     def cluster(self: Self) -> Cluster:
         return self._parent
-
-    def get_own_path(self: Self) -> Endpoint:
-        return *self._parent.get_own_path(), self.PATH_PREFIX, self.id
 
     @cached_property
     def components(self: Self) -> "ComponentsNode":
@@ -205,9 +199,6 @@ class Component(
     def actions(self: Self) -> "ActionsAccessor":
         return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
 
-    def get_own_path(self: Self) -> Endpoint:
-        return *self._parent.get_own_path(), self.PATH_PREFIX, self.id
-
 
 class ComponentsNode(PaginatedChildAccessor[Service, Component, None]):
     class_type = Component
@@ -234,9 +225,6 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInterac
         return HostsAccessor(
             path=("hosts",), requester=self._requester, accessor_filter={"hostproviderName": self.name}
         )
-
-    def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
 
     @cached_property
     def actions(self: Self) -> "ActionsAccessor":
@@ -271,9 +259,6 @@ class Host(Deletable, RootInteractiveObject):
     @cached_property
     async def hostprovider(self: Self) -> HostProvider:
         return await HostProvider.with_id(requester=self._requester, object_id=self._data["hostprovider"]["id"])
-
-    def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
 
     @cached_property
     def actions(self: Self) -> "ActionsAccessor":
@@ -325,7 +310,10 @@ class HostsInClusterNode(HostsAccessor):
 
 class Action(InteractiveChildObject):
     PATH_PREFIX = "actions"
-    _verbose = False
+
+    def __init__(self: Self, parent: InteractiveObject, requester: Requester, data: dict[str, Any]) -> None:
+        super().__init__(parent, requester, data)
+        self._verbose = False
 
     @cached_property
     def name(self: Self) -> str:
@@ -359,9 +347,6 @@ class Action(InteractiveChildObject):
     @property  # TODO: @async_cached_property
     async def _rich_data(self: Self) -> dict:
         return (await self._requester.get(*self.get_own_path())).as_dict()
-
-    def get_own_path(self: Self) -> Endpoint:
-        return *self._parent.get_own_path(), self.PATH_PREFIX, self.id
 
 
 class ActionMapping:
