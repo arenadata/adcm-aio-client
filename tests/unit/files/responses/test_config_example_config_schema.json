@@ -214,7 +214,7 @@
           "minLength": 1
         },
         "duplicate": {
-          "title": "Integer In Group",
+          "title": "Duplicate",
           "type": "integer",
           "description": "",
           "default": 44,

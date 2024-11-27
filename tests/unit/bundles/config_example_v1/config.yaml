@@ -49,7 +49,7 @@
           type: json
           default: {"complex": [], "jsonfield": 23, "server": "bestever"}
         - name: duplicate
-          display_name: Integer In Group
+          display_name: Duplicate
           type: integer
           default: 44
     - name: optional_group

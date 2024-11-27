@@ -40,6 +40,12 @@ class _ConfigWrapper:
 
 
 class _Group(_ConfigWrapper):
+    __slots__ = ("_name", "_schema", "_data", "_wrappers_cache")
+
+    def __init__(self: Self, name: LevelNames, data: ConfigData, schema: ConfigSchema) -> None:
+        super().__init__(name, data, schema)
+        self._wrappers_cache = {}
+
     def _find_and_wrap_config_entry[ValueW: _ConfigWrapper, GroupW: _ConfigWrapper, AGroupW: _ConfigWrapper](
         self: Self,
         item: AnyParameterName | tuple[AnyParameterName, type[ValueW | GroupW | AGroupW]],
@@ -56,13 +62,21 @@ class _Group(_ConfigWrapper):
         if level_name is None:
             level_name = name
 
+        cached_wrapper = self._wrappers_cache.get(level_name)
+        if cached_wrapper:
+            return cached_wrapper
+
         parameter_full_name = (*self._name, level_name)
 
         class_ = value_class
         if self._schema.is_group(parameter_full_name):
             class_ = a_group_class if self._schema.is_activatable_group(parameter_full_name) else group_class
 
-        return class_(name=parameter_full_name, data=self._data, schema=self._schema)
+        wrapper = class_(name=parameter_full_name, data=self._data, schema=self._schema)
+
+        self._wrappers_cache[level_name] = wrapper
+
+        return wrapper
 
 
 class Value[T](_ConfigWrapper):

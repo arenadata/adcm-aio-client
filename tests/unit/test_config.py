@@ -143,3 +143,20 @@ def test_edit_config(example_config: tuple[dict, dict], object_config: ObjectCon
     config_for_save = config.data
     assert config_for_save.values == new_config
     assert config_for_save.attributes == {"/optional_group": {"isActive": True}}
+
+
+def test_display_name_search(object_config: ObjectConfig) -> None:
+    # only display name search
+    assert object_config["Map At Root", Value].value == {"k1": "v1", "k2": "v2"}
+    assert object_config["Main Section", Group]["String In Group", Value].value == "evil"
+
+    # name and display name search mixed
+    assert object_config["root_int"] is object_config["Integer At Root"]
+
+    value_1 = object_config["optional_group"]["Param In Activatable Group"]  # type: ignore
+    value_2 = object_config["Optional Section"]["param"]  # type: ignore
+    assert value_1 is value_2
+
+    # duplication at different levels
+    assert object_config["Duplicate", Value].value == "hehe"
+    assert object_config["Main Section", Group]["Duplicate", Value].value == 44
