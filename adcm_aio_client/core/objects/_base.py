@@ -3,6 +3,8 @@ from contextlib import suppress
 from functools import cached_property
 from typing import Any, Self
 
+from asyncstdlib.functools import CachedProperty
+
 from adcm_aio_client.core.requesters import Requester
 from adcm_aio_client.core.types import AwareOfOwnPath, Endpoint, WithRequester
 
@@ -19,7 +21,7 @@ class InteractiveObject(WithRequester, AwareOfOwnPath):
         for name in dir(cls):
             # None is for declared, but unset values
             attr = getattr(cls, name, None)
-            if isinstance(attr, cached_property):  # TODO: asyncstdlib.functools.CachedProperty
+            if isinstance(attr, (cached_property, CachedProperty)):
                 cls._delete_on_refresh.append(name)
 
     def __init__(self: Self, requester: Requester, data: dict[str, Any]) -> None:
