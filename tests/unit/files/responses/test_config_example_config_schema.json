@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Configuration",
+  "description": "",
+  "readOnly": false,
+  "adcmMeta": {
+    "isAdvanced": false,
+    "isInvisible": false,
+    "activation": null,
+    "synchronization": null,
+    "nullValue": null,
+    "isSecret": false,
+    "stringExtra": null,
+    "enumExtra": null
+  },
+  "type": "object",
+  "properties": {
+    "root_int": {
+      "title": "Integer At Root",
+      "type": "integer",
+      "description": "",
+      "default": 100,
+      "readOnly": false,
+      "adcmMeta": {
+        "isAdvanced": false,
+        "isInvisible": false,
+        "activation": null,
+        "synchronization": null,
+        "isSecret": false,
+        "stringExtra": null,
+        "enumExtra": null
+      }
+    },
+    "root_list": {
+      "title": "List At Root",
+      "type": "array",
+      "description": "",
+      "default": [
+        "first",
+        "second",
+        "third"
+      ],
+      "readOnly": false,
+      "adcmMeta": {
+        "isAdvanced": false,
+        "isInvisible": false,
+        "activation": null,
+        "synchronization": null,
+        "isSecret": false,
+        "stringExtra": null,
+        "enumExtra": null
+      },
+      "items": {
+        "type": "string",
+        "title": "",
+        "description": "",
+        "default": null,
+        "readOnly": false,
+        "adcmMeta": {
+          "isAdvanced": false,
+          "isInvisible": false,
+          "activation": null,
+          "synchronization": null,
+          "nullValue": null,
+          "isSecret": false,
+          "stringExtra": null,
+          "enumExtra": null
+        }
+      },
+      "minItems": 1
+    },
+    "root_dict": {
+      "oneOf": [
+        {
+          "title": "Map At Root",
+          "type": "object",
+          "description": "",
+          "default": {
+            "k1": "v1",
+            "k2": "v2"
+          },
+          "readOnly": false,
+          "adcmMeta": {
+            "isAdvanced": false,
+            "isInvisible": false,
+            "activation": null,
+            "synchronization": null,
+            "isSecret": false,
+            "stringExtra": null,
+            "enumExtra": null
+          },
+          "additionalProperties": true,
+          "properties": {}
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "duplicate": {
+      "title": "Duplicate",
+      "type": "string",
+      "description": "",
+      "default": "hehe",
+      "readOnly": false,
+      "adcmMeta": {
+        "isAdvanced": false,
+        "isInvisible": false,
+        "activation": null,
+        "synchronization": null,
+        "isSecret": false,
+        "stringExtra": {
+          "isMultiline": false
+        },
+        "enumExtra": null
+      },
+      "minLength": 1
+    },
+    "root_json": {
+      "title": "JSON At Root",
+      "type": "string",
+      "description": "",
+      "default": "{}",
+      "readOnly": false,
+      "adcmMeta": {
+        "isAdvanced": false,
+        "isInvisible": false,
+        "activation": null,
+        "synchronization": null,
+        "isSecret": false,
+        "stringExtra": {
+          "isMultiline": true
+        },
+        "enumExtra": null
+      },
+      "format": "json",
+      "minLength": 1
+    },
+    "main": {
+      "title": "Main Section",
+      "type": "object",
+      "description": "",
+      "default": {},
+      "readOnly": false,
+      "adcmMeta": {
+        "isAdvanced": false,
+        "isInvisible": false,
+        "activation": null,
+        "synchronization": null,
+        "isSecret": false,
+        "stringExtra": null,
+        "enumExtra": null
+      },
+      "additionalProperties": false,
+      "properties": {
+        "inner_str": {
+          "title": "String In Group",
+          "type": "string",
+          "description": "",
+          "default": "evil",
+          "readOnly": false,
+          "adcmMeta": {
+            "isAdvanced": false,
+            "isInvisible": false,
+            "activation": null,
+            "synchronization": null,
+            "isSecret": false,
+            "stringExtra": {
+              "isMultiline": false
+            },
+            "enumExtra": null
+          },
+          "minLength": 1
+        },
+        "inner_dict": {
+          "title": "Map In Group",
+          "type": "object",
+          "description": "",
+          "default": {
+            "a": "b"
+          },
+          "readOnly": false,
+          "adcmMeta": {
+            "isAdvanced": false,
+            "isInvisible": false,
+            "activation": null,
+            "synchronization": null,
+            "isSecret": false,
+            "stringExtra": null,
+            "enumExtra": null
+          },
+          "additionalProperties": true,
+          "properties": {},
+          "minProperties": 1
+        },
+        "inner_json": {
+          "title": "JSON In Group",
+          "type": "string",
+          "description": "",
+          "default": "{\"complex\": [], \"jsonfield\": 23, \"server\": \"bestever\"}",
+          "readOnly": false,
+          "adcmMeta": {
+            "isAdvanced": false,
+            "isInvisible": false,
+            "activation": null,
+            "synchronization": null,
+            "isSecret": false,
+            "stringExtra": {
+              "isMultiline": true
+            },
+            "enumExtra": null
+          },
+          "format": "json",
+          "minLength": 1
+        },
+        "duplicate": {
+          "title": "Integer In Group",
+          "type": "integer",
+          "description": "",
+          "default": 44,
+          "readOnly": false,
+          "adcmMeta": {
+            "isAdvanced": false,
+            "isInvisible": false,
+            "activation": null,
+            "synchronization": null,
+            "isSecret": false,
+            "stringExtra": null,
+            "enumExtra": null
+          }
+        }
+      },
+      "required": [
+        "inner_str",
+        "inner_dict",
+        "inner_json",
+        "duplicate"
+      ]
+    },
+    "optional_group": {
+      "title": "Optional Section",
+      "type": "object",
+      "description": "",
+      "default": {},
+      "readOnly": false,
+      "adcmMeta": {
+        "isAdvanced": false,
+        "isInvisible": false,
+        "activation": {
+          "isAllowChange": true
+        },
+        "synchronization": null,
+        "isSecret": false,
+        "stringExtra": null,
+        "enumExtra": null
+      },
+      "additionalProperties": false,
+      "properties": {
+        "param": {
+          "oneOf": [
+            {
+              "title": "Param In Activatable Group",
+              "type": "number",
+              "description": "",
+              "default": 44.44,
+              "readOnly": false,
+              "adcmMeta": {
+                "isAdvanced": false,
+                "isInvisible": false,
+                "activation": null,
+                "synchronization": null,
+                "isSecret": false,
+                "stringExtra": null,
+                "enumExtra": null
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "param"
+      ]
+    },
+    "root_str": {
+      "oneOf": [
+        {
+          "title": "String At Root",
+          "type": "string",
+          "description": "",
+          "default": null,
+          "readOnly": false,
+          "adcmMeta": {
+            "isAdvanced": false,
+            "isInvisible": false,
+            "activation": null,
+            "synchronization": null,
+            "isSecret": false,
+            "stringExtra": {
+              "isMultiline": false
+            },
+            "enumExtra": null
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "root_int",
+    "root_list",
+    "root_dict",
+    "duplicate",
+    "root_json",
+    "main",
+    "optional_group",
+    "root_str"
+  ]
+}
