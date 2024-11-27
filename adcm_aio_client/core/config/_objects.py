@@ -1,6 +1,6 @@
 from copy import deepcopy
 from functools import partial
-from typing import Any, Callable, Coroutine, Protocol, Self, Union, overload
+from typing import Any, Callable, Coroutine, Protocol, Self, overload
 import json
 import asyncio
 
@@ -22,6 +22,9 @@ from adcm_aio_client.core.types import AwareOfOwnPath, WithRequesterProperty
 class ConfigOwner(WithRequesterProperty, AwareOfOwnPath, Protocol): ...
 
 
+# Config Entries Wrappers
+
+
 class _ConfigWrapper:
     __slots__ = ("_name", "_schema", "_data")
 
@@ -37,33 +40,13 @@ class _ConfigWrapper:
 
 
 class _Group(_ConfigWrapper):
-    __slots__ = ("_name", "_schema", "_data", "_value_class", "_group_class", "_activatable_group_class")
-
-    def __init__(self: Self, name: LevelNames, data: ConfigData, schema: ConfigSchema) -> None:
-        super().__init__(name, data, schema)
-        self._value_class = Value
-        self._group_class = Group
-        self._activatable_group_class = ActivatableGroup
-
-    @overload
-    def __getitem__[ExpectedType: Union["ConfigEntry", "DesyncableConfigEntry"]](
-        self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
-    ) -> ExpectedType: ...
-
-    @overload
-    def __getitem__(self: Self, item: AnyParameterName) -> Union["ConfigEntry", "DesyncableConfigEntry"]: ...
-
-    def __getitem__[ExpectedType: Union["ConfigEntry", "DesyncableConfigEntry"]](
-        self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
-    ) -> Union["ConfigEntry", "DesyncableConfigEntry"]:
-        """
-        Get config entry by given display name (or "technical" name).
-
-        Item is either a string (name) or tuple with name on first position
-        and type info at second.
-
-        NOTE: types aren't checked, they are just helpers for users' type checking setups.
-        """
+    def _find_and_wrap_config_entry[ValueW: _ConfigWrapper, GroupW: _ConfigWrapper, AGroupW: _ConfigWrapper](
+        self: Self,
+        item: AnyParameterName | tuple[AnyParameterName, type[ValueW | GroupW | AGroupW]],
+        value_class: type[ValueW],
+        group_class: type[GroupW],
+        a_group_class: type[AGroupW],
+    ) -> ValueW | GroupW | AGroupW:
         if isinstance(item, str):
             name = item
         else:
@@ -75,13 +58,9 @@ class _Group(_ConfigWrapper):
 
         parameter_full_name = (*self._name, level_name)
 
-        class_ = self._value_class
+        class_ = value_class
         if self._schema.is_group(parameter_full_name):
-            class_ = (
-                self._activatable_group_class
-                if self._schema.is_activatable_group(parameter_full_name)
-                else self._group_class
-            )
+            class_ = a_group_class if self._schema.is_activatable_group(parameter_full_name) else group_class
 
         return class_(name=parameter_full_name, data=self._data, schema=self._schema)
 
@@ -114,15 +93,57 @@ class DesyncableValue[T](_Desyncable, Value[T]):
         return self
 
 
-class Group(_Group): ...
+class Group(_Group):
+    @overload
+    def __getitem__[ExpectedType: "ConfigEntry"](
+        self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
+    ) -> ExpectedType: ...
+
+    @overload
+    def __getitem__(self: Self, item: AnyParameterName) -> "ConfigEntry": ...
+
+    def __getitem__[ExpectedType: "ConfigEntry"](
+        self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
+    ) -> "ConfigEntry":
+        """
+        Get config entry by given display name (or "technical" name).
+
+        Item is either a string (name) or tuple with name on first position
+        and type info at second.
+
+        NOTE: types aren't checked, they are just helpers for users' type checking setups.
+        """
+        return self._find_and_wrap_config_entry(
+            item=item, value_class=Value, group_class=Group, a_group_class=ActivatableGroup
+        )
 
 
 class DesyncableGroup(_Group):
-    def __init__(self: Self, name: LevelNames, data: ConfigData, schema: ConfigSchema) -> None:
-        super().__init__(name, data, schema)
-        self._value_class = DesyncableValue
-        self._group_class = DesyncableGroup
-        self._activatable_group_class = DesyncableActivatableGroup
+    @overload
+    def __getitem__[ExpectedType: "DesyncableConfigEntry"](
+        self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
+    ) -> ExpectedType: ...
+
+    @overload
+    def __getitem__(self: Self, item: AnyParameterName) -> "DesyncableConfigEntry": ...
+
+    def __getitem__[ExpectedType: "DesyncableConfigEntry"](
+        self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
+    ) -> "DesyncableConfigEntry":
+        """
+        Get config entry by given display name (or "technical" name).
+
+        Item is either a string (name) or tuple with name on first position
+        and type info at second.
+
+        NOTE: types aren't checked, they are just helpers for users' type checking setups.
+        """
+        return self._find_and_wrap_config_entry(
+            item=item,
+            value_class=DesyncableValue,
+            group_class=DesyncableGroup,
+            a_group_class=DesyncableActivatableGroup,
+        )
 
 
 class _Activatable(_Group):
@@ -135,10 +156,10 @@ class _Activatable(_Group):
         return self
 
 
-class ActivatableGroup(Group, _Activatable): ...
+class ActivatableGroup(_Activatable, Group): ...
 
 
-class DesyncableActivatableGroup(_Desyncable, ActivatableGroup):
+class DesyncableActivatableGroup(_Desyncable, _Activatable, Group):
     def activate(self: Self) -> Self:
         super().activate()
         self.desync()
@@ -150,7 +171,7 @@ class DesyncableActivatableGroup(_Desyncable, ActivatableGroup):
         return self
 
 
-class ConfigWrapper(_Group):
+class _ConfigWrapperCreator(_ConfigWrapper):
     @property
     def config(self: Self) -> ConfigData:
         return self._data
@@ -160,7 +181,10 @@ class ConfigWrapper(_Group):
         return self._data
 
 
-class DesyncableConfigWrapper(DesyncableGroup): ...
+class ObjectConfigWrapper(Group, _ConfigWrapperCreator): ...
+
+
+class HostGroupConfigWrapper(DesyncableGroup, _ConfigWrapperCreator): ...
 
 
 type ConfigEntry = Value | Group | ActivatableGroup
@@ -176,15 +200,15 @@ type DesyncableConfigEntry = DesyncableValue | DesyncableGroup | DesyncableActiv
 #    ...
 
 
-class ObjectConfig:
-    __slots__ = ("_schema", "_parent", "_initial_config", "_current_config")
+class _GeneralConfig[T: _ConfigWrapperCreator]:
+    __slots__ = ("_schema", "_parent", "_initial_config", "_current_config", "_wrapper_class")
+
+    _wrapper_class: type[T]
 
     def __init__(self: Self, config: ConfigData, schema: ConfigSchema, parent: ConfigOwner) -> None:
         self._schema = schema
         self._initial_config: ConfigData = self._parse_json_fields_inplace_safe(config)
-        self._current_config: ConfigWrapper = ConfigWrapper(
-            data=deepcopy(self._initial_config), schema=self._schema, name=()
-        )
+        self._current_config = self._wrapper_class(data=deepcopy(self._initial_config), schema=self._schema, name=())
         self._parent = parent
 
     # Public Interface (for End User)
@@ -233,25 +257,6 @@ class ObjectConfig:
 
         return self
 
-    async def refresh(self: Self, strategy: MergeStrategy = apply_local_changes) -> Self:
-        remote_config = await retrieve_current_config(
-            parent=self._parent, get_schema=partial(retrieve_schema, parent=self._parent)
-        )
-        if self.schema != remote_config.schema:
-            message = "Can't refresh configuration after upgrade: schema is different for local and remote configs"
-            raise ConfigComparisonError(message)
-
-        local = LocalConfigs(initial=self._initial_config, changed=self._current_config.config)
-        merged_config = strategy(local=local, remote=remote_config.data, schema=self._schema)
-
-        self._initial_config = remote_config.data
-        self._current_config.change_data(new_data=merged_config)
-
-        return self
-
-    def __getitem__(self: Self, item: AnyParameterName) -> ConfigEntry:
-        return self._current_config[item]  # type: ignore
-
     # Public For Internal Use Only
 
     @property
@@ -263,7 +268,6 @@ class ObjectConfig:
         return self._current_config.config
 
     # Private
-
     def _parse_json_fields_inplace_safe(self: Self, config: ConfigData) -> ConfigData:
         return self._apply_to_all_json_fields(func=json.loads, when=lambda value: isinstance(value, str), config=config)
 
@@ -300,6 +304,45 @@ class ObjectConfig:
         config_data = ConfigData.from_v2_response(data_in_v2_format=config_response.as_dict())
 
         return self._parse_json_fields_inplace_safe(config_data)
+
+
+class _RefreshableConfig[T: _ConfigWrapperCreator](_GeneralConfig[T]):
+    async def refresh(self: Self, strategy: MergeStrategy = apply_local_changes) -> Self:
+        remote_config = await retrieve_current_config(
+            parent=self._parent, get_schema=partial(retrieve_schema, parent=self._parent)
+        )
+        if self.schema != remote_config.schema:
+            message = "Can't refresh configuration after upgrade: schema is different for local and remote configs"
+            raise ConfigComparisonError(message)
+
+        local = LocalConfigs(initial=self._initial_config, changed=self._current_config.config)
+        merged_config = strategy(local=local, remote=remote_config.data, schema=self._schema)
+
+        self._initial_config = remote_config.data
+        self._current_config.change_data(new_data=merged_config)
+
+        return self
+
+
+class ActionConfig(_GeneralConfig[ObjectConfigWrapper]):
+    _wrapper_class = ObjectConfigWrapper
+
+    def __getitem__(self: Self, item: AnyParameterName) -> ConfigEntry:
+        return self._current_config[item]
+
+
+class ObjectConfig(_RefreshableConfig[ObjectConfigWrapper]):
+    _wrapper_class = ObjectConfigWrapper
+
+    def __getitem__(self: Self, item: AnyParameterName) -> ConfigEntry:
+        return self._current_config[item]
+
+
+class HostGroupConfig(_RefreshableConfig[HostGroupConfigWrapper]):
+    _wrapper_class = HostGroupConfigWrapper
+
+    def __getitem__(self: Self, item: AnyParameterName) -> DesyncableConfigEntry:
+        return self._current_config[item]
 
 
 class ConfigHistoryNode:
