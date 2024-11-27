@@ -326,7 +326,7 @@ class Action(InteractiveChildObject):
     async def run(self: Self) -> dict:  # TODO: implement Task, return Task
         return (await self._requester.post(*self.get_own_path(), "run", data={"isVerbose": self._verbose})).as_dict()
 
-    @property  # TODO: @async_cached_property
+    @async_cached_property
     async def _mapping_rule(self: Self) -> list[dict]:
         return (await self._rich_data)["hostComponentMapRules"]
 
@@ -340,11 +340,11 @@ class Action(InteractiveChildObject):
 
     def validate(self: Self) -> None: ...  # TODO: implement
 
-    @property  # TODO: @async_cached_property, Config class
+    @async_cached_property  # TODO: Config class
     async def config(self: Self) -> ...:
         return (await self._rich_data)["configuration"]
 
-    @property  # TODO: @async_cached_property
+    @async_cached_property
     async def _rich_data(self: Self) -> dict:
         return (await self._requester.get(*self.get_own_path())).as_dict()
 
