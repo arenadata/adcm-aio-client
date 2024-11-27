@@ -2,6 +2,8 @@ from functools import cached_property
 from typing import Iterable, Self
 import asyncio
 
+from asyncstdlib.functools import cached_property as async_cached_property
+
 from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
@@ -26,6 +28,10 @@ type Filter = object  # TODO: implement
 
 class ADCM(InteractiveObject, WithActions, WithConfig):
     @cached_property
+    def id(self: Self) -> int:
+        return 1
+
+    @async_cached_property
     async def version(self: Self) -> str:
         # TODO: override root_path for being without /api/v2
         response = await self._requester.get("versions")
@@ -64,7 +70,7 @@ class Cluster(
     # todo think how such properties will be invalidated when data is updated
     #  during `refresh()` / `reread()` calls.
     #  See cache invalidation or alternatives in documentation for `cached_property`
-    @cached_property  # TODO: replace with asyncstdlib.functools.cached_property
+    @async_cached_property
     async def bundle(self: Self) -> Bundle:
         prototype_id = self._data["prototype"]["id"]
         response = await self._requester.get("prototypes", prototype_id)
@@ -158,7 +164,7 @@ class Component(
     def display_name(self: Self) -> str:
         return self._data["displayName"]
 
-    @cached_property  # TODO: replace with asyncstdlib.functools.cached_property
+    @async_cached_property
     async def constraint(self: Self) -> list[int | str]:
         response = (await self._requester.get(*self.cluster.get_own_path(), "mapping", "components")).as_list()
         for component in response:
@@ -236,13 +242,13 @@ class Host(Deletable, RootInteractiveObject):
         response = await self._requester.get(*self.get_own_path())
         return ADCMEntityStatus(response.as_dict()["status"])
 
-    @cached_property  # TODO: replace with asyncstdlib.functools.cached_property
+    @async_cached_property
     async def cluster(self: Self) -> Cluster | None:
         if not self._data["cluster"]:
             return None
         return await Cluster.with_id(requester=self._requester, object_id=self._data["cluster"]["id"])
 
-    @cached_property  # TODO: replace with asyncstdlib.functools.cached_property
+    @async_cached_property
     async def hostprovider(self: Self) -> HostProvider:
         return await HostProvider.with_id(requester=self._requester, object_id=self._data["hostprovider"]["id"])
 
