@@ -1,5 +1,7 @@
 from abc import ABC
+from collections import defaultdict
 from dataclasses import dataclass, field
+from functools import reduce
 from typing import Any, Callable, Iterable, NamedTuple, Protocol, Self
 
 # External Section
@@ -127,6 +129,10 @@ class ValueChange:
     current: Any
 
 
+def recursive_defaultdict() -> defaultdict:
+    return defaultdict(recursive_defaultdict)
+
+
 @dataclass(slots=True)
 class ConfigDifference:
     schema: "ConfigSchema"
@@ -138,8 +144,32 @@ class ConfigDifference:
         return bool(self.values or self.attributes)
 
     def __str__(self: Self) -> str:
-        # todo
-        return f"{self.values=}\n{self.attributes=}"
+        values_nested = self._to_nested_dict(self.values)
+        attributes_nested = self._to_nested_dict(self.attributes)
+
+        if not (values_nested or attributes_nested):
+            return "No Changes"
+
+        values_repr = f"Changed Values:\n{values_nested}" if values_nested else ""
+        attributes_repr = f"Changed Attributes:\n{attributes_nested}" if attributes_nested else ""
+
+        return "\n\n".join((values_repr, attributes_repr))
+
+    def _to_nested_dict(self: Self, changes: dict[LevelNames, ValueChange]) -> dict:
+        result = recursive_defaultdict()
+
+        for names, change in changes.items():
+            changes_tuple = (change.previous, change.current)
+
+            if len(names) == 1:
+                result[names[0]] = changes_tuple
+                continue
+
+            *groups, name = names
+            group_node = reduce(dict.__getitem__, groups, result)
+            group_node[name] = changes_tuple
+
+        return result
 
 
 class ConfigSchema:
@@ -157,8 +187,10 @@ class ConfigSchema:
         if not isinstance(value, ConfigSchema):
             return NotImplemented
 
-        # todo implement
-        return True
+        this_name_type_mapping = self._retrieve_name_type_mapping()
+        other_name_type_mapping = value._retrieve_name_type_mapping()
+
+        return this_name_type_mapping == other_name_type_mapping
 
     @property
     def json_fields(self: Self) -> set[LevelNames]:
@@ -188,6 +220,12 @@ class ConfigSchema:
             *group, own_level_name = level_names
             display_name = param_spec["title"]
             self._display_name_map[tuple(group), display_name] = own_level_name
+
+    def _retrieve_name_type_mapping(self: Self) -> dict[LevelNames, str]:
+        return {
+            level_names: param_spec.get("type", "enum")
+            for level_names, param_spec in self._iterate_parameters(object_schema=self._raw)
+        }
 
     def _iterate_parameters(self: Self, object_schema: dict) -> Iterable[tuple[LevelNames, dict]]:
         for level_name, optional_attrs in object_schema["properties"].items():
