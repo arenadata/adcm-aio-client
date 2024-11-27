@@ -181,6 +181,7 @@ class ConfigSchema:
 
                 if is_activatable_v2(param_spec):
                     self._activatable_groups.add(level_names)
+
             elif is_json_v2(param_spec):
                 self._jsons.add(level_names)
 
@@ -191,13 +192,13 @@ class ConfigSchema:
     def _iterate_parameters(self: Self, object_schema: dict) -> Iterable[tuple[LevelNames, dict]]:
         for level_name, optional_attrs in object_schema["properties"].items():
             attributes = self._unwrap_optional(optional_attrs)
-            is_group = is_group_v2(attributes)
-            if is_group:
+
+            yield (level_name,), attributes
+
+            if is_group_v2(attributes):
                 for inner_level, inner_optional_attrs in self._iterate_parameters(attributes):
                     inner_attributes = self._unwrap_optional(inner_optional_attrs)
                     yield (level_name, *inner_level), inner_attributes
-            else:
-                yield level_name, attributes
 
     def _unwrap_optional(self: Self, attributes: dict) -> dict:
         if "oneOf" not in attributes:

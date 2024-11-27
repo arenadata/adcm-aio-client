@@ -192,13 +192,6 @@ type DesyncableConfigEntry = DesyncableValue | DesyncableGroup | DesyncableActiv
 
 # API Objects
 
-# todo implement
-# class ActionConfig:
-#    ...
-#
-# class HostGroupConfig:
-#    ...
-
 
 class _GeneralConfig[T: _ConfigWrapperCreator]:
     __slots__ = ("_schema", "_parent", "_initial_config", "_current_config", "_wrapper_class")
@@ -327,21 +320,52 @@ class _RefreshableConfig[T: _ConfigWrapperCreator](_GeneralConfig[T]):
 class ActionConfig(_GeneralConfig[ObjectConfigWrapper]):
     _wrapper_class = ObjectConfigWrapper
 
-    def __getitem__(self: Self, item: AnyParameterName) -> ConfigEntry:
+    @overload
+    def __getitem__[ExpectedType: ConfigEntry](
+        self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
+    ) -> ExpectedType: ...
+
+    @overload
+    def __getitem__(self: Self, item: AnyParameterName) -> ConfigEntry: ...
+
+    def __getitem__[ExpectedType: ConfigEntry](
+        self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
+    ) -> ConfigEntry:
         return self._current_config[item]
 
 
 class ObjectConfig(_RefreshableConfig[ObjectConfigWrapper]):
     _wrapper_class = ObjectConfigWrapper
 
-    def __getitem__(self: Self, item: AnyParameterName) -> ConfigEntry:
+    # todo fix typing copy-paste
+    @overload
+    def __getitem__[ExpectedType: ConfigEntry](
+        self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
+    ) -> ExpectedType: ...
+
+    @overload
+    def __getitem__(self: Self, item: AnyParameterName) -> ConfigEntry: ...
+
+    def __getitem__[ExpectedType: ConfigEntry](
+        self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
+    ) -> ConfigEntry:
         return self._current_config[item]
 
 
 class HostGroupConfig(_RefreshableConfig[HostGroupConfigWrapper]):
     _wrapper_class = HostGroupConfigWrapper
 
-    def __getitem__(self: Self, item: AnyParameterName) -> DesyncableConfigEntry:
+    @overload
+    def __getitem__[ExpectedType: DesyncableConfigEntry](
+        self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
+    ) -> ExpectedType: ...
+
+    @overload
+    def __getitem__(self: Self, item: AnyParameterName) -> DesyncableConfigEntry: ...
+
+    def __getitem__[ExpectedType: DesyncableConfigEntry](
+        self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
+    ) -> "DesyncableConfigEntry":
         return self._current_config[item]
 
 
