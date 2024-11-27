@@ -4,8 +4,6 @@ import asyncio
 
 from asyncstdlib.functools import CachedProperty as async_cached_property  # noqa: N813
 
-from asyncstdlib.functools import cached_property as async_cached_property
-
 from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
