@@ -40,7 +40,7 @@ class ADCMClient:
 
     @cached_property
     def bundles(self: Self) -> BundlesNode:
-        return BundlesNode(path=(), requester=self._requester)
+        return BundlesNode(path=("bundles",), requester=self._requester)
 
 
 async def build_client(

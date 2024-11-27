@@ -2,7 +2,7 @@ from functools import cached_property
 from typing import Iterable, Literal, Self
 import asyncio
 
-from asyncstdlib.functools import CachedProperty as async_cached_property  # noqa: N813
+from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
 from adcm_aio_client.core.objects._accessors import (
@@ -80,7 +80,7 @@ class Bundle(Deletable, RootInteractiveObject):
         return self.PATH_PREFIX, self.id
 
 
-class BundlesNode(PaginatedAccessor):
+class BundlesNode(PaginatedAccessor[Bundle, None]):
     class_type = Bundle
 
     def get_own_path(self: Self) -> Endpoint:
