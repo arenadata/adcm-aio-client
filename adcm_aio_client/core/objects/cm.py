@@ -14,7 +14,6 @@ from adcm_aio_client.core.objects._base import InteractiveChildObject, Interacti
 from adcm_aio_client.core.objects._common import (
     Deletable,
     WithActionHostGroups,
-    WithActions,
     WithConfig,
     WithConfigGroups,
     WithStatus,
@@ -22,9 +21,20 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
-from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, Requester
+from adcm_aio_client.core.types import ADCMEntityStatus, AwareOfOwnPath, Endpoint, Requester, WithRequester
 
 type Filter = object  # TODO: implement
+
+
+# TODO: Avoiding circular imports. Think about right place for such mixins.
+class WithActions(WithRequester, AwareOfOwnPath):
+    @cached_property
+    def actions(self: Self) -> "ActionsAccessor":
+        return ActionsAccessor(
+            parent=self,  # pyright: ignore [reportArgumentType]
+            path=(*self.get_own_path(), "actions"),
+            requester=self._requester,
+        )
 
 
 class ADCM(InteractiveObject, WithActions, WithConfig):
@@ -37,10 +47,6 @@ class ADCM(InteractiveObject, WithActions, WithConfig):
         # TODO: override root_path for being without /api/v2
         response = await self._requester.get("versions")
         return response.as_dict()["adcm"]["version"]
-
-    @cached_property
-    def actions(self: Self) -> "ActionsAccessor":
-        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
 
     def get_own_path(self: Self) -> Endpoint:
         return ("adcm",)
@@ -110,10 +116,6 @@ class Cluster(
     def imports(self: Self) -> ClusterImports:
         return ClusterImports()
 
-    @cached_property
-    def actions(self: Self) -> "ActionsAccessor":
-        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
-
 
 class ClustersNode(PaginatedAccessor[Cluster, None]):
     class_type = Cluster
@@ -148,10 +150,6 @@ class Service(
     @cached_property
     def components(self: Self) -> "ComponentsNode":
         return ComponentsNode(parent=self, path=(*self.get_own_path(), "components"), requester=self._requester)
-
-    @cached_property
-    def actions(self: Self) -> "ActionsAccessor":
-        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
 
 
 class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
@@ -196,10 +194,6 @@ class Component(
             accessor_filter={"componentId": self.id},
         )
 
-    @cached_property
-    def actions(self: Self) -> "ActionsAccessor":
-        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
-
 
 class ComponentsNode(PaginatedChildAccessor[Service, Component, None]):
     class_type = Component
@@ -227,16 +221,12 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInterac
             path=("hosts",), requester=self._requester, accessor_filter={"hostproviderName": self.name}
         )
 
-    @cached_property
-    def actions(self: Self) -> "ActionsAccessor":
-        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
-
 
 class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
     class_type = HostProvider
 
 
-class Host(Deletable, RootInteractiveObject):
+class Host(Deletable, WithActions, RootInteractiveObject):
     PATH_PREFIX = "hosts"
 
     @property
@@ -260,10 +250,6 @@ class Host(Deletable, RootInteractiveObject):
     @async_cached_property
     async def hostprovider(self: Self) -> HostProvider:
         return await HostProvider.with_id(requester=self._requester, object_id=self._data["hostprovider"]["id"])
-
-    @cached_property
-    def actions(self: Self) -> "ActionsAccessor":
-        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
 
     def __str__(self: Self) -> str:
         return f"<{self.__class__.__name__} #{self.id} {self.name}>"

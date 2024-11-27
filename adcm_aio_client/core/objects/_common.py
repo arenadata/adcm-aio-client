@@ -25,11 +25,6 @@ class WithConfig(WithRequester, AwareOfOwnPath):
     def config_history(self: Self) -> ...: ...
 
 
-class WithActions(WithRequester, AwareOfOwnPath):
-    @cached_property
-    def actions(self: Self) -> ...: ...
-
-
 class WithUpgrades(WithRequester, AwareOfOwnPath):
     @cached_property
     def upgrades(self: Self) -> ...: ...
