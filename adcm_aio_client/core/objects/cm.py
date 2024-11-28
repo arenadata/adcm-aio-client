@@ -317,8 +317,8 @@ class Action(InteractiveChildObject):
     async def _mapping_rule(self: Self) -> list[dict]:
         return (await self._rich_data)["hostComponentMapRules"]
 
-    @cached_property
-    def mapping(self: Self) -> "ActionMapping":
+    @async_cached_property
+    async def mapping(self: Self) -> "ActionMapping":
         return ActionMapping()
 
     def set_verbose(self: Self) -> Self:
