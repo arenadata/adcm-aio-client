@@ -52,6 +52,10 @@ class License(InteractiveObject):
     def state(self: Self) -> LicenseState:
         return LicenseState(self._data["status"])
 
+    @cached_property
+    def text(self: Self) -> str:
+        return self._data["text"] or ""
+
     def accept(self: Self) -> ...: ...
 
 
@@ -84,8 +88,12 @@ class Bundle(Deletable, RootInteractiveObject):
 
     @async_cached_property
     async def license(self: Self) -> License:
-        response = await self._requester.get(*self.get_own_path())
-        return self._construct(what=License, from_data=response.as_dict()["mainPrototype"]["license"])
+        response = (await self._requester.get(*self.get_own_path())).as_dict()
+        data = {
+            **response["mainPrototype"]["license"],
+            "prototypeId": response["mainPrototype"]["id"],  # for constructing accept url
+        }
+        return self._construct(what=License, from_data=data)
 
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
