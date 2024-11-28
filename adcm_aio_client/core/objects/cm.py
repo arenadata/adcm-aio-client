@@ -6,7 +6,6 @@ from asyncstdlib.functools import cached_property as async_cached_property  # no
 
 from adcm_aio_client.core.errors import (
     LicenseError,
-    MultipleObjectsReturnedError,
     NotFoundError,
     OperationError,
     ResponseError,
@@ -95,6 +94,10 @@ class Bundle(Deletable, RootInteractiveObject):
         }
         return self._construct(what=License, from_data=data)
 
+    @cached_property
+    def _main_prototype_id(self: Self) -> int:
+        return self._data["mainPrototype"]["id"]
+
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
 
@@ -173,6 +176,16 @@ class Cluster(
 
 class ClustersNode(PaginatedAccessor[Cluster, None]):
     class_type = Cluster
+
+    async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
+        if (await bundle.license).state == "unaccepted":
+            raise LicenseError
+
+        response = await self._requester.post(
+            "clusters", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
+        )
+
+        return Cluster(requester=self._requester, data=response.as_dict())
 
 
 class Service(
@@ -289,24 +302,11 @@ class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
         if (await bundle.license).state == "unaccepted":
             raise LicenseError
 
-        prototype_data = (
-            await self._requester.get("prototypes", query={"bundleId": bundle.id, "type": "provider"})
-        ).as_dict()["results"]
+        response = await self._requester.post(
+            "hostproviders", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
+        )
 
-        if len(prototype_data) < 1:
-            raise NotFoundError
-
-        if len(prototype_data) > 1:
-            raise MultipleObjectsReturnedError
-
-        prototype_id = prototype_data[0]["id"]
-        data = (
-            await self._requester.post(
-                "hostproviders", data={"prototypeId": prototype_id, "name": name, "description": description}
-            )
-        ).as_dict()
-
-        return HostProvider(requester=self._requester, data=data)
+        return HostProvider(requester=self._requester, data=response.as_dict())
 
 
 class Host(Deletable, RootInteractiveObject):
