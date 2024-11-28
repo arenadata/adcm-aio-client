@@ -284,7 +284,6 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
     def _apply_to_all_json_fields(
         self: Self, func: Callable, when: Callable[[Any], bool], config: ConfigData
     ) -> ConfigData:
-        when = when
         for parameter_name in self._schema.json_fields:
             input_value = config.get_value(parameter_name)
             if when(input_value):

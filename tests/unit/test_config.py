@@ -98,8 +98,6 @@ def test_edit_config(example_config: tuple[dict, dict], object_config: ObjectCon
 
     # Edit group ("nested") values
 
-    print(config.schema._groups)
-
     assert isinstance(config["main"], Group)
     # if we don't want type checker to bother us, we can yolo like that
     config["main"]["inner_str"].set(new_config["main"]["inner_str"])  # type: ignore
