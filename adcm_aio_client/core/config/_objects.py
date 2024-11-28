@@ -79,7 +79,7 @@ class _Group(_ConfigWrapper):
         return wrapper
 
 
-class Value[T](_ConfigWrapper):
+class Parameter[T](_ConfigWrapper):
     @property
     def value(self: Self) -> T:
         # todo probably want to return read-only proxies for list/dict
@@ -100,14 +100,14 @@ class _Desyncable(_ConfigWrapper):
         return self
 
 
-class DesyncableValue[T](_Desyncable, Value[T]):
+class ParameterHG[T](_Desyncable, Parameter[T]):
     def set(self: Self, value: Any) -> Self:  # noqa: ANN401
         super().set(value)
         self.desync()
         return self
 
 
-class Group(_Group):
+class ParameterGroup(_Group):
     @overload
     def __getitem__[ExpectedType: "ConfigEntry"](
         self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
@@ -128,22 +128,22 @@ class Group(_Group):
         NOTE: types aren't checked, they are just helpers for users' type checking setups.
         """
         return self._find_and_wrap_config_entry(
-            item=item, value_class=Value, group_class=Group, a_group_class=ActivatableGroup
+            item=item, value_class=Parameter, group_class=ParameterGroup, a_group_class=ActivatableParameterGroup
         )
 
 
-class DesyncableGroup(_Group):
+class ParameterGroupHG(_Group):
     @overload
-    def __getitem__[ExpectedType: "DesyncableConfigEntry"](
+    def __getitem__[ExpectedType: "ConfigEntryHG"](
         self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
     ) -> ExpectedType: ...
 
     @overload
-    def __getitem__(self: Self, item: AnyParameterName) -> "DesyncableConfigEntry": ...
+    def __getitem__(self: Self, item: AnyParameterName) -> "ConfigEntryHG": ...
 
-    def __getitem__[ExpectedType: "DesyncableConfigEntry"](
+    def __getitem__[ExpectedType: "ConfigEntryHG"](
         self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
-    ) -> "DesyncableConfigEntry":
+    ) -> "ConfigEntryHG":
         """
         Get config entry by given display name (or "technical" name).
 
@@ -154,9 +154,9 @@ class DesyncableGroup(_Group):
         """
         return self._find_and_wrap_config_entry(
             item=item,
-            value_class=DesyncableValue,
-            group_class=DesyncableGroup,
-            a_group_class=DesyncableActivatableGroup,
+            value_class=ParameterHG,
+            group_class=ParameterGroupHG,
+            a_group_class=ActivatableParameterGroupHG,
         )
 
 
@@ -170,10 +170,10 @@ class _Activatable(_Group):
         return self
 
 
-class ActivatableGroup(_Activatable, Group): ...
+class ActivatableParameterGroup(_Activatable, ParameterGroup): ...
 
 
-class DesyncableActivatableGroup(_Desyncable, _Activatable, Group):
+class ActivatableParameterGroupHG(_Desyncable, _Activatable, ParameterGroup):
     def activate(self: Self) -> Self:
         super().activate()
         self.desync()
@@ -195,14 +195,14 @@ class _ConfigWrapperCreator(_ConfigWrapper):
         return self._data
 
 
-class ObjectConfigWrapper(Group, _ConfigWrapperCreator): ...
+class ObjectConfigWrapper(ParameterGroup, _ConfigWrapperCreator): ...
 
 
-class HostGroupConfigWrapper(DesyncableGroup, _ConfigWrapperCreator): ...
+class HostGroupConfigWrapper(ParameterGroupHG, _ConfigWrapperCreator): ...
 
 
-type ConfigEntry = Value | Group | ActivatableGroup
-type DesyncableConfigEntry = DesyncableValue | DesyncableGroup | DesyncableActivatableGroup
+type ConfigEntry = Parameter | ParameterGroup | ActivatableParameterGroup
+type ConfigEntryHG = ParameterHG | ParameterGroupHG | ActivatableParameterGroupHG
 
 # API Objects
 
@@ -369,16 +369,16 @@ class HostGroupConfig(_RefreshableConfig[HostGroupConfigWrapper]):
     _wrapper_class = HostGroupConfigWrapper
 
     @overload
-    def __getitem__[ExpectedType: DesyncableConfigEntry](
+    def __getitem__[ExpectedType: ConfigEntryHG](
         self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
     ) -> ExpectedType: ...
 
     @overload
-    def __getitem__(self: Self, item: AnyParameterName) -> DesyncableConfigEntry: ...
+    def __getitem__(self: Self, item: AnyParameterName) -> ConfigEntryHG: ...
 
-    def __getitem__[ExpectedType: DesyncableConfigEntry](
+    def __getitem__[ExpectedType: ConfigEntryHG](
         self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
-    ) -> "DesyncableConfigEntry":
+    ) -> "ConfigEntryHG":
         return self._current_config[item]
 
 

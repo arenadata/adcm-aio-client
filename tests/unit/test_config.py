@@ -4,7 +4,13 @@ import json
 
 import pytest
 
-from adcm_aio_client.core.config._objects import ActivatableGroup, ConfigOwner, Group, ObjectConfig, Value
+from adcm_aio_client.core.config._objects import (
+    ActivatableParameterGroup,
+    ConfigOwner,
+    ObjectConfig,
+    Parameter,
+    ParameterGroup,
+)
 from adcm_aio_client.core.config.types import ConfigData, ConfigSchema
 from adcm_aio_client.core.objects._base import InteractiveObject
 from adcm_aio_client.core.types import Endpoint, Requester
@@ -83,40 +89,40 @@ def test_edit_config(example_config: tuple[dict, dict], object_config: ObjectCon
 
     # Edit "root" values
 
-    config["root_int", Value].set(new_config["root_int"])
+    config["root_int", Parameter].set(new_config["root_int"])
 
     # inner type won't be checked (list),
     # but here we pretend "to be 100% sure" it's `list`, not `None`
-    config["root_list", Value].set([*config["root_list", Value[list]].value, new_config["root_list"][-1]])
+    config["root_list", Parameter].set([*config["root_list", Parameter[list]].value, new_config["root_list"][-1]])
 
     root_dict = config["root_dict"]
-    assert isinstance(root_dict, Value)
+    assert isinstance(root_dict, Parameter)
     assert isinstance(root_dict.value, dict)
     root_dict.set(None)
     assert root_dict.value is None
-    assert config["root_dict", Value].value is None
+    assert config["root_dict", Parameter].value is None
 
     # Edit group ("nested") values
 
-    assert isinstance(config["main"], Group)
+    assert isinstance(config["main"], ParameterGroup)
     # if we don't want type checker to bother us, we can yolo like that
     config["main"]["inner_str"].set(new_config["main"]["inner_str"])  # type: ignore
 
     main_group = config["main"]
-    assert isinstance(main_group, Group)
-    main_group["inner_dict", Value].set(
-        {**main_group["inner_dict", Value[dict]].value, "additional": "keys", "are": "welcome"}
+    assert isinstance(main_group, ParameterGroup)
+    main_group["inner_dict", Parameter].set(
+        {**main_group["inner_dict", Parameter[dict]].value, "additional": "keys", "are": "welcome"}
     )
 
     activatable_group = config["optional_group"]
-    assert isinstance(activatable_group, ActivatableGroup)
+    assert isinstance(activatable_group, ActivatableParameterGroup)
     activatable_group.activate()
 
     # Edit JSON field
 
     # change value separately and set
     json_field = main_group["inner_json"]
-    assert isinstance(json_field, Value)
+    assert isinstance(json_field, Parameter)
     assert isinstance(json_field.value, dict)
     new_value = deepcopy(json_field.value)
     new_value.pop("server")
@@ -130,7 +136,7 @@ def test_edit_config(example_config: tuple[dict, dict], object_config: ObjectCon
     # Type change specifics
 
     param = config["root_str"]
-    assert isinstance(param, Value)
+    assert isinstance(param, Parameter)
     assert param.value is None
 
     param.set("newstring")
@@ -145,8 +151,8 @@ def test_edit_config(example_config: tuple[dict, dict], object_config: ObjectCon
 
 def test_display_name_search(object_config: ObjectConfig) -> None:
     # only display name search
-    assert object_config["Map At Root", Value].value == {"k1": "v1", "k2": "v2"}
-    assert object_config["Main Section", Group]["String In Group", Value].value == "evil"
+    assert object_config["Map At Root", Parameter].value == {"k1": "v1", "k2": "v2"}
+    assert object_config["Main Section", ParameterGroup]["String In Group", Parameter].value == "evil"
 
     # name and display name search mixed
     assert object_config["root_int"] is object_config["Integer At Root"]
@@ -156,5 +162,5 @@ def test_display_name_search(object_config: ObjectConfig) -> None:
     assert value_1 is value_2
 
     # duplication at different levels
-    assert object_config["Duplicate", Value].value == "hehe"
-    assert object_config["Main Section", Group]["Duplicate", Value].value == 44
+    assert object_config["Duplicate", Parameter].value == "hehe"
+    assert object_config["Main Section", ParameterGroup]["Duplicate", Parameter].value == 44
