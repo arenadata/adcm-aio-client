@@ -73,9 +73,3 @@ class AwareOfOwnPath(Protocol):
 class ADCMEntityStatus(str, Enum):
     UP = "up"
     DOWN = "down"
-
-
-class LicenseState(str, Enum):
-    ABSENT = "absent"
-    ACCEPTED = "accepted"
-    UNACCEPTED = "unaccepted"
