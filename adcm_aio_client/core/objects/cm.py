@@ -71,10 +71,8 @@ class Bundle(Deletable, RootInteractiveObject):
     def _type(self: Self) -> Literal["cluster", "provider"]:
         return self._data["mainPrototype"]["type"]
 
-    @async_cached_property
-    async def license(self: Self) -> License:
-        response = await self._requester.get(*self.get_own_path())
-        return self._construct(what=License, from_data=response.as_dict()["mainPrototype"]["license"])
+    def license(self: Self) -> License:
+        return self._construct(what=License, from_data=self._data["mainPrototype"]["license"])
 
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
