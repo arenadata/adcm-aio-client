@@ -1,8 +1,8 @@
 from functools import cached_property
 from typing import Self
 
-from adcm_aio_client.core.objects._base import AwareOfOwnPath, WithRequester
-from adcm_aio_client.core.types import ADCMEntityStatus
+from adcm_aio_client.core.actions import ActionsAccessor
+from adcm_aio_client.core.types import ADCMEntityStatus, AwareOfOwnPath, WithRequester
 
 
 class Deletable(WithRequester, AwareOfOwnPath):
@@ -14,6 +14,16 @@ class WithStatus(WithRequester, AwareOfOwnPath):
     async def get_status(self: Self) -> ADCMEntityStatus:
         response = await self._requester.get(*self.get_own_path())
         return ADCMEntityStatus(response.as_dict()["status"])
+
+
+class WithActions(WithRequester, AwareOfOwnPath):
+    @cached_property
+    def actions(self: Self) -> ActionsAccessor:
+        return ActionsAccessor(
+            parent=self,
+            path=(*self.get_own_path(), "actions"),
+            requester=self._requester,
+        )
 
 
 # todo whole section lacking implementation (and maybe code move is required)
