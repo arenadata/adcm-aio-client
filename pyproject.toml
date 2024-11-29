@@ -24,6 +24,7 @@ optional = true
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.3"
 pytest-asyncio = "^0.24.0"
+testcontainers = "^4.8.2"
 
 [build-system]
 requires = ["poetry-core"]

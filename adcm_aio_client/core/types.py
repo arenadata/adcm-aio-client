@@ -62,8 +62,14 @@ class Requester(Protocol):
 # Objects
 
 
-class WithRequester(Protocol):
+class WithProtectedRequester(Protocol):
     _requester: Requester
+
+
+class WithRequesterProperty(Protocol):
+    # ignored linter check, because with `: Self` type checking breaks, so it's fastfix
+    @property
+    def requester(self) -> Requester: ...  # noqa: ANN101
 
 
 class AwareOfOwnPath(Protocol):
