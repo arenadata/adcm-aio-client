@@ -1,8 +1,8 @@
 from functools import cached_property
-from typing import Iterable, Self
+from typing import Iterable, Literal, Self
 import asyncio
 
-from asyncstdlib.functools import cached_property as async_cached_property
+from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
 from adcm_aio_client.core.objects._accessors import (
@@ -41,7 +41,48 @@ class ADCM(InteractiveObject, WithActions, WithConfig):
         return ("adcm",)
 
 
-class Bundle(Deletable, InteractiveObject): ...
+class License(InteractiveObject): ...
+
+
+class Bundle(Deletable, RootInteractiveObject):
+    PATH_PREFIX = "bundles"
+
+    @property
+    def name(self: Self) -> str:
+        return str(self._data["name"])
+
+    @property
+    def display_name(self: Self) -> str:
+        return str(self._data["display_name"])
+
+    @property
+    def version(self: Self) -> str:
+        return str(self._data["version"])
+
+    @property
+    def edition(self: Self) -> Literal["community", "enterprise"]:
+        return self._data["edition"]
+
+    @property
+    def signature_status(self: Self) -> Literal["invalid", "valid", "absent"]:
+        return self._data["signatureStatus"]
+
+    @property
+    def _type(self: Self) -> Literal["cluster", "provider"]:
+        return self._data["mainPrototype"]["type"]
+
+    def license(self: Self) -> License:
+        return self._construct(what=License, from_data=self._data["mainPrototype"]["license"])
+
+    def get_own_path(self: Self) -> Endpoint:
+        return self.PATH_PREFIX, self.id
+
+
+class BundlesNode(PaginatedAccessor[Bundle, None]):
+    class_type = Bundle
+
+    def get_own_path(self: Self) -> Endpoint:
+        return ("bundles",)
 
 
 class Cluster(
@@ -111,9 +152,6 @@ class Cluster(
 
 class ClustersNode(PaginatedAccessor[Cluster, None]):
     class_type = Cluster
-
-    def get_own_path(self: Self) -> Endpoint:
-        return ("clusters",)
 
 
 class Service(
