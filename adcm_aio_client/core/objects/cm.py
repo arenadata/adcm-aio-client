@@ -1,8 +1,11 @@
 from functools import cached_property
+from pathlib import Path
 from typing import Iterable, Literal, Self
+from urllib.request import urlopen
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
+import httpx
 
 from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
 from adcm_aio_client.core.objects._accessors import (
@@ -41,7 +44,8 @@ class ADCM(InteractiveObject, WithActions, WithConfig):
         return ("adcm",)
 
 
-class License(InteractiveObject): ...
+class License(InteractiveObject):
+    def accept(self: Self) -> None: ...
 
 
 class Bundle(Deletable, RootInteractiveObject):
@@ -84,6 +88,33 @@ class Bundle(Deletable, RootInteractiveObject):
 
 class BundlesNode(PaginatedAccessor[Bundle, None]):
     class_type = Bundle
+
+    async def _download_external_bundle(self: Self, url: str) -> bytes:
+        try:
+            urlopen(url)  # noqa S310
+            async with httpx.AsyncClient() as client:  # Create an async client
+                response = await client.get(url)
+                return response.content
+        except ValueError as err:
+            raise OperationError from err
+
+    async def create(self: Self, bundle_loc: str, accept_license: bool | None = None) -> Bundle:
+        if not Path(bundle_loc).exists():
+            file_content = await self._download_external_bundle(bundle_loc)
+            files = {"file": file_content.decode("utf-8")}
+        else:
+            files = {"file": Path(bundle_loc).read_text(encoding="utf-8")}
+
+        response = await self._requester.post("bundles", data=files)
+
+        if accept_license:
+            bundle_license = await (await self.get()).license
+            bundle_license.accept()
+
+        return Bundle(requester=self._requester, data=response.as_dict())
+
+    async def delete(self: Self) -> None:
+        await self._requester.delete(*self.get_own_path())
 
     def get_own_path(self: Self) -> Endpoint:
         return ("bundles",)
