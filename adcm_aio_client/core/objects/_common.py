@@ -3,8 +3,9 @@ from typing import Self
 
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.core.config._objects import ConfigOwner
-from adcm_aio_client.core.objects._base import AwareOfOwnPath, WithProtectedRequester
-from adcm_aio_client.core.types import ADCMEntityStatus
+from adcm_aio_client.core.objects._base import WithProtectedRequester
+from adcm_aio_client.core.actions import ActionsAccessor
+from adcm_aio_client.core.types import ADCMEntityStatus, AwareOfOwnPath
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):
@@ -16,6 +17,16 @@ class WithStatus(WithProtectedRequester, AwareOfOwnPath):
     async def get_status(self: Self) -> ADCMEntityStatus:
         response = await self._requester.get(*self.get_own_path())
         return ADCMEntityStatus(response.as_dict()["status"])
+
+
+class WithActions(WithRequester, AwareOfOwnPath):
+    @cached_property
+    def actions(self: Self) -> ActionsAccessor:
+        return ActionsAccessor(
+            parent=self,
+            path=(*self.get_own_path(), "actions"),
+            requester=self._requester,
+        )
 
 
 # todo whole section lacking implementation (and maybe code move is required)
