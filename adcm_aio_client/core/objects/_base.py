@@ -6,10 +6,10 @@ from typing import Any, Self
 from asyncstdlib.functools import CachedProperty
 
 from adcm_aio_client.core.requesters import Requester
-from adcm_aio_client.core.types import AwareOfOwnPath, Endpoint, WithRequester
+from adcm_aio_client.core.types import AwareOfOwnPath, Endpoint, WithProtectedRequester, WithRequesterProperty
 
 
-class InteractiveObject(WithRequester, AwareOfOwnPath):
+class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOwnPath):
     _delete_on_refresh: deque[str]
 
     def __init_subclass__(cls: type[Self]) -> None:
@@ -28,6 +28,10 @@ class InteractiveObject(WithRequester, AwareOfOwnPath):
         self._data = data
 
     @property
+    def requester(self: Self) -> Requester:
+        return self._requester
+
+    @cached_property
     def id(self: Self) -> int:
         # it's the default behavior, without id many things can't be done
         return int(self._data["id"])
@@ -35,7 +39,6 @@ class InteractiveObject(WithRequester, AwareOfOwnPath):
     async def refresh(self: Self) -> Self:
         response = await self._requester.get(*self.get_own_path())
         self._data = response.as_dict()
-        # todo drop caches
         self._clear_cache()
 
         return self
@@ -62,7 +65,6 @@ class RootInteractiveObject(InteractiveObject):
         # change here
         return self._build_own_path(self.id)
 
-    # let's add this one
     @classmethod
     async def with_id(cls: type[Self], requester: Requester, object_id: int) -> Self:
         object_path = cls._build_own_path(object_id)

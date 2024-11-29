@@ -1,0 +1,37 @@
+{
+  "id": 3,
+  "isCurrent": true,
+  "creationTime": "2024-11-21T06:38:58.517310Z",
+  "config": {
+    "main": {
+      "duplicate": 44,
+      "inner_str": "evil",
+      "inner_dict": {
+        "a": "b"
+      },
+      "inner_json": "{\"server\": \"bestever\", \"complex\": [], \"jsonfield\": 23}"
+    },
+    "root_int": 100,
+    "root_str": null,
+    "duplicate": "hehe",
+    "root_dict": {
+      "k1": "v1",
+      "k2": "v2"
+    },
+    "root_json": "{}",
+    "root_list": [
+      "first",
+      "second",
+      "third"
+    ],
+    "optional_group": {
+      "param": 44.44
+    }
+  },
+  "adcmMeta": {
+    "/optional_group": {
+      "isActive": false
+    }
+  },
+  "description": "init"
+}
