@@ -61,6 +61,8 @@ class Requester(Protocol):
 
 # Objects
 
+class WithID(Protocol):
+    id: int
 
 class WithProtectedRequester(Protocol):
     _requester: Requester
