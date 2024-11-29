@@ -75,6 +75,7 @@ class Bundle(Deletable, RootInteractiveObject):
     def _type(self: Self) -> Literal["cluster", "provider"]:
         return self._data["mainPrototype"]["type"]
 
+    @property
     def license(self: Self) -> License:
         return self._construct(what=License, from_data=self._data["mainPrototype"]["license"])
 
@@ -92,7 +93,7 @@ class BundlesNode(PaginatedAccessor[Bundle, None]):
     async def _download_external_bundle(self: Self, url: str) -> bytes:
         try:
             urlopen(url)  # noqa S310
-            async with httpx.AsyncClient() as client:  # Create an async client
+            async with httpx.AsyncClient() as client:
                 response = await client.get(url)
                 return response.content
         except ValueError as err:
@@ -101,15 +102,14 @@ class BundlesNode(PaginatedAccessor[Bundle, None]):
     async def create(self: Self, bundle_loc: str, accept_license: bool | None = None) -> Bundle:
         if not Path(bundle_loc).exists():
             file_content = await self._download_external_bundle(bundle_loc)
-            files = {"file": file_content.decode("utf-8")}
+            files = {"file": file_content}
         else:
-            files = {"file": Path(bundle_loc).read_text(encoding="utf-8")}
+            files = {"file": Path(bundle_loc).read_bytes()}
 
         response = await self._requester.post("bundles", data=files)
 
         if accept_license:
-            bundle_license = await (await self.get()).license
-            bundle_license.accept()
+            (await self.get()).license.accept()
 
         return Bundle(requester=self._requester, data=response.as_dict())
 
