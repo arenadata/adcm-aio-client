@@ -28,7 +28,13 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
-from adcm_aio_client.core.types import Endpoint, Requester, UrlPath, WithProtectedRequester
+from adcm_aio_client.core.types import (
+    Endpoint,
+    MaintenanceMode,
+    Requester,
+    UrlPath,
+    WithProtectedRequester,
+)
 
 type Filter = object  # TODO: implement
 
@@ -230,9 +236,41 @@ class Service(
     def components(self: Self) -> "ComponentsNode":
         return ComponentsNode(parent=self, path=(*self.get_own_path(), "components"), requester=self._requester)
 
+    @property
+    def license(self: Self) -> License:
+        return License(self._requester, self._data)
+
 
 class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
     class_type = Service
+
+    def _get_ids_and_license_state_by_filter(
+        self: Self,
+        service_prototypes: dict,
+    ) -> dict[int, str]:
+        # todo: implement retrieving of ids when filter is implemented
+        if not service_prototypes:
+            raise NotFoundError
+        return {s["id"]: s["license"]["status"] for s in service_prototypes}
+
+    async def add(
+        self: Self,
+        accept_license: bool = False,  # noqa: FBT001, FBT002
+    ) -> Service:
+        candidates_prototypes = (
+            await self._requester.get(*self._parent.get_own_path(), "service-candidates")
+        ).as_dict()
+        services_data = self._get_ids_and_license_state_by_filter(candidates_prototypes)
+        if accept_license:
+            for prototype_id, license_status in services_data.items():
+                if license_status == "unaccepted":
+                    await self._requester.post("prototypes", prototype_id, "license", "accept", data={})
+
+        response = await self._requester.post(
+            "services", data=[{"prototypeId": prototype_id} for prototype_id in services_data]
+        )
+
+        return Service(data=response.as_dict(), parent=self._parent)
 
 
 class Component(
