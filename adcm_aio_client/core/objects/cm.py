@@ -74,9 +74,6 @@ class Bundle(Deletable, RootInteractiveObject):
     def license(self: Self) -> License:
         return self._construct(what=License, from_data=self._data["mainPrototype"]["license"])
 
-    def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
-
     @cached_property
     def _main_prototype_id(self: Self) -> int:
         return self._data["mainPrototype"]["id"]
@@ -149,9 +146,6 @@ class Cluster(
     @cached_property
     def imports(self: Self) -> ClusterImports:
         return ClusterImports()
-
-    def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
 
 
 class ClustersNode(PaginatedAccessor[Cluster, None]):
@@ -268,9 +262,6 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInterac
             path=("hosts",), requester=self._requester, accessor_filter={"hostproviderName": self.name}
         )
 
-    def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
-
 
 class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
     class_type = HostProvider
@@ -307,9 +298,6 @@ class Host(Deletable, RootInteractiveObject):
     @async_cached_property
     async def hostprovider(self: Self) -> HostProvider:
         return await HostProvider.with_id(requester=self._requester, object_id=self._data["hostprovider"]["id"])
-
-    def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
 
     def __str__(self: Self) -> str:
         return f"<{self.__class__.__name__} #{self.id} {self.name}>"
