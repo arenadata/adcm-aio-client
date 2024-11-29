@@ -89,6 +89,9 @@ class OperationError(AccessorError):
     pass
 
 
+class HostNotInClusterError(ADCMClientError): ...
+
+
 # Config
 
 
