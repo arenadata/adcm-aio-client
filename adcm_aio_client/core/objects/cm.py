@@ -5,8 +5,6 @@ import asyncio
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.errors import (
-    LicenseError,
-    MultipleObjectsReturnedError,
     NotFoundError,
     OperationError,
     ResponseError,
@@ -27,7 +25,7 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
-from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, LicenseState
+from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint
 
 type Filter = object  # TODO: implement
 
@@ -47,16 +45,7 @@ class ADCM(InteractiveObject, WithActions, WithConfig):
         return ("adcm",)
 
 
-class License(InteractiveObject):
-    @cached_property
-    def state(self: Self) -> LicenseState:
-        return LicenseState(self._data["status"])
-
-    @cached_property
-    def text(self: Self) -> str:
-        return self._data["text"] or ""
-
-    def accept(self: Self) -> ...: ...
+class License(InteractiveObject): ...
 
 
 class Bundle(Deletable, RootInteractiveObject):
@@ -97,6 +86,10 @@ class Bundle(Deletable, RootInteractiveObject):
 
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
+
+    @cached_property
+    def _main_prototype_id(self: Self) -> int:
+        return self._data["mainPrototype"]["id"]
 
 
 class BundlesNode(PaginatedAccessor[Bundle, None]):
@@ -286,27 +279,11 @@ class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
     class_type = HostProvider
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
-        if (await bundle.license).state == "unaccepted":
-            raise LicenseError
+        response = await self._requester.post(
+            "hostproviders", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
+        )
 
-        prototype_data = (
-            await self._requester.get("prototypes", query={"bundleId": bundle.id, "type": "provider"})
-        ).as_dict()["results"]
-
-        if len(prototype_data) < 1:
-            raise NotFoundError
-
-        if len(prototype_data) > 1:
-            raise MultipleObjectsReturnedError
-
-        prototype_id = prototype_data[0]["id"]
-        data = (
-            await self._requester.post(
-                "hostproviders", data={"prototypeId": prototype_id, "name": name, "description": description}
-            )
-        ).as_dict()
-
-        return HostProvider(requester=self._requester, data=data)
+        return HostProvider(requester=self._requester, data=response.as_dict())
 
 
 class Host(Deletable, RootInteractiveObject):
