@@ -4,8 +4,7 @@ from typing import Self
 from adcm_aio_client.core.actions import ActionsAccessor
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.core.config._objects import ConfigOwner
-from adcm_aio_client.core.objects._base import WithProtectedRequester
-from adcm_aio_client.core.types import ADCMEntityStatus, AwareOfOwnPath
+from adcm_aio_client.core.types import ADCMEntityStatus, AwareOfOwnPath, WithProtectedRequester
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):
