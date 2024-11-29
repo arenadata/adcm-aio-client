@@ -5,7 +5,6 @@ import asyncio
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.errors import (
-    LicenseError,
     NotFoundError,
     OperationError,
     ResponseError,
@@ -165,9 +164,6 @@ class ClustersNode(PaginatedAccessor[Cluster, None]):
     class_type = Cluster
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
-        if (await bundle.license).state == "unaccepted":
-            raise LicenseError
-
         response = await self._requester.post(
             "clusters", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
         )
