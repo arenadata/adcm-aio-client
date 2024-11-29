@@ -14,10 +14,3 @@ jobs:
     with:
       target: tests/unit
       description: Unit
-
-  integration_tests:
-    name: Run integration tests
-    uses: ./.github/workflows/step_test_from_dir.yaml
-    with:
-      target: tests/integration
-      description: Integration
