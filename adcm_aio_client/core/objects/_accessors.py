@@ -22,7 +22,6 @@ from adcm_aio_client.core.types import Endpoint, QueryParameters, Requester, Req
 type AccessorFilter = QueryParameters | None
 
 
-
 class Accessor[ReturnObject: InteractiveObject, Filter](ABC):
     class_type: type[ReturnObject]
 

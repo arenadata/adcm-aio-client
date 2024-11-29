@@ -149,6 +149,7 @@ class Component(
     WithStatus, WithActions, WithConfig, WithActionHostGroups, WithConfigGroups, InteractiveChildObject[Service]
 ):
     PATH_PREFIX = "components"
+
     @property
     def name(self: Self) -> str:
         return self._data["name"]
