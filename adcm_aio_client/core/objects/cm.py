@@ -26,7 +26,7 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
-from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, LicenseState
+from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint
 
 type Filter = object  # TODO: implement
 
@@ -46,16 +46,7 @@ class ADCM(InteractiveObject, WithActions, WithConfig):
         return ("adcm",)
 
 
-class License(InteractiveObject):
-    @cached_property
-    def state(self: Self) -> LicenseState:
-        return LicenseState(self._data["status"])
-
-    @cached_property
-    def text(self: Self) -> str:
-        return self._data["text"] or ""
-
-    def accept(self: Self) -> ...: ...
+class License(InteractiveObject): ...
 
 
 class Bundle(Deletable, RootInteractiveObject):
@@ -87,19 +78,15 @@ class Bundle(Deletable, RootInteractiveObject):
 
     @async_cached_property
     async def license(self: Self) -> License:
-        response = (await self._requester.get(*self.get_own_path())).as_dict()
-        data = {
-            **response["mainPrototype"]["license"],
-            "prototypeId": response["mainPrototype"]["id"],  # for constructing accept url
-        }
-        return self._construct(what=License, from_data=data)
+        response = await self._requester.get(*self.get_own_path())
+        return self._construct(what=License, from_data=response.as_dict()["mainPrototype"]["license"])
+
+    def get_own_path(self: Self) -> Endpoint:
+        return self.PATH_PREFIX, self.id
 
     @cached_property
     def _main_prototype_id(self: Self) -> int:
         return self._data["mainPrototype"]["id"]
-
-    def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
 
 
 class BundlesNode(PaginatedAccessor[Bundle, None]):
@@ -299,9 +286,6 @@ class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
     class_type = HostProvider
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
-        if (await bundle.license).state == "unaccepted":
-            raise LicenseError
-
         response = await self._requester.post(
             "hostproviders", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
         )

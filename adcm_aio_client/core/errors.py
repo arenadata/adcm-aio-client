@@ -87,7 +87,3 @@ class ObjectDoesNotExistError(AccessorError):
 
 class OperationError(AccessorError):
     pass
-
-
-class LicenseError(AccessorError):
-    pass
