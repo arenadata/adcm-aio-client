@@ -27,7 +27,7 @@ type Filter = object  # TODO: implement
 
 
 class ADCM(InteractiveObject, WithActions, WithConfig):
-    @property
+    @cached_property
     def id(self: Self) -> int:
         return 1
 
