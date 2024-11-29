@@ -4,11 +4,7 @@ import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
-from adcm_aio_client.core.errors import (
-    NotFoundError,
-    OperationError,
-    ResponseError,
-)
+from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
     PaginatedChildAccessor,
@@ -31,7 +27,7 @@ type Filter = object  # TODO: implement
 
 
 class ADCM(InteractiveObject, WithActions, WithConfig):
-    @property
+    @cached_property
     def id(self: Self) -> int:
         return 1
 
@@ -75,10 +71,8 @@ class Bundle(Deletable, RootInteractiveObject):
     def _type(self: Self) -> Literal["cluster", "provider"]:
         return self._data["mainPrototype"]["type"]
 
-    @async_cached_property
-    async def license(self: Self) -> License:
-        response = await self._requester.get(*self.get_own_path())
-        return self._construct(what=License, from_data=response.as_dict()["mainPrototype"]["license"])
+    def license(self: Self) -> License:
+        return self._construct(what=License, from_data=self._data["mainPrototype"]["license"])
 
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
