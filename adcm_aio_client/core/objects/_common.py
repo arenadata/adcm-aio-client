@@ -22,11 +22,7 @@ class WithStatus(WithProtectedRequester, AwareOfOwnPath):
 class WithActions(WithRequester, AwareOfOwnPath):
     @cached_property
     def actions(self: Self) -> ActionsAccessor:
-        return ActionsAccessor(
-            parent=self,
-            path=(*self.get_own_path(), "actions"),
-            requester=self._requester,
-        )
+        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
 
 
 # todo whole section lacking implementation (and maybe code move is required)
