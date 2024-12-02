@@ -56,9 +56,7 @@ class License(WithProtectedRequester):
         return self._data["status"]
 
     async def accept(self: Self) -> str:
-        await self._requester.post(
-            "prototypes", self._license_prototype_id, "license", "accept", data={}
-        )
+        await self._requester.post("prototypes", self._license_prototype_id, "license", "accept", data={})
         self._data["status"] = "accepted"
         return self._data["status"]
 
