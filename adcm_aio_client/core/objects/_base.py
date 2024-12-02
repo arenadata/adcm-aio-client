@@ -10,6 +10,7 @@ from adcm_aio_client.core.types import AwareOfOwnPath, Endpoint, WithProtectedRe
 
 
 class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOwnPath):
+    PATH_PREFIX: str
     _delete_on_refresh: deque[str]
 
     def __init_subclass__(cls: type[Self]) -> None:
@@ -76,7 +77,10 @@ class RootInteractiveObject(InteractiveObject):
         return cls.PATH_PREFIX, object_id
 
 
-class InteractiveChildObject[Parent](InteractiveObject):
+class InteractiveChildObject[Parent: InteractiveObject](InteractiveObject):
     def __init__(self: Self, parent: Parent, requester: Requester, data: dict[str, Any]) -> None:
         super().__init__(requester=requester, data=data)
         self._parent = parent
+
+    def get_own_path(self: Self) -> Endpoint:
+        return *self._parent.get_own_path(), self.PATH_PREFIX, self.id
