@@ -5,15 +5,15 @@ import json
 import asyncio
 
 from adcm_aio_client.core.config._operations import find_config_difference
-from adcm_aio_client.core.config.merge import apply_local_changes
+from adcm_aio_client.core.config.refresh import apply_local_changes
 from adcm_aio_client.core.config.types import (
     AnyParameterName,
     ConfigData,
     ConfigDifference,
+    ConfigRefreshStrategy,
     ConfigSchema,
     LevelNames,
     LocalConfigs,
-    MergeStrategy,
 )
 from adcm_aio_client.core.errors import ConfigComparisonError, RequesterError
 from adcm_aio_client.core.types import AwareOfOwnPath, WithRequesterProperty
@@ -313,7 +313,7 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
 
 
 class _RefreshableConfig[T: _ConfigWrapperCreator](_GeneralConfig[T]):
-    async def refresh(self: Self, strategy: MergeStrategy = apply_local_changes) -> Self:
+    async def refresh(self: Self, strategy: ConfigRefreshStrategy = apply_local_changes) -> Self:
         remote_config = await retrieve_current_config(
             parent=self._parent, get_schema=partial(retrieve_schema, parent=self._parent)
         )
