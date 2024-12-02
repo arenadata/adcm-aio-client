@@ -5,6 +5,7 @@ import asyncio
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
+from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
     PaginatedChildAccessor,
@@ -20,7 +21,6 @@ from adcm_aio_client.core.objects._common import (
     WithUpgrades,
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
-from adcm_aio_client.core.objects._mapping import ClusterMapping
 from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint
 
 type Filter = object  # TODO: implement
@@ -100,6 +100,7 @@ class Cluster(
     RootInteractiveObject,
 ):
     PATH_PREFIX = "clusters"
+
     # data-based properties
 
     @property
@@ -112,9 +113,6 @@ class Cluster(
 
     # related/dynamic data access
 
-    # todo think how such properties will be invalidated when data is updated
-    #  during `refresh()` / `reread()` calls.
-    #  See cache invalidation or alternatives in documentation for `cached_property`
     @async_cached_property
     async def bundle(self: Self) -> Bundle:
         prototype_id = self._data["prototype"]["id"]
@@ -126,6 +124,7 @@ class Cluster(
         return self._construct(what=Bundle, from_data=response.as_dict())
 
     # object-specific methods
+
     async def set_ansible_forks(self: Self, value: int) -> Self:
         await self._requester.post(
             *self.get_own_path(), "ansible-config", data={"config": {"defaults": {"forks": value}}, "adcmMeta": {}}
@@ -135,8 +134,8 @@ class Cluster(
     # nodes and managers to access
 
     @cached_property
-    def mapping(self: Self) -> ClusterMapping:
-        return ClusterMapping()
+    async def mapping(self: Self) -> ClusterMapping:
+        return await ClusterMapping.for_cluster(owner=self)
 
     @cached_property
     def services(self: Self) -> "ServicesNode":

@@ -99,3 +99,9 @@ class ConfigError(ADCMClientError): ...
 
 
 class ConfigComparisonError(ConfigError): ...
+
+
+# Mapping
+
+
+class NoMappingRulesForActionError(ADCMClientError): ...

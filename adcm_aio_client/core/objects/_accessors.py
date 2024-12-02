@@ -60,8 +60,8 @@ class Accessor[ReturnObject: InteractiveObject, Filter](ABC):
     async def filter(self: Self) -> list[ReturnObject]:
         return [i async for i in self.iter()]
 
-    async def list(self: Self) -> list[ReturnObject]:
-        response = await self._request_endpoint(query={})
+    async def list(self: Self, query: dict | None = None) -> list[ReturnObject]:
+        response = await self._request_endpoint(query=query or {})
         results = self._extract_results_from_response(response)
         return [self._create_object(obj) for obj in results]
 
