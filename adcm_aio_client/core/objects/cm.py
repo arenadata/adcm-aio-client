@@ -4,7 +4,6 @@ from typing import Iterable, Literal, Self
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
-import httpx
 
 from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
 from adcm_aio_client.core.objects._accessors import (
@@ -23,7 +22,8 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
-from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, UrlPath
+from adcm_aio_client.core.requesters import BundleRetrieverInterface
+from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, Requester, UrlPath
 
 type Filter = object  # TODO: implement
 
@@ -44,6 +44,8 @@ class ADCM(InteractiveObject, WithActions, WithConfig):
 
 
 class License(InteractiveObject):
+    state: str
+
     def accept(self: Self) -> None: ...
 
 
@@ -89,17 +91,13 @@ class Bundle(Deletable, RootInteractiveObject):
 class BundlesNode(PaginatedAccessor[Bundle, None]):
     class_type = Bundle
 
-    async def _download_external_bundle(self: Self, url: UrlPath) -> bytes:
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url)
-                return response.content
-        except ValueError as err:
-            raise OperationError from err
+    def __init__(self: Self, path: Endpoint, requester: Requester, retriever: BundleRetrieverInterface) -> None:
+        super().__init__(path, requester)
+        self.retriever = retriever
 
     async def create(self: Self, source: Path | UrlPath, accept_license: bool = False) -> Bundle:  # noqa: FBT001, FBT002
         if isinstance(source, UrlPath):
-            file_content = await self._download_external_bundle(source)
+            file_content = await self.retriever.download_external_bundle(source)
             files = {"file": file_content}
         else:
             files = {"file": Path(source).read_bytes()}
@@ -108,7 +106,7 @@ class BundlesNode(PaginatedAccessor[Bundle, None]):
 
         bundle = Bundle(requester=self._requester, data=response.as_dict())
 
-        if accept_license:
+        if accept_license and bundle.license.state == "unaccepted":
             bundle.license.accept()
 
         return bundle
