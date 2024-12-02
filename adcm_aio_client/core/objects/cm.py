@@ -77,6 +77,10 @@ class Bundle(Deletable, RootInteractiveObject):
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
 
+    @cached_property
+    def _main_prototype_id(self: Self) -> int:
+        return self._data["mainPrototype"]["id"]
+
 
 class BundlesNode(PaginatedAccessor[Bundle, None]):
     class_type = Bundle
@@ -263,6 +267,13 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInterac
 
 class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
     class_type = HostProvider
+
+    async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
+        response = await self._requester.post(
+            "hostproviders", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
+        )
+
+        return HostProvider(requester=self._requester, data=response.as_dict())
 
 
 class Host(Deletable, RootInteractiveObject):
