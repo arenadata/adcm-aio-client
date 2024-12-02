@@ -59,8 +59,7 @@ class License(WithProtectedRequester):
         accept_response = await self._requester.post(
             "prototypes", self._license_prototype_id, "license", "accept", data={}
         )
-        if accept_response.response.status_code != 200:  # type: ignore
-            self._data["status"] = "accepted"
+        self._data["status"] = "accepted"
         return self._data["status"]
 
 
