@@ -47,8 +47,9 @@ class ComponentsMappingNode(NonPaginatedAccessor[Component, None]):
 
             cls.class_type = Component
 
-        # todo check for recursion
-        return cls(cluster=cluster, requester=requester)
+        class_ = super().__new__(cls)
+
+        return class_
 
     def __init__(self: Self, cluster: Cluster, requester: Requester) -> None:
         path = (*cluster.get_own_path(), "mapping", "components")
