@@ -1,7 +1,6 @@
 from functools import cached_property
 from pathlib import Path
 from typing import Iterable, Literal, Self
-from urllib.request import urlopen
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
@@ -24,7 +23,7 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
-from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint
+from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, UrlPath
 
 type Filter = object  # TODO: implement
 
@@ -90,31 +89,29 @@ class Bundle(Deletable, RootInteractiveObject):
 class BundlesNode(PaginatedAccessor[Bundle, None]):
     class_type = Bundle
 
-    async def _download_external_bundle(self: Self, url: str) -> bytes:
+    async def _download_external_bundle(self: Self, url: UrlPath) -> bytes:
         try:
-            urlopen(url)  # noqa S310
             async with httpx.AsyncClient() as client:
                 response = await client.get(url)
                 return response.content
         except ValueError as err:
             raise OperationError from err
 
-    async def create(self: Self, bundle_loc: str, accept_license: bool | None = None) -> Bundle:
-        if not Path(bundle_loc).exists():
-            file_content = await self._download_external_bundle(bundle_loc)
+    async def create(self: Self, source: Path | UrlPath, accept_license: bool = False) -> Bundle:  # noqa: FBT001, FBT002
+        if isinstance(source, UrlPath):
+            file_content = await self._download_external_bundle(source)
             files = {"file": file_content}
         else:
-            files = {"file": Path(bundle_loc).read_bytes()}
+            files = {"file": Path(source).read_bytes()}
 
         response = await self._requester.post("bundles", data=files)
 
+        bundle = Bundle(requester=self._requester, data=response.as_dict())
+
         if accept_license:
-            (await self.get()).license.accept()
+            bundle.license.accept()
 
-        return Bundle(requester=self._requester, data=response.as_dict())
-
-    async def delete(self: Self) -> None:
-        await self._requester.delete(*self.get_own_path())
+        return bundle
 
     def get_own_path(self: Self) -> Endpoint:
         return ("bundles",)
