@@ -94,6 +94,10 @@ class Bundle(Deletable, RootInteractiveObject):
     def get_own_path(self: Self) -> Endpoint:
         return self.PATH_PREFIX, self.id
 
+    @cached_property
+    def _main_prototype_id(self: Self) -> int:
+        return self._data["mainPrototype"]["id"]
+
 
 class BundlesNode(PaginatedAccessor[Bundle, None]):
     class_type = Bundle
@@ -163,9 +167,6 @@ class Cluster(
     def imports(self: Self) -> ClusterImports:
         return ClusterImports()
 
-    def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
-
 
 class ClustersNode(PaginatedAccessor[Cluster, None]):
     class_type = Cluster
@@ -193,9 +194,6 @@ class Service(
     @cached_property
     def cluster(self: Self) -> Cluster:
         return self._parent
-
-    def get_own_path(self: Self) -> Endpoint:
-        return *self._parent.get_own_path(), self.PATH_PREFIX, self.id
 
     @cached_property
     def components(self: Self) -> "ComponentsNode":
@@ -244,9 +242,6 @@ class Component(
             accessor_filter={"componentId": self.id},
         )
 
-    def get_own_path(self: Self) -> Endpoint:
-        return *self._parent.get_own_path(), self.PATH_PREFIX, self.id
-
 
 class ComponentsNode(PaginatedChildAccessor[Service, Component, None]):
     class_type = Component
@@ -274,15 +269,19 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInterac
             path=("hosts",), requester=self._requester, accessor_filter={"hostproviderName": self.name}
         )
 
-    def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
-
 
 class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
     class_type = HostProvider
 
+    async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
+        response = await self._requester.post(
+            "hostproviders", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
+        )
 
-class Host(Deletable, RootInteractiveObject):
+        return HostProvider(requester=self._requester, data=response.as_dict())
+
+
+class Host(Deletable, WithActions, RootInteractiveObject):
     PATH_PREFIX = "hosts"
 
     @property
@@ -307,14 +306,11 @@ class Host(Deletable, RootInteractiveObject):
     async def hostprovider(self: Self) -> HostProvider:
         return await HostProvider.with_id(requester=self._requester, object_id=self._data["hostprovider"]["id"])
 
-    def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
-
     def __str__(self: Self) -> str:
         return f"<{self.__class__.__name__} #{self.id} {self.name}>"
 
 
-class HostsAccessor(PaginatedAccessor[Host, dict | None]):
+class HostsAccessor(PaginatedAccessor[Host, None]):
     class_type = Host
 
 
