@@ -23,7 +23,7 @@ from adcm_aio_client.core.objects._common import (
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
-from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, Requester, UrlPath
+from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, Requester, UrlPath, WithProtectedRequester
 
 type Filter = object  # TODO: implement
 
@@ -43,10 +43,24 @@ class ADCM(InteractiveObject, WithActions, WithConfig):
         return ("adcm",)
 
 
-class License(InteractiveObject):
-    state: str
+class License(WithProtectedRequester):
+    def __init__(self: Self, requester: Requester, prototypes_data: dict) -> None:
+        self._license_prototype_id = prototypes_data["id"]
+        self._data = prototypes_data["license"]
+        self._requester = requester
 
-    def accept(self: Self) -> None: ...
+    @property
+    def text(self: Self) -> str:
+        return str(self._data["text"])
+
+    @property
+    def state(self: Self) -> Literal["absent", "accepted", "unaccepted"]:
+        return self._data["status"]
+
+    async def accept(self: Self) -> str:
+        await self._requester.post("prototypes", self._license_prototype_id, "license", "accept", data={})
+        self._data["status"] = "accepted"
+        return self._data["status"]
 
 
 class Bundle(Deletable, RootInteractiveObject):
@@ -78,7 +92,7 @@ class Bundle(Deletable, RootInteractiveObject):
 
     @property
     def license(self: Self) -> License:
-        return self._construct(what=License, from_data=self._data["mainPrototype"]["license"])
+        return License(self._requester, self._data["mainPrototype"])
 
     @cached_property
     def _main_prototype_id(self: Self) -> int:
@@ -104,7 +118,7 @@ class BundlesNode(PaginatedAccessor[Bundle, None]):
         bundle = Bundle(requester=self._requester, data=response.as_dict())
 
         if accept_license and bundle.license.state == "unaccepted":
-            bundle.license.accept()
+            await bundle.license.accept()
 
         return bundle
 
