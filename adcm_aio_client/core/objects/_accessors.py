@@ -15,6 +15,7 @@ from contextlib import suppress
 from typing import Any, AsyncGenerator, Iterable, Self
 
 from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
 from adcm_aio_client.core.types import Endpoint, QueryParameters, Requester, RequesterResponse
 
@@ -27,7 +28,7 @@ with greater priority to user-passed arguments.
 """
 
 
-class Accessor[ReturnObject: InteractiveObject, Filters](ABC):
+class Accessor[ReturnObject: InteractiveObject, Filters: Filter](ABC):
     class_type: type[ReturnObject]
 
     def __init__(self: Self, path: Endpoint, requester: Requester, accessor_filter: AccessorFilter = None) -> None:
@@ -94,26 +95,21 @@ class Accessor[ReturnObject: InteractiveObject, Filters](ABC):
         ...
 
     def _convert_filters_to_query(self: Self, filters: Filters) -> QueryParameters:
-        if not isinstance(filters, dict):
-            message = f"Incorrect filters type: {type(filters)}. Only dict is allowed."
-            raise NotImplementedError(message)
-
         query = {}
 
-        for filter_name, value in filters.items():
-            api_filter_name = self._prepare_filter_name(filter_name)
-            prepared_value = self._prepare_filter_value(value)
+        # todo how to pass multiple filters?
+        #  probably like Filter1 & Filter2
 
-            query[api_filter_name] = prepared_value
+        # todo also need op convertion for strings
+
+        filter_ = filters
+        # capitalize
+        first_word, *rest = filters.attr.split("_")
+        filter_name = f"{first_word}{''.join(map(str.capitalize, rest))}__{filter_.op}"
+
+        query[filter_name] = self._prepare_filter_value(filter_.value)
 
         return query
-
-    def _prepare_filter_name(self: Self, name: str) -> str:
-        field_name, qualifier = name.split("__", maxsplit=1)
-        # capitalize
-        first_word, *rest = field_name.split("_")
-        field_name = f"{first_word}{''.join(map(str.capitalize, rest))}"
-        return f"{field_name}__{qualifier}"
 
     def _prepare_filter_value(self: Self, value: Any) -> str:
         if isinstance(value, (str, int)):
@@ -129,8 +125,8 @@ class Accessor[ReturnObject: InteractiveObject, Filters](ABC):
         raise NotImplementedError(message)
 
 
-class PaginatedAccessor[ReturnObject: InteractiveObject, Filter](Accessor[ReturnObject, Filter]):
-    async def iter(self: Self, filters: Filter | None = None) -> AsyncGenerator[ReturnObject, None]:
+class PaginatedAccessor[ReturnObject: InteractiveObject, Filters: Filter](Accessor[ReturnObject, Filters]):
+    async def iter(self: Self, filters: Filters | None = None) -> AsyncGenerator[ReturnObject, None]:
         query = self._prepare_query_from_filters(filters=filters)
 
         start, step = 0, 10
@@ -150,7 +146,7 @@ class PaginatedAccessor[ReturnObject: InteractiveObject, Filter](Accessor[Return
         return response.as_dict()["results"]
 
 
-class PaginatedChildAccessor[Parent, Child: InteractiveChildObject, Filter](PaginatedAccessor[Child, Filter]):
+class PaginatedChildAccessor[Parent, Child: InteractiveChildObject, Filters: Filter](PaginatedAccessor[Child, Filters]):
     def __init__(
         self: Self, parent: Parent, path: Endpoint, requester: Requester, accessor_filter: AccessorFilter = None
     ) -> None:
@@ -161,14 +157,14 @@ class PaginatedChildAccessor[Parent, Child: InteractiveChildObject, Filter](Pagi
         return self.class_type(parent=self._parent, data=data)
 
 
-class NonPaginatedChildAccessor[Parent, Child: InteractiveChildObject, Filter](Accessor[Child, Filter]):
+class NonPaginatedChildAccessor[Parent, Child: InteractiveChildObject, Filters: Filter](Accessor[Child, Filters]):
     def __init__(
         self: Self, parent: Parent, path: Endpoint, requester: Requester, accessor_filter: AccessorFilter = None
     ) -> None:
         super().__init__(path, requester, accessor_filter)
         self._parent = parent
 
-    async def iter(self: Self, filters: Filter | None = None) -> AsyncGenerator[Child, None]:
+    async def iter(self: Self, filters: Filters | None = None) -> AsyncGenerator[Child, None]:
         query = self._prepare_query_from_filters(filters=filters)
         response = await self._request_endpoint(query=query)
         results = self._extract_results_from_response(response=response)

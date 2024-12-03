@@ -11,3 +11,11 @@
 # limitations under the License.
 
 # TODO: Prepare API for filters
+from dataclasses import dataclass
+
+
+@dataclass(slots=True)
+class Filter[N, Q, V]:
+    attr: N
+    op: Q
+    value: V

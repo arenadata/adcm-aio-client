@@ -6,6 +6,7 @@ import asyncio
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
+from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
     PaginatedChildAccessor,
@@ -20,13 +21,12 @@ from adcm_aio_client.core.objects._common import (
     WithStatus,
     WithUpgrades,
 )
-from adcm_aio_client.core.objects._filters import AnyNameFilters, AnyNameStatusFilters, NameFilters, StatusFilters
+from adcm_aio_client.core.objects._filters import FilterByAnyName, FilterByAnyNameAndStatus, FilterByName, FilterByStatus
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
 from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, Requester, UrlPath, WithProtectedRequester
 
-type Filter = object  # TODO: implement
 
 
 class ADCM(InteractiveObject, WithActions, WithConfig):
@@ -188,18 +188,14 @@ class Cluster(
     def imports(self: Self) -> ClusterImports:
         return ClusterImports()
 
+type FilterByBundle = Filter[Literal["bundle"], Literal["eq"], Bundle] | Filter[Literal["bundle"], Literal["in", "exclude"], Iterable[Bundle]]
 
-class BundleFilters(TypedDict):
-    bundle__eq: NotRequired[Bundle]
-    bundle__in: NotRequired[Iterable[Bundle]]
-    bundle__exclude: NotRequired[Iterable[Bundle]]
-
-
-class ClusterFilters(NameFilters, StatusFilters, BundleFilters): ...
+type ClusterFilters = FilterByName | FilterByBundle | FilterByStatus  
 
 
 class ClustersNode(PaginatedAccessor[Cluster, ClusterFilters]):
     class_type = Cluster
+    filters = ClusterFilters
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
         response = await self._requester.post(
@@ -208,6 +204,10 @@ class ClustersNode(PaginatedAccessor[Cluster, ClusterFilters]):
 
         return Cluster(requester=self._requester, data=response.as_dict())
 
+async def m():
+    c = ClustersNode()
+    # no typehints, but shows type error
+    await c.filter(Filter(attr="name", op="eq", value=["sdlkfj"]))
 
 class Service(
     WithStatus,
@@ -237,8 +237,9 @@ class Service(
         return ComponentsNode(parent=self, path=(*self.get_own_path(), "components"), requester=self._requester)
 
 
-class ServicesNode(PaginatedChildAccessor[Cluster, Service, AnyNameStatusFilters]):
+class ServicesNode(PaginatedChildAccessor[Cluster, Service, FilterByAnyNameAndStatus]):
     class_type = Service
+    filters = FilterByAnyNameAndStatus
 
 
 class Component(
@@ -280,7 +281,7 @@ class Component(
         )
 
 
-class ComponentsNode(PaginatedChildAccessor[Service, Component, AnyNameFilters]):
+class ComponentsNode(PaginatedChildAccessor[Service, Component, FilterByAnyName]):
     class_type = Component
 
 
@@ -305,7 +306,6 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInterac
         return HostsAccessor(
             path=("hosts",), requester=self._requester, accessor_filter={"hostproviderName": self.name}
         )
-
 
 class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
     class_type = HostProvider
