@@ -14,13 +14,14 @@ from functools import cached_property
 from typing import Self
 
 from adcm_aio_client.core.objects.cm import ADCM, BundlesNode, ClustersNode, HostProvidersNode, HostsAccessor
-from adcm_aio_client.core.requesters import DefaultRequester
-from adcm_aio_client.core.types import AuthToken, Cert, Credentials, Requester, Verify
+from adcm_aio_client.core.requesters import BundleRetriever, BundleRetrieverInterface, DefaultRequester, Requester
+from adcm_aio_client.core.types import AuthToken, Cert, Credentials, Verify
 
 
 class ADCMClient:
-    def __init__(self: Self, requester: Requester) -> None:
+    def __init__(self: Self, requester: Requester, bundle_retriever: BundleRetrieverInterface) -> None:
         self._requester = requester
+        self.bundle_retriever = bundle_retriever
 
     @cached_property
     def clusters(self: Self) -> ClustersNode:
@@ -40,7 +41,7 @@ class ADCMClient:
 
     @cached_property
     def bundles(self: Self) -> BundlesNode:
-        return BundlesNode(path=("bundles",), requester=self._requester)
+        return BundlesNode(path=("bundles",), requester=self._requester, retriever=self.bundle_retriever)
 
 
 async def build_client(
@@ -55,4 +56,4 @@ async def build_client(
 ) -> ADCMClient:
     requester = DefaultRequester(base_url=url, retries=retries, retry_interval=retry_interval, timeout=timeout)
     await requester.login(credentials=Credentials(username="admin", password="admin"))  # noqa: S106
-    return ADCMClient(requester=requester)
+    return ADCMClient(requester=requester, bundle_retriever=BundleRetriever())

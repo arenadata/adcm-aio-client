@@ -91,3 +91,7 @@ class ADCMEntityStatus(str, Enum):
 class MappingOperation(str, Enum):
     ADD = "add"
     REMOVE = "remove"
+
+
+class UrlPath(str):
+    pass
