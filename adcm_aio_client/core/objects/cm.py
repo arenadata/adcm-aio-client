@@ -1,6 +1,6 @@
 from functools import cached_property
 from pathlib import Path
-from typing import Iterable, Literal, Self
+from typing import Iterable, Literal, NotRequired, Self, TypedDict
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
@@ -20,6 +20,7 @@ from adcm_aio_client.core.objects._common import (
     WithStatus,
     WithUpgrades,
 )
+from adcm_aio_client.core.objects._filters import AnyNameFilters, AnyNameStatusFilters, NameFilters, StatusFilters
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
@@ -188,7 +189,16 @@ class Cluster(
         return ClusterImports()
 
 
-class ClustersNode(PaginatedAccessor[Cluster, None]):
+class BundleFilters(TypedDict):
+    bundle__eq: NotRequired[Bundle]
+    bundle__in: NotRequired[Iterable[Bundle]]
+    bundle__exclude: NotRequired[Iterable[Bundle]]
+
+
+class ClusterFilters(NameFilters, StatusFilters, BundleFilters): ...
+
+
+class ClustersNode(PaginatedAccessor[Cluster, ClusterFilters]):
     class_type = Cluster
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
@@ -227,7 +237,7 @@ class Service(
         return ComponentsNode(parent=self, path=(*self.get_own_path(), "components"), requester=self._requester)
 
 
-class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
+class ServicesNode(PaginatedChildAccessor[Cluster, Service, AnyNameStatusFilters]):
     class_type = Service
 
 
@@ -270,7 +280,7 @@ class Component(
         )
 
 
-class ComponentsNode(PaginatedChildAccessor[Service, Component, None]):
+class ComponentsNode(PaginatedChildAccessor[Service, Component, AnyNameFilters]):
     class_type = Component
 
 
