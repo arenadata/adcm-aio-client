@@ -11,19 +11,24 @@ from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
     PaginatedChildAccessor,
 )
-from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject, RootInteractiveObject
+from adcm_aio_client.core.objects._base import (
+    InteractiveChildObject,
+    InteractiveObject,
+    RootInteractiveObject,
+)
 from adcm_aio_client.core.objects._common import (
     Deletable,
     WithActionHostGroups,
     WithActions,
     WithConfig,
     WithConfigGroups,
+    WithMaintenanceMode,
     WithStatus,
     WithUpgrades,
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
-from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, Requester, UrlPath, WithProtectedRequester
+from adcm_aio_client.core.types import Endpoint, Requester, UrlPath, WithProtectedRequester
 
 type Filter = object  # TODO: implement
 
@@ -134,6 +139,7 @@ class Cluster(
     WithConfig,
     WithActionHostGroups,
     WithConfigGroups,
+    WithMaintenanceMode,
     RootInteractiveObject,
 ):
     PATH_PREFIX = "clusters"
@@ -204,6 +210,7 @@ class Service(
     WithActions,
     WithConfig,
     WithActionHostGroups,
+    WithMaintenanceMode,
     WithConfigGroups,
     InteractiveChildObject[Cluster],
 ):
@@ -307,7 +314,7 @@ class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
         return HostProvider(requester=self._requester, data=response.as_dict())
 
 
-class Host(Deletable, WithActions, RootInteractiveObject):
+class Host(Deletable, WithActions, WithStatus, WithMaintenanceMode, RootInteractiveObject):
     PATH_PREFIX = "hosts"
 
     @property
@@ -317,10 +324,6 @@ class Host(Deletable, WithActions, RootInteractiveObject):
     @property
     def description(self: Self) -> str:
         return str(self._data["description"])
-
-    async def get_status(self: Self) -> ADCMEntityStatus:
-        response = await self._requester.get(*self.get_own_path())
-        return ADCMEntityStatus(response.as_dict()["status"])
 
     @async_cached_property
     async def cluster(self: Self) -> Cluster | None:
@@ -338,6 +341,14 @@ class Host(Deletable, WithActions, RootInteractiveObject):
 
 class HostsAccessor(PaginatedAccessor[Host, None]):
     class_type = Host
+
+
+class HostsNode(HostsAccessor):
+    async def add(self: Self, provider: HostProvider, name: str, cluster: Cluster | None = None) -> None:
+        data = {"hostproviderId": provider.id, "name": name}
+        if cluster:
+            data["clusterId"] = cluster.id
+        await self._requester.post(*self._path, data=data)
 
 
 class HostsInClusterNode(HostsAccessor):
