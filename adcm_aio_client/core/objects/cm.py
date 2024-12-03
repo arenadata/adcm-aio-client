@@ -22,8 +22,8 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
-from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, Requester, UrlPath, WithProtectedRequester
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
+from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, Requester, UrlPath, WithProtectedRequester
 
 type Filter = object  # TODO: implement
 
@@ -121,7 +121,7 @@ class BundlesNode(PaginatedAccessor[Bundle, None]):
         bundle = Bundle(requester=self._requester, data=response.as_dict())
 
         if accept_license and bundle.license.state == "unaccepted":
-            bundle.license.accept()
+            await bundle.license.accept()
 
         return bundle
 
