@@ -133,7 +133,7 @@ class Cluster(
 
     # nodes and managers to access
 
-    @cached_property
+    @async_cached_property
     async def mapping(self: Self) -> ClusterMapping:
         return await ClusterMapping.for_cluster(owner=self)
 
