@@ -80,9 +80,6 @@ class Bundle(Deletable, RootInteractiveObject):
     def license(self: Self) -> License:
         return self._construct(what=License, from_data=self._data["mainPrototype"]["license"])
 
-    def get_own_path(self: Self) -> Endpoint:
-        return self.PATH_PREFIX, self.id
-
     @cached_property
     def _main_prototype_id(self: Self) -> int:
         return self._data["mainPrototype"]["id"]
@@ -179,6 +176,13 @@ class Cluster(
 
 class ClustersNode(PaginatedAccessor[Cluster, None]):
     class_type = Cluster
+
+    async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
+        response = await self._requester.post(
+            "clusters", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
+        )
+
+        return Cluster(requester=self._requester, data=response.as_dict())
 
 
 class Service(
