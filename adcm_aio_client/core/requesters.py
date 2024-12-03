@@ -9,7 +9,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from abc import ABC, abstractmethod
 from asyncio import sleep
 from contextlib import suppress
 from dataclasses import dataclass
@@ -27,6 +27,7 @@ from adcm_aio_client.core.errors import (
     LoginError,
     NoCredentialsError,
     NotFoundError,
+    OperationError,
     ResponseDataConversionError,
     ResponseError,
     RetryRequestError,
@@ -34,7 +35,7 @@ from adcm_aio_client.core.errors import (
     UnauthorizedError,
     WrongCredentialsError,
 )
-from adcm_aio_client.core.types import Credentials, PathPart, QueryParameters, Requester
+from adcm_aio_client.core.types import Credentials, PathPart, QueryParameters, Requester, UrlPath
 
 Json: TypeAlias = Any
 Params = ParamSpec("Params")
@@ -183,3 +184,22 @@ class DefaultRequester(Requester):
             raise NoCredentialsError
 
         return self._credentials
+
+
+class BundleRetrieverInterface(ABC):
+    @abstractmethod
+    async def download_external_bundle(self: Self, url: UrlPath) -> bytes:
+        pass
+
+
+class BundleRetriever(BundleRetrieverInterface):
+    async def download_external_bundle(self: Self, url: UrlPath) -> bytes:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                return response.content
+        except ValueError as err:
+            raise OperationError(f"Failed to download the bundle {url}") from err
+        except httpx.HTTPStatusError as err:
+            raise OperationError(f"HTTP error occurred: {err}") from err
