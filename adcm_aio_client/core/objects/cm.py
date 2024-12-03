@@ -1,4 +1,5 @@
 from functools import cached_property
+from pathlib import Path
 from typing import Iterable, Literal, Self
 import asyncio
 
@@ -21,7 +22,8 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.objects._mapping import ClusterMapping
-from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint
+from adcm_aio_client.core.requesters import BundleRetrieverInterface
+from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, Requester, UrlPath
 
 type Filter = object  # TODO: implement
 
@@ -41,7 +43,10 @@ class ADCM(InteractiveObject, WithActions, WithConfig):
         return ("adcm",)
 
 
-class License(InteractiveObject): ...
+class License(InteractiveObject):
+    state: str
+
+    def accept(self: Self) -> None: ...
 
 
 class Bundle(Deletable, RootInteractiveObject):
@@ -71,6 +76,7 @@ class Bundle(Deletable, RootInteractiveObject):
     def _type(self: Self) -> Literal["cluster", "provider"]:
         return self._data["mainPrototype"]["type"]
 
+    @property
     def license(self: Self) -> License:
         return self._construct(what=License, from_data=self._data["mainPrototype"]["license"])
 
@@ -84,6 +90,26 @@ class Bundle(Deletable, RootInteractiveObject):
 
 class BundlesNode(PaginatedAccessor[Bundle, None]):
     class_type = Bundle
+
+    def __init__(self: Self, path: Endpoint, requester: Requester, retriever: BundleRetrieverInterface) -> None:
+        super().__init__(path, requester)
+        self.retriever = retriever
+
+    async def create(self: Self, source: Path | UrlPath, accept_license: bool = False) -> Bundle:  # noqa: FBT001, FBT002
+        if isinstance(source, UrlPath):
+            file_content = await self.retriever.download_external_bundle(source)
+            files = {"file": file_content}
+        else:
+            files = {"file": Path(source).read_bytes()}
+
+        response = await self._requester.post("bundles", data=files)
+
+        bundle = Bundle(requester=self._requester, data=response.as_dict())
+
+        if accept_license and bundle.license.state == "unaccepted":
+            bundle.license.accept()
+
+        return bundle
 
     def get_own_path(self: Self) -> Endpoint:
         return ("bundles",)
