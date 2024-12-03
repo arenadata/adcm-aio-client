@@ -53,8 +53,6 @@ class Action(InteractiveChildObject):
         self._verbose = True
         return self
 
-    def validate(self: Self) -> None: ...  # TODO: implement
-
     @async_cached_property  # TODO: Config class
     async def config(self: Self) -> ...:
         return (await self._rich_data)["configuration"]
