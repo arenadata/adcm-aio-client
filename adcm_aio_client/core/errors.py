@@ -89,6 +89,9 @@ class OperationError(AccessorError):
     pass
 
 
+class HostNotInClusterError(ADCMClientError): ...
+
+
 # Config
 
 
@@ -96,3 +99,9 @@ class ConfigError(ADCMClientError): ...
 
 
 class ConfigComparisonError(ConfigError): ...
+
+
+# Mapping
+
+
+class NoMappingRulesForActionError(ADCMClientError): ...

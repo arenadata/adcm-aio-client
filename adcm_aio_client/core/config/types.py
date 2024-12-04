@@ -269,7 +269,7 @@ class LocalConfigs(NamedTuple):
     changed: ConfigData
 
 
-class MergeStrategy(Protocol):
+class ConfigRefreshStrategy(Protocol):
     def __call__(self: Self, local: LocalConfigs, remote: ConfigData, schema: ConfigSchema) -> ConfigData:
         """
         `remote` may be changed according to strategy, so it shouldn't be "read-only"/"initial"
