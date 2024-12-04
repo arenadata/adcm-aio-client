@@ -204,10 +204,6 @@ class ClustersNode(PaginatedAccessor[Cluster, ClusterFilters]):
 
         return Cluster(requester=self._requester, data=response.as_dict())
 
-async def m():
-    c = ClustersNode()
-    # no typehints, but shows type error
-    await c.filter(Filter(attr="name", op="eq", value=["sdlkfj"]))
 
 class Service(
     WithStatus,

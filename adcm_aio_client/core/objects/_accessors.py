@@ -146,22 +146,22 @@ class PaginatedAccessor[ReturnObject: InteractiveObject, Filters: Filter](Access
         return response.as_dict()["results"]
 
 
-class PaginatedChildAccessor[Parent, Child: InteractiveChildObject, Filters: Filter](PaginatedAccessor[Child, Filters]):
+class PaginatedChildAccessor[Parent: InteractiveObject, Child: InteractiveChildObject, Filters: Filter](PaginatedAccessor[Child, Filters]):
     def __init__(
-        self: Self, parent: Parent, path: Endpoint, requester: Requester, accessor_filter: AccessorFilter = None
+        self: Self, parent: Parent, path: Endpoint, accessor_filter: AccessorFilter = None
     ) -> None:
-        super().__init__(path, requester, accessor_filter)
+        super().__init__(path, parent.requester, accessor_filter)
         self._parent = parent
 
     def _create_object(self: Self, data: dict[str, Any]) -> Child:
         return self.class_type(parent=self._parent, data=data)
 
 
-class NonPaginatedChildAccessor[Parent, Child: InteractiveChildObject, Filters: Filter](Accessor[Child, Filters]):
+class NonPaginatedChildAccessor[Parent: InteractiveObject, Child: InteractiveChildObject, Filters: Filter](Accessor[Child, Filters]):
     def __init__(
-        self: Self, parent: Parent, path: Endpoint, requester: Requester, accessor_filter: AccessorFilter = None
+        self: Self, parent: Parent, path: Endpoint, accessor_filter: AccessorFilter = None
     ) -> None:
-        super().__init__(path, requester, accessor_filter)
+        super().__init__(path, parent.requester, accessor_filter)
         self._parent = parent
 
     async def iter(self: Self, filters: Filters | None = None) -> AsyncGenerator[Child, None]:
