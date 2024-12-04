@@ -61,6 +61,13 @@ class Requester(Protocol):
 
 # Objects
 
+type ComponentID = int
+type HostID = int
+
+
+class WithID(Protocol):
+    id: int
+
 
 class WithProtectedRequester(Protocol):
     _requester: Requester
