@@ -50,7 +50,7 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
     def _construct_child[Child: "InteractiveChildObject"](
         self: Self, what: type[Child], from_data: dict[str, Any]
     ) -> Child:
-        return what(requester=self._requester, data=from_data, parent=self)
+        return what(data=from_data, parent=self)
 
     def _clear_cache(self: Self) -> None:
         for name in self._delete_on_refresh:
@@ -78,8 +78,8 @@ class RootInteractiveObject(InteractiveObject):
 
 
 class InteractiveChildObject[Parent: InteractiveObject](InteractiveObject):
-    def __init__(self: Self, parent: Parent, requester: Requester, data: dict[str, Any]) -> None:
-        super().__init__(requester=requester, data=data)
+    def __init__(self: Self, parent: Parent, data: dict[str, Any]) -> None:
+        super().__init__(requester=parent.requester, data=data)
         self._parent = parent
 
     def get_own_path(self: Self) -> Endpoint:
