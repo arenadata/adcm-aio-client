@@ -5,10 +5,7 @@ from adcm_aio_client.core.actions import ActionsAccessor
 from adcm_aio_client.core.host_groups._common import HostGroupNode, HostInHostGroupNode
 from adcm_aio_client.core.objects._base import InteractiveChildObject
 from adcm_aio_client.core.objects._common import Deletable
-from adcm_aio_client.core.types import (
-    AwareOfOwnPath,
-    WithProtectedRequester,
-)
+from adcm_aio_client.core.types import AwareOfOwnPath, WithProtectedRequester
 
 
 class ActionHostGroup(InteractiveChildObject, Deletable):

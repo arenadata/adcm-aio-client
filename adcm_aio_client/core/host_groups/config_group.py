@@ -4,10 +4,7 @@ from typing import Self
 from adcm_aio_client.core.host_groups._common import HostGroupNode, HostInHostGroupNode
 from adcm_aio_client.core.objects._base import InteractiveChildObject
 from adcm_aio_client.core.objects._common import Deletable, WithConfig
-from adcm_aio_client.core.types import (
-    AwareOfOwnPath,
-    WithProtectedRequester,
-)
+from adcm_aio_client.core.types import AwareOfOwnPath, WithProtectedRequester
 
 
 class ConfigHostGroup(InteractiveChildObject, Deletable, WithConfig):
