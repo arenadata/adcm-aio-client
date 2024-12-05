@@ -11,3 +11,4 @@
 # limitations under the License.
 
 # TODO: Prepare API for filters
+class Filter: ...
