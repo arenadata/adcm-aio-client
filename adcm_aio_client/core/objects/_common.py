@@ -1,10 +1,13 @@
 from functools import cached_property
 from typing import Self
 
+from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
+
 from adcm_aio_client.core.actions import ActionsAccessor
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.core.config._objects import ConfigOwner
-from adcm_aio_client.core.types import ADCMEntityStatus, AwareOfOwnPath, WithProtectedRequester
+from adcm_aio_client.core.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
+from adcm_aio_client.core.types import ADCMEntityStatus
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):
@@ -38,3 +41,11 @@ class WithConfig(ConfigOwner):
 class WithUpgrades(WithProtectedRequester, AwareOfOwnPath):
     @cached_property
     def upgrades(self: Self) -> ...: ...
+
+
+class WithMaintenanceMode(WithProtectedRequester, AwareOfOwnPath):
+    @async_cached_property
+    async def maintenance_mode(self: Self) -> MaintenanceMode:
+        maintenance_mode = MaintenanceMode(self._data["maintenanceMode"], self._requester, self.get_own_path())  # pyright: ignore[reportAttributeAccessIssue]
+        self._data["maintenanceMode"] = maintenance_mode.value  # pyright: ignore[reportAttributeAccessIssue]
+        return maintenance_mode
