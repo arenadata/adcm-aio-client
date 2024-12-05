@@ -400,9 +400,6 @@ class HostsAccessor(PaginatedAccessor[Host]):
     _validate_filter = Filtering(FilterByName, FilterByStatus)
 
 
-class HostsNode(HostsAccessor): ...
-
-
 class HostsNode(HostsAccessor):
     async def create(
         self: Self, provider: HostProvider, name: str, description: str, cluster: Cluster | None = None
