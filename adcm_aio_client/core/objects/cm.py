@@ -6,6 +6,16 @@ import asyncio
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
+from adcm_aio_client.core.filters import (
+    ALL_OPERATIONS,
+    COMMON_OPERATIONS,
+    Filter,
+    FilterBy,
+    FilterByDisplayName,
+    FilterByName,
+    FilterByStatus,
+    Filtering,
+)
 from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
@@ -24,8 +34,6 @@ from adcm_aio_client.core.objects._common import (
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
 from adcm_aio_client.core.types import ADCMEntityStatus, Endpoint, Requester, UrlPath, WithProtectedRequester
-
-type Filter = object  # TODO: implement
 
 
 class ADCM(InteractiveObject, WithActions, WithConfig):
@@ -99,16 +107,22 @@ class Bundle(Deletable, RootInteractiveObject):
         return self._data["mainPrototype"]["id"]
 
 
-class BundlesNode(PaginatedAccessor[Bundle, None]):
-    class_type = Bundle
+class BundlesNode(PaginatedAccessor[Bundle]):
+    CLASS = Bundle
+    _validate_filter = Filtering(
+        FilterByName,
+        FilterByDisplayName,
+        FilterBy("version", ALL_OPERATIONS, str),
+        FilterBy("edition", ALL_OPERATIONS, str),
+    )
 
     def __init__(self: Self, path: Endpoint, requester: Requester, retriever: BundleRetrieverInterface) -> None:
         super().__init__(path, requester)
-        self.retriever = retriever
+        self._bundle_retriever = retriever
 
     async def create(self: Self, source: Path | UrlPath, accept_license: bool = False) -> Bundle:  # noqa: FBT001, FBT002
         if isinstance(source, UrlPath):
-            file_content = await self.retriever.download_external_bundle(source)
+            file_content = await self._bundle_retriever.download_external_bundle(source)
             files = {"file": file_content}
         else:
             files = {"file": Path(source).read_bytes()}
@@ -187,8 +201,12 @@ class Cluster(
         return ClusterImports()
 
 
-class ClustersNode(PaginatedAccessor[Cluster, None]):
-    class_type = Cluster
+FilterByBundle = FilterBy("bundle", COMMON_OPERATIONS, Bundle)
+
+
+class ClustersNode(PaginatedAccessor[Cluster]):
+    CLASS = Cluster
+    _validate_filter = Filtering(FilterByName, FilterByBundle, FilterByStatus)
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
         response = await self._requester.post(
@@ -226,8 +244,9 @@ class Service(
         return ComponentsNode(parent=self, path=(*self.get_own_path(), "components"), requester=self._requester)
 
 
-class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
-    class_type = Service
+class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
+    CLASS = Service
+    _validate_filter = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
 
 
 class Component(
@@ -265,16 +284,19 @@ class Component(
         return HostsAccessor(
             path=(*self.cluster.get_own_path(), "hosts"),
             requester=self._requester,
-            accessor_filter={"componentId": self.id},
+            default_query={"componentId": self.id},
         )
 
 
-class ComponentsNode(PaginatedChildAccessor[Service, Component, None]):
-    class_type = Component
+class ComponentsNode(PaginatedChildAccessor[Service, Component]):
+    CLASS = Component
+    _validate_filter = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
 
 
 class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInteractiveObject):
     PATH_PREFIX = "hostproviders"
+    _validate_filter = Filtering(FilterByName, FilterByBundle)
+
     # data-based properties
 
     @property
@@ -291,13 +313,11 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInterac
 
     @cached_property
     def hosts(self: Self) -> "HostsAccessor":
-        return HostsAccessor(
-            path=("hosts",), requester=self._requester, accessor_filter={"hostproviderName": self.name}
-        )
+        return HostsAccessor(path=("hosts",), requester=self._requester, default_query={"hostproviderName": self.name})
 
 
-class HostProvidersNode(PaginatedAccessor[HostProvider, None]):
-    class_type = HostProvider
+class HostProvidersNode(PaginatedAccessor[HostProvider]):
+    CLASS = HostProvider
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
         response = await self._requester.post(
@@ -326,6 +346,7 @@ class Host(Deletable, WithActions, RootInteractiveObject):
     async def cluster(self: Self) -> Cluster | None:
         if not self._data["cluster"]:
             return None
+
         return await Cluster.with_id(requester=self._requester, object_id=self._data["cluster"]["id"])
 
     @async_cached_property
@@ -336,18 +357,22 @@ class Host(Deletable, WithActions, RootInteractiveObject):
         return f"<{self.__class__.__name__} #{self.id} {self.name}>"
 
 
-class HostsAccessor(PaginatedAccessor[Host, None]):
-    class_type = Host
+class HostsAccessor(PaginatedAccessor[Host]):
+    CLASS = Host
+    _validate_filter = Filtering(FilterByName, FilterByStatus)
+
+
+class HostsNode(HostsAccessor): ...
 
 
 class HostsInClusterNode(HostsAccessor):
-    async def add(self: Self, host: Host | Iterable[Host] | None = None, filters: Filter | None = None) -> None:
-        hosts = await self._get_hosts_from_arg_or_filter(host=host, filters=filters)
+    async def add(self: Self, host: Host | Iterable[Host] | Filter) -> None:
+        hosts = await self._get_hosts(host=host)
 
         await self._requester.post(*self._path, data=[{"hostId": host.id} for host in hosts])
 
-    async def remove(self: Self, host: Host | Iterable[Host] | None = None, filters: Filter | None = None) -> None:
-        hosts = await self._get_hosts_from_arg_or_filter(host=host, filters=filters)
+    async def remove(self: Self, host: Host | Iterable[Host] | Filter) -> None:
+        hosts = await self._get_hosts(host=host)
 
         results = await asyncio.gather(
             *(self._requester.delete(*self._path, host_.id) for host_ in hosts), return_exceptions=True
@@ -362,15 +387,13 @@ class HostsInClusterNode(HostsAccessor):
             errors = ", ".join(errors)
             raise OperationError(f"Some hosts can't be deleted from cluster: {errors}")
 
-    async def _get_hosts_from_arg_or_filter(
-        self: Self, host: Host | Iterable[Host] | None = None, filters: Filter | None = None
-    ) -> Iterable[Host]:
-        if all((host, filters)):
-            raise ValueError("`host` and `filters` arguments are mutually exclusive.")
-
-        if host:
-            hosts = [host] if isinstance(host, Host) else host
+    async def _get_hosts(self: Self, host: Host | Iterable[Host] | Filter) -> Iterable[Host]:
+        if isinstance(host, Host):
+            hosts = [host]
+        elif isinstance(host, Filter):
+            inline_filters = self._filters_to_inline(host)
+            hosts = await self.filter(**inline_filters)
         else:
-            hosts = await self.filter(filters)  # type: ignore  # TODO
+            hosts = host
 
         return hosts
