@@ -30,7 +30,6 @@ from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
 from adcm_aio_client.core.types import (
     Endpoint,
-    MaintenanceMode,
     Requester,
     UrlPath,
     WithProtectedRequester,
@@ -253,7 +252,7 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
             raise NotFoundError
         return {s["id"]: s["license"]["status"] for s in service_prototypes}
 
-    async def add(
+    async def create(
         self: Self,
         accept_license: bool = False,  # noqa: FBT001, FBT002
     ) -> Service:
