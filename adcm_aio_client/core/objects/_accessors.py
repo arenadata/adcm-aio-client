@@ -23,6 +23,16 @@ from adcm_aio_client.core.types import Endpoint, QueryParameters, Requester, Req
 type DefaultQueryParams = QueryParameters | None
 
 
+def parse_inline_filters(**filters: FilterValue) -> Iterable[Filter]:
+    for inline_filter, value in filters.items():
+        attr, op = inline_filter.split("__", maxsplit=1)
+        yield Filter(attr=attr, op=op, value=value)
+
+
+def filters_to_inline(*filters: Filter) -> dict:
+    return {f"{f.attr}__{f.op}": f.value for f in filters}
+
+
 class Accessor[ReturnObject: InteractiveObject](ABC):
     CLASS: type[ReturnObject]
     _validate_filter: FilterValidator
@@ -70,7 +80,7 @@ class Accessor[ReturnObject: InteractiveObject](ABC):
     async def _request_endpoint(
         self: Self, query: QueryParameters, filters: dict[str, Any] | None = None
     ) -> RequesterResponse:
-        parsed_filters = self._parse_inline_filters(**(filters or {}))
+        parsed_filters = parse_inline_filters(**(filters or {}))
         filters_query = filters_to_query(filters=parsed_filters, validate=self._validate_filter)
 
         final_query = filters_query | query | self._default_query
@@ -79,14 +89,6 @@ class Accessor[ReturnObject: InteractiveObject](ABC):
 
     def _create_object(self: Self, data: dict[str, Any]) -> ReturnObject:
         return self.CLASS(requester=self._requester, data=data)
-
-    def _parse_inline_filters(self: Self, **filters: FilterValue) -> Iterable[Filter]:
-        for inline_filter, value in filters.items():
-            attr, op = inline_filter.split("__", maxsplit=1)
-            yield Filter(attr=attr, op=op, value=value)
-
-    def _filters_to_inline(self: Self, *filters: Filter) -> dict:
-        return {f"{f.attr}__{f.op}": f.value for f in filters}
 
 
 class PaginatedAccessor[ReturnObject: InteractiveObject](Accessor[ReturnObject]):

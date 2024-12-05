@@ -1,3 +1,4 @@
+from collections import deque
 from functools import cached_property
 from pathlib import Path
 from typing import Iterable, Literal, Self
@@ -15,11 +16,13 @@ from adcm_aio_client.core.filters import (
     FilterByName,
     FilterByStatus,
     Filtering,
+    filters_to_query,
 )
 from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
     PaginatedChildAccessor,
+    filters_to_inline,
 )
 from adcm_aio_client.core.objects._base import (
     InteractiveChildObject,
@@ -261,34 +264,43 @@ class Service(
 class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
     CLASS = Service
     _validate_filter = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
+    _validate_service_add_filter = Filtering(FilterByName, FilterByDisplayName)
 
-    def _get_ids_and_license_state_by_filter(
-        self: Self,
-        service_prototypes: dict,
-    ) -> dict[int, str]:
-        # todo: implement retrieving of ids when filter is implemented
-        if not service_prototypes:
-            raise NotFoundError
-        return {s["id"]: s["license"]["status"] for s in service_prototypes}
+    async def add(self: Self, filter_: Filter, *, accept_license: bool = False) -> list[Service]:
+        candidates = await self._retrieve_service_candidates(filter_=filter_)
 
-    async def add(
-        self: Self,
-        accept_license: bool = False,  # noqa: FBT001, FBT002
-    ) -> Service:
-        candidates_prototypes = (
-            await self._requester.get(*self._parent.get_own_path(), "service-candidates")
-        ).as_dict()
-        services_data = self._get_ids_and_license_state_by_filter(candidates_prototypes)
+        if not candidates:
+            message = "No services to add by given filters"
+            raise NotFoundError(message)
+
         if accept_license:
-            for prototype_id, license_status in services_data.items():
-                if license_status == "unaccepted":
-                    await self._requester.post("prototypes", prototype_id, "license", "accept", data={})
+            await self._accept_licenses_safe(candidates)
 
-        response = await self._requester.post(
-            "services", data=[{"prototypeId": prototype_id} for prototype_id in services_data]
-        )
+        return await self._add_services(candidates)
 
-        return Service(data=response.as_dict(), parent=self._parent)
+    async def _retrieve_service_candidates(self: Self, filter_: Filter) -> list[dict]:
+        query = filters_to_query(filters=(filter_,), validate=self._validate_service_add_filter)
+        response = await self._requester.get(*self._parent.get_own_path(), "service-candidates", query=query)
+        return response.as_list()
+
+    async def _accept_licenses_safe(self: Self, candidates: list[dict]) -> None:
+        unaccepted: deque[int] = deque()
+
+        for candidate in candidates:
+            if candidate["license"]["status"] == "unaccepted":
+                unaccepted.append(candidate["id"])
+
+        if unaccepted:
+            tasks = (
+                self._requester.post("prototypes", prototype_id, "license", "accept", data={})
+                for prototype_id in unaccepted
+            )
+            await asyncio.gather(*tasks)
+
+    async def _add_services(self: Self, candidates: list[dict]) -> list[Service]:
+        data = [{"prototypeId": candidate["id"]} for candidate in candidates]
+        response = await self._requester.post(*self._parent.get_own_path(), "services", data=data)
+        return [Service(data=entry, parent=self._parent) for entry in response.as_list()]
 
 
 class Component(
@@ -436,7 +448,7 @@ class HostsInClusterNode(HostsAccessor):
         if isinstance(host, Host):
             hosts = [host]
         elif isinstance(host, Filter):
-            inline_filters = self._filters_to_inline(host)
+            inline_filters = filters_to_inline(host)
             hosts = await self.filter(**inline_filters)
         else:
             hosts = host
