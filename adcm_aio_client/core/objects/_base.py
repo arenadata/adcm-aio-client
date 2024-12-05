@@ -111,11 +111,13 @@ class MaintenanceMode:
         return self._maintenance_mode_status.value
 
     async def on(self: Self) -> None:
-        await self._requester.post(*self._path, "maintenance-mode", data={"maintenanceMode": MaintenanceModeStatus.ON})
-        current_mm_status = await self._requester.get(*self._path)
+        current_mm_status = await self._requester.post(
+            *self._path, "maintenance-mode", data={"maintenanceMode": MaintenanceModeStatus.ON}
+        )
         self._maintenance_mode_status = current_mm_status.as_dict()["maintenanceMode"]
 
     async def off(self: Self) -> None:
-        await self._requester.post(*self._path, "maintenanceMode", data={"maintenanceMode": MaintenanceModeStatus.OFF})
-        current_mm_status = await self._requester.get(*self._path)
+        current_mm_status = await self._requester.post(
+            *self._path, "maintenanceMode", data={"maintenanceMode": MaintenanceModeStatus.OFF}
+        )
         self._maintenance_mode_status = current_mm_status.as_dict()["maintenanceMode"]
