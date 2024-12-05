@@ -38,8 +38,3 @@ class WithConfig(ConfigOwner):
 class WithUpgrades(WithProtectedRequester, AwareOfOwnPath):
     @cached_property
     def upgrades(self: Self) -> ...: ...
-
-
-class WithActionHostGroups(WithProtectedRequester, AwareOfOwnPath):
-    @cached_property
-    def action_host_groups(self: Self) -> ...: ...

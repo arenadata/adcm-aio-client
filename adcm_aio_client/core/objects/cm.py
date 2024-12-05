@@ -5,7 +5,7 @@ from typing import Iterable, Literal, Self
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.errors import NotFoundError, OperationError
-from adcm_aio_client.core.host_groups import WithConfigHostGroups
+from adcm_aio_client.core.host_groups import WithActionHostGroups, WithConfigHostGroups
 from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
@@ -14,7 +14,6 @@ from adcm_aio_client.core.objects._accessors import (
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject, RootInteractiveObject
 from adcm_aio_client.core.objects._common import (
     Deletable,
-    WithActionHostGroups,
     WithActions,
     WithConfig,
     WithStatus,
