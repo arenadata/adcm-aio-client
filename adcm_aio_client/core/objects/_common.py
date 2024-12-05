@@ -60,5 +60,6 @@ class WithActionHostGroups(WithProtectedRequester, AwareOfOwnPath):
 class WithMaintenanceMode(WithProtectedRequester, AwareOfOwnPath):
     @async_cached_property
     async def maintenance_mode(self: Self) -> MaintenanceMode:
-        await self.refresh()  # pyright: ignore[reportAttributeAccessIssue]
-        return MaintenanceMode(self._data["maintenanceMode"], self._requester, self.get_own_path())  # pyright: ignore[reportAttributeAccessIssue]
+        maintenance_mode = MaintenanceMode(self._data["maintenanceMode"], self._requester, self.get_own_path())  # pyright: ignore[reportAttributeAccessIssue]
+        self._data["maintenanceMode"] = maintenance_mode.value  # pyright: ignore[reportAttributeAccessIssue]
+        return maintenance_mode
