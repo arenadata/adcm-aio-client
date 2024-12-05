@@ -29,15 +29,15 @@ class DummyChild(_OwnPath, InteractiveChildObject): ...
 
 
 class DummyPaginatedAccessor(PaginatedAccessor[Dummy]):
-    class_type = Dummy
+    CLASS = Dummy
 
 
 class DummyChildPaginatedAccessor(PaginatedChildAccessor[Dummy, DummyChild]):
-    class_type = DummyChild
+    CLASS = DummyChild
 
 
 class DummyChildNonPaginatedAccessor(NonPaginatedChildAccessor[Dummy, DummyChild]):
-    class_type = DummyChild
+    CLASS = DummyChild
 
 
 def create_paginated_response(amount: int) -> dict:

@@ -6,6 +6,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Any, Iterable, Self
 import asyncio
 
+from adcm_aio_client.core.filters import FilterByDisplayName, FilterByName, FilterByStatus, Filtering
 from adcm_aio_client.core.mapping.refresh import apply_local_changes, apply_remote_changes
 from adcm_aio_client.core.mapping.types import LocalMappings, MappingEntry, MappingPair, MappingRefreshStrategy
 from adcm_aio_client.core.objects._accessors import NonPaginatedAccessor
@@ -16,13 +17,15 @@ if TYPE_CHECKING:
 
 
 class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
+    _validate_filter = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
+
     def __new__(cls: type[Self], cluster: Cluster, requester: Requester) -> Self:
         _ = cluster, requester
 
-        if not hasattr(cls, "class_type"):
+        if not hasattr(cls, "CLASS"):
             from adcm_aio_client.core.objects.cm import Component
 
-            cls.class_type = Component
+            cls.CLASS = Component
 
         return super().__new__(cls)
 
@@ -38,7 +41,7 @@ class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
         # when not, we should use lazy objects
         # or request services (means it should be async) + caches
         service = Service(parent=self._cluster, data=data["service"])
-        return self.class_type(parent=service, data=data)
+        return self.CLASS(parent=service, data=data)
 
 
 class ActionMapping:
