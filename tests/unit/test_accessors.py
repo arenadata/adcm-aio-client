@@ -28,15 +28,15 @@ class Dummy(_OwnPath, InteractiveObject): ...
 class DummyChild(_OwnPath, InteractiveChildObject): ...
 
 
-class DummyPaginatedAccessor(PaginatedAccessor[Dummy, None]):
+class DummyPaginatedAccessor(PaginatedAccessor[Dummy]):
     class_type = Dummy
 
 
-class DummyChildPaginatedAccessor(PaginatedChildAccessor[Dummy, DummyChild, None]):
+class DummyChildPaginatedAccessor(PaginatedChildAccessor[Dummy, DummyChild]):
     class_type = DummyChild
 
 
-class DummyChildNonPaginatedAccessor(NonPaginatedChildAccessor[Dummy, DummyChild, None]):
+class DummyChildNonPaginatedAccessor(NonPaginatedChildAccessor[Dummy, DummyChild]):
     class_type = DummyChild
 
 

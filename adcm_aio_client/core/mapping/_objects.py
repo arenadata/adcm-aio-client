@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from adcm_aio_client.core.objects.cm import Cluster, Component, Host, HostsAccessor, Service
 
 
-class ComponentsMappingNode(NonPaginatedAccessor["Component", None]):
+class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
     def __new__(cls: type[Self], cluster: Cluster, requester: Requester) -> Self:
         _ = cluster, requester
 
@@ -28,7 +28,7 @@ class ComponentsMappingNode(NonPaginatedAccessor["Component", None]):
 
     def __init__(self: Self, cluster: Cluster, requester: Requester) -> None:
         path = (*cluster.get_own_path(), "mapping", "components")
-        super().__init__(path=path, requester=requester, accessor_filter=None)
+        super().__init__(path=path, requester=requester, default_query=None)
         self._cluster = cluster
 
     def _create_object(self: Self, data: dict[str, Any]) -> Component:

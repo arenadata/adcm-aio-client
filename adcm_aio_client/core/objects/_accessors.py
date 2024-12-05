@@ -110,9 +110,9 @@ class PaginatedAccessor[ReturnObject: InteractiveObject](Accessor[ReturnObject])
 
 class PaginatedChildAccessor[Parent, Child: InteractiveChildObject](PaginatedAccessor[Child]):
     def __init__(
-        self: Self, parent: Parent, path: Endpoint, requester: Requester, accessor_filter: DefaultQueryParams = None
+        self: Self, parent: Parent, path: Endpoint, requester: Requester, default_query: DefaultQueryParams = None
     ) -> None:
-        super().__init__(path, requester, accessor_filter)
+        super().__init__(path, requester, default_query)
         self._parent = parent
 
     def _create_object(self: Self, data: dict[str, Any]) -> Child:
@@ -132,9 +132,9 @@ class NonPaginatedAccessor[Child: InteractiveObject](Accessor[Child]):
 
 class NonPaginatedChildAccessor[Parent, Child: InteractiveChildObject](NonPaginatedAccessor[Child]):
     def __init__(
-        self: Self, parent: Parent, path: Endpoint, requester: Requester, accessor_filter: DefaultQueryParams = None
+        self: Self, parent: Parent, path: Endpoint, requester: Requester, default_query: DefaultQueryParams = None
     ) -> None:
-        super().__init__(path, requester, accessor_filter)
+        super().__init__(path, requester, default_query)
         self._parent = parent
 
     def _create_object(self: Self, data: dict[str, Any]) -> Child:
