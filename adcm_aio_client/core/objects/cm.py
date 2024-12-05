@@ -1,10 +1,12 @@
+import asyncio
+from datetime import datetime
 from functools import cached_property
 from pathlib import Path
 from typing import Iterable, Literal, Self
-import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
+from adcm_aio_client.core.actions._objects import Action
 from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
 from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._accessors import (
@@ -22,18 +24,14 @@ from adcm_aio_client.core.objects._common import (
     WithActions,
     WithConfig,
     WithConfigGroups,
+    WithJobStatus,
     WithMaintenanceMode,
     WithStatus,
     WithUpgrades,
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
-from adcm_aio_client.core.types import (
-    Endpoint,
-    Requester,
-    UrlPath,
-    WithProtectedRequester,
-)
+from adcm_aio_client.core.types import Endpoint, JobStatus, Requester, UrlPath, WithProtectedRequester
 
 type Filter = object  # TODO: implement
 
@@ -422,3 +420,52 @@ class HostsInClusterNode(HostsAccessor):
             hosts = await self.filter(filters)  # type: ignore  # TODO
 
         return hosts
+
+
+class Job[Object: "InteractiveObject"](WithStatus, WithActions, WithJobStatus, RootInteractiveObject):
+    PATH_PREFIX = "jobs"
+
+    @property
+    def name(self: Self) -> str:
+        return str(self._data["name"])
+
+    @property
+    def start_time(self: Self) -> datetime:
+        return self._data["startTime"]
+
+    @property
+    def finish_time(self: Self) -> datetime:
+        return self._data["endTime"]
+
+    @property
+    def object(self: Self) -> Object:
+        obj_data = self._data["parentTask"]["objects"][0]
+        obj_type = obj_data["type"]
+
+        obj_dict = {
+            "host": Host,
+            "component": Component,
+            "provider": HostProvider,
+            "cluster": Cluster,
+            "service": Service,
+            "adcm": ADCM,
+        }
+
+        return self._construct(what=obj_dict[obj_type], from_data=obj_data)
+
+    @property
+    def action(self: Self) -> Action:
+        return self._construct(what=Action, from_data=self._data["parentTask"]["action"])
+
+    async def wait(self: Self, timeout: int = 30, poll: int = 5) -> None:
+        if self._data["status"] != JobStatus.RUNNING:
+            return
+
+        for _ in range(timeout // poll):
+            await asyncio.sleep(poll)
+            if status := await self.get_job_status() != JobStatus.RUNNING:
+                self._data["status"] = status
+                return
+
+    async def terminate(self: Self) -> None:
+        await self._requester.post(*self.get_own_path(), "terminate", data={})

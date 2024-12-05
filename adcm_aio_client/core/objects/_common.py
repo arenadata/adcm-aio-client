@@ -8,6 +8,7 @@ from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.core.config._objects import ConfigOwner
 from adcm_aio_client.core.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
 from adcm_aio_client.core.types import ADCMEntityStatus
+from adcm_aio_client.core.types import JobStatus
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):
@@ -59,3 +60,9 @@ class WithMaintenanceMode(WithProtectedRequester, AwareOfOwnPath):
         maintenance_mode = MaintenanceMode(self._data["maintenanceMode"], self._requester, self.get_own_path())  # pyright: ignore[reportAttributeAccessIssue]
         self._data["maintenanceMode"] = maintenance_mode.value  # pyright: ignore[reportAttributeAccessIssue]
         return maintenance_mode
+
+
+class WithJobStatus(WithProtectedRequester, AwareOfOwnPath):
+    async def get_job_status(self: Self) -> JobStatus:
+        response = await self._requester.get(*self.get_own_path())
+        return JobStatus(response.as_dict()["status"])
