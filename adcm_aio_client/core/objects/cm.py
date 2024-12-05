@@ -252,7 +252,7 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
             raise NotFoundError
         return {s["id"]: s["license"]["status"] for s in service_prototypes}
 
-    async def create(
+    async def add(
         self: Self,
         accept_license: bool = False,  # noqa: FBT001, FBT002
     ) -> Service:
