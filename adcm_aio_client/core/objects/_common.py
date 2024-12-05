@@ -6,12 +6,8 @@ from asyncstdlib.functools import cached_property as async_cached_property  # no
 from adcm_aio_client.core.actions import ActionsAccessor
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.core.config._objects import ConfigOwner
-from adcm_aio_client.core.objects._base import MaintenanceMode
-from adcm_aio_client.core.types import (
-    ADCMEntityStatus,
-    AwareOfOwnPath,
-    WithProtectedRequester,
-)
+from adcm_aio_client.core.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
+from adcm_aio_client.core.types import ADCMEntityStatus
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):
