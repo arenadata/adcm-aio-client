@@ -139,7 +139,6 @@ class Cluster(
     WithConfig,
     WithActionHostGroups,
     WithConfigGroups,
-    WithMaintenanceMode,
     RootInteractiveObject,
 ):
     PATH_PREFIX = "clusters"
@@ -210,7 +209,6 @@ class Service(
     WithActions,
     WithConfig,
     WithActionHostGroups,
-    WithMaintenanceMode,
     WithConfigGroups,
     InteractiveChildObject[Cluster],
 ):
