@@ -69,11 +69,11 @@ class Filtering(FilterValidator):
         expected_type = allowed_filter.single_input
         if isinstance(filter_.value, Iterable):
             if not all(isinstance(entry, expected_type) for entry in filter_.value):
-                message = f"At least one entry is not of {expected_type}: {filter_.value}"
+                message = f"At least one entry is not {expected_type}: {filter_.value}"
                 raise InvalidFilterError(message)
         else:
             if not isinstance(filter_.value, expected_type):
-                message = f"Value {filter_.value} if not of {expected_type}"
+                message = f"Value {filter_.value} is not {expected_type}"
                 raise InvalidFilterError(message)
 
 
