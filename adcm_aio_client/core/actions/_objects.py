@@ -9,9 +9,10 @@ from adcm_aio_client.core.errors import HostNotInClusterError, NoMappingRulesFor
 from adcm_aio_client.core.mapping import ActionMapping
 from adcm_aio_client.core.objects._accessors import NonPaginatedChildAccessor
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
+from adcm_aio_client.core.objects._common import Deletable, WithConfig
 
 if TYPE_CHECKING:
-    from adcm_aio_client.core.objects.cm import Cluster
+    from adcm_aio_client.core.objects.cm import Bundle, Cluster
 
 
 class Action(InteractiveChildObject):
@@ -64,6 +65,42 @@ class Action(InteractiveChildObject):
 
 class ActionsAccessor(NonPaginatedChildAccessor):
     class_type = Action
+
+
+class Upgrade(Deletable, WithConfig, InteractiveChildObject):
+    PATH_PREFIX = "upgrades"
+
+    def __init__(self: Self, parent: InteractiveChildObject, data: dict[str, Any]) -> None:
+        super().__init__(parent, data)
+        self._verbose = False
+
+    @property
+    def name(self: Self) -> str:
+        return str(self._data["name"])
+
+    @property
+    def bundle(self: Self) -> Bundle:
+        from adcm_aio_client.core.objects.cm import Bundle
+
+        return Bundle(requester=self._requester, data=self._data["bundle"])
+
+    @async_cached_property
+    async def _mapping_rule(self: Self) -> list[dict] | None:
+        return (await self._rich_data)["hostComponentMapRules"]
+
+    @async_cached_property
+    async def _rich_data(self: Self) -> dict:
+        return (await self._requester.get(*self.get_own_path())).as_dict()
+
+    async def run(self: Self) -> dict:  # TODO: implement Task, return Task
+        return (await self._requester.post(*self.get_own_path(), "run", data={"isVerbose": self._verbose})).as_dict()
+
+    def set_verbose(self: Self) -> Self:
+        self._verbose = True
+        return self
+
+    def validate(self: Self) -> bool:
+        return True
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:
