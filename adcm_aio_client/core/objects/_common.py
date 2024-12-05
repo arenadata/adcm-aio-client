@@ -7,8 +7,7 @@ from adcm_aio_client.core.actions import ActionsAccessor
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.core.config._objects import ConfigOwner
 from adcm_aio_client.core.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
-from adcm_aio_client.core.types import ADCMEntityStatus
-from adcm_aio_client.core.types import JobStatus
+from adcm_aio_client.core.types import ADCMEntityStatus, JobStatus
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):

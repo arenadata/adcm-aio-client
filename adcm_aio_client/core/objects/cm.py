@@ -1,8 +1,8 @@
-import asyncio
 from datetime import datetime
 from functools import cached_property
 from pathlib import Path
-from typing import Iterable, Literal, Self
+from typing import Callable, Iterable, Literal, Self
+import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
@@ -423,7 +423,7 @@ class HostsInClusterNode(HostsAccessor):
 
 
 class Job[Object: "InteractiveObject"](WithStatus, WithActions, WithJobStatus, RootInteractiveObject):
-    PATH_PREFIX = "jobs"
+    PATH_PREFIX = "tasks"
 
     @property
     def name(self: Self) -> str:
@@ -439,7 +439,7 @@ class Job[Object: "InteractiveObject"](WithStatus, WithActions, WithJobStatus, R
 
     @property
     def object(self: Self) -> Object:
-        obj_data = self._data["parentTask"]["objects"][0]
+        obj_data = self._data["objects"][0]
         obj_type = obj_data["type"]
 
         obj_dict = {
@@ -455,16 +455,16 @@ class Job[Object: "InteractiveObject"](WithStatus, WithActions, WithJobStatus, R
 
     @property
     def action(self: Self) -> Action:
-        return self._construct(what=Action, from_data=self._data["parentTask"]["action"])
+        return self._construct(what=Action, from_data=self._data["action"])
 
-    async def wait(self: Self, timeout: int = 30, poll: int = 5) -> None:
-        if self._data["status"] != JobStatus.RUNNING:
+    async def wait(self: Self, status_predicate: Callable[[], bool], timeout: int = 30, poll: int = 5) -> None:
+        if self._data["status"] not in (JobStatus.RUNNING, JobStatus.CREATED):
             return
 
         for _ in range(timeout // poll):
             await asyncio.sleep(poll)
-            if status := await self.get_job_status() != JobStatus.RUNNING:
-                self._data["status"] = status
+            if status_predicate():
+                self._data["status"] = self.get_status()
                 return
 
     async def terminate(self: Self) -> None:
