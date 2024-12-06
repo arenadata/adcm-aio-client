@@ -22,10 +22,10 @@ class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
     def __new__(cls: type[Self], cluster: Cluster, requester: Requester) -> Self:
         _ = cluster, requester
 
-        if not hasattr(cls, "CLASS"):
+        if not hasattr(cls, "class_type"):
             from adcm_aio_client.core.objects.cm import Component
 
-            cls.CLASS = Component
+            cls.class_type = Component
 
         return super().__new__(cls)
 
@@ -41,7 +41,7 @@ class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
         # when not, we should use lazy objects
         # or request services (means it should be async) + caches
         service = Service(parent=self._cluster, data=data["service"])
-        return self.CLASS(parent=service, data=data)
+        return self.class_type(parent=service, data=data)
 
 
 class ActionMapping:

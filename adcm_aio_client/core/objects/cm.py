@@ -16,7 +16,6 @@ from adcm_aio_client.core.filters import (
     FilterByName,
     FilterByStatus,
     Filtering,
-    filters_to_query,
 )
 from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._accessors import (
@@ -121,8 +120,8 @@ class Bundle(Deletable, RootInteractiveObject):
 
 
 class BundlesNode(PaginatedAccessor[Bundle]):
-    CLASS = Bundle
-    _validate_filter = Filtering(
+    class_type = Bundle
+    filtering = Filtering(
         FilterByName,
         FilterByDisplayName,
         FilterBy("version", ALL_OPERATIONS, str),
@@ -218,8 +217,8 @@ FilterByBundle = FilterBy("bundle", COMMON_OPERATIONS, Bundle)
 
 
 class ClustersNode(PaginatedAccessor[Cluster]):
-    CLASS = Cluster
-    _validate_filter = Filtering(FilterByName, FilterByBundle, FilterByStatus)
+    class_type = Cluster
+    filtering = Filtering(FilterByName, FilterByBundle, FilterByStatus)
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
         response = await self._requester.post(
@@ -262,9 +261,9 @@ class Service(
 
 
 class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
-    CLASS = Service
-    _validate_filter = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
-    _validate_service_add_filter = Filtering(FilterByName, FilterByDisplayName)
+    class_type = Service
+    filtering = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
+    service_add_filtering = Filtering(FilterByName, FilterByDisplayName)
 
     async def add(self: Self, filter_: Filter, *, accept_license: bool = False) -> list[Service]:
         candidates = await self._retrieve_service_candidates(filter_=filter_)
@@ -279,7 +278,7 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
         return await self._add_services(candidates)
 
     async def _retrieve_service_candidates(self: Self, filter_: Filter) -> list[dict]:
-        query = filters_to_query(filters=(filter_,), validate=self._validate_service_add_filter)
+        query = self.service_add_filtering.to_query(filters=(filter_,))
         response = await self._requester.get(*self._parent.get_own_path(), "service-candidates", query=query)
         return response.as_list()
 
@@ -343,13 +342,13 @@ class Component(
 
 
 class ComponentsNode(PaginatedChildAccessor[Service, Component]):
-    CLASS = Component
-    _validate_filter = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
+    class_type = Component
+    filtering = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
 
 
 class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInteractiveObject):
     PATH_PREFIX = "hostproviders"
-    _validate_filter = Filtering(FilterByName, FilterByBundle)
+    filtering = Filtering(FilterByName, FilterByBundle)
 
     # data-based properties
 
@@ -371,7 +370,7 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInterac
 
 
 class HostProvidersNode(PaginatedAccessor[HostProvider]):
-    CLASS = HostProvider
+    class_type = HostProvider
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
         response = await self._requester.post(
@@ -408,8 +407,8 @@ class Host(Deletable, WithActions, WithStatus, WithMaintenanceMode, RootInteract
 
 
 class HostsAccessor(PaginatedAccessor[Host]):
-    CLASS = Host
-    _validate_filter = Filtering(FilterByName, FilterByStatus)
+    class_type = Host
+    filtering = Filtering(FilterByName, FilterByStatus)
 
 
 class HostsNode(HostsAccessor):

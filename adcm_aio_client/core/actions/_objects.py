@@ -63,7 +63,7 @@ class Action(InteractiveChildObject):
 
 
 class ActionsAccessor(NonPaginatedChildAccessor):
-    CLASS = Action
+    class_type = Action
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:

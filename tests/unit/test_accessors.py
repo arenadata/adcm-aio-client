@@ -35,22 +35,22 @@ class DummyChild(_OwnPath, InteractiveChildObject): ...
 
 
 class DummyPaginatedAccessor(PaginatedAccessor[Dummy]):
-    CLASS = Dummy
+    class_type = Dummy
     _validate_filter = no_validation
 
 
 class DummyChildPaginatedAccessor(PaginatedChildAccessor[Dummy, DummyChild]):
-    CLASS = DummyChild
+    class_type = DummyChild
     _validate_filter = no_validation
 
 
 class DummyChildNonPaginatedAccessor(NonPaginatedChildAccessor[Dummy, DummyChild]):
-    CLASS = DummyChild
+    class_type = DummyChild
     _validate_filter = no_validation
 
 
 class DummyAccessorWithFilter(PaginatedAccessor[Dummy]):
-    CLASS = Dummy
+    class_type = Dummy
     _validate_filter = Filtering(FilterByName, FilterBy("custom", {"eq"}, Dummy))
 
 

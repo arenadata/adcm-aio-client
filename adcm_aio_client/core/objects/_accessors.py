@@ -12,10 +12,10 @@
 
 from abc import ABC, abstractmethod
 from contextlib import suppress
-from typing import Any, AsyncGenerator, Iterable, Self
+from typing import Any, AsyncGenerator, Self
 
 from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
-from adcm_aio_client.core.filters import Filter, FilterValidator, FilterValue, filters_to_query
+from adcm_aio_client.core.filters import Filter, Filtering, FilterValue
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
 from adcm_aio_client.core.types import Endpoint, QueryParameters, Requester, RequesterResponse
 
@@ -23,19 +23,13 @@ from adcm_aio_client.core.types import Endpoint, QueryParameters, Requester, Req
 type DefaultQueryParams = QueryParameters | None
 
 
-def parse_inline_filters(**filters: FilterValue) -> Iterable[Filter]:
-    for inline_filter, value in filters.items():
-        attr, op = inline_filter.split("__", maxsplit=1)
-        yield Filter(attr=attr, op=op, value=value)
-
-
 def filters_to_inline(*filters: Filter) -> dict:
     return {f"{f.attr}__{f.op}": f.value for f in filters}
 
 
 class Accessor[ReturnObject: InteractiveObject](ABC):
-    CLASS: type[ReturnObject]
-    _validate_filter: FilterValidator
+    class_type: type[ReturnObject]
+    filtering: Filtering
 
     def __init__(self: Self, path: Endpoint, requester: Requester, default_query: DefaultQueryParams = None) -> None:
         self._path = path
@@ -80,15 +74,14 @@ class Accessor[ReturnObject: InteractiveObject](ABC):
     async def _request_endpoint(
         self: Self, query: QueryParameters, filters: dict[str, Any] | None = None
     ) -> RequesterResponse:
-        parsed_filters = parse_inline_filters(**(filters or {}))
-        filters_query = filters_to_query(filters=parsed_filters, validate=self._validate_filter)
+        filters_query = self.filtering.inline_filters_to_query(filters=filters or {})
 
         final_query = filters_query | query | self._default_query
 
         return await self._requester.get(*self._path, query=final_query)
 
     def _create_object(self: Self, data: dict[str, Any]) -> ReturnObject:
-        return self.CLASS(requester=self._requester, data=data)
+        return self.class_type(requester=self._requester, data=data)
 
 
 class PaginatedAccessor[ReturnObject: InteractiveObject](Accessor[ReturnObject]):
@@ -118,7 +111,7 @@ class PaginatedChildAccessor[Parent, Child: InteractiveChildObject](PaginatedAcc
         self._parent = parent
 
     def _create_object(self: Self, data: dict[str, Any]) -> Child:
-        return self.CLASS(parent=self._parent, data=data)
+        return self.class_type(parent=self._parent, data=data)
 
 
 class NonPaginatedAccessor[Child: InteractiveObject](Accessor[Child]):
@@ -140,4 +133,4 @@ class NonPaginatedChildAccessor[Parent, Child: InteractiveChildObject](NonPagina
         self._parent = parent
 
     def _create_object(self: Self, data: dict[str, Any]) -> Child:
-        return self.CLASS(parent=self._parent, data=data)
+        return self.class_type(parent=self._parent, data=data)
