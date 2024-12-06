@@ -4,7 +4,7 @@ from typing import Iterable, Literal, Self
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
-from adcm_aio_client.core.errors import NotFoundError, OperationError
+from adcm_aio_client.core.errors import NotFoundError
 from adcm_aio_client.core.host_groups import WithActionHostGroups, WithConfigHostGroups
 from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._accessors import (
@@ -393,22 +393,22 @@ class HostsInClusterNode(HostsAccessor):
     async def remove(self: Self, host: Host | Iterable[Host] | None = None, filters: Filter | None = None) -> None:
         hosts = await self._get_hosts_from_arg_or_filter(host=host, filters=filters)
 
-        errors = await safe_gather(
-            coros=(self._requester.delete(*self._path, host_.id) for host_ in hosts), objects=hosts
+        error = await safe_gather(
+            coros=(self._requester.delete(*self._path, host_.id) for host_ in hosts),
+            msg="Some hosts can't be deleted from cluster",
         )
 
-        if errors:
-            errors = ", ".join(str(err) for err in errors)
-            raise OperationError(f"Some hosts can't be deleted from cluster: {errors}")
+        if error is not None:
+            raise error
 
     async def _get_hosts_from_arg_or_filter(
         self: Self, host: Host | Iterable[Host] | None = None, filters: Filter | None = None
-    ) -> Iterable[Host]:
+    ) -> list[Host]:
         if all((host, filters)):
             raise ValueError("`host` and `filters` arguments are mutually exclusive.")
 
         if host:
-            hosts = [host] if isinstance(host, Host) else host
+            hosts = list(host) if isinstance(host, Iterable) else [host]
         else:
             hosts = await self.filter(filters)  # type: ignore  # TODO
 

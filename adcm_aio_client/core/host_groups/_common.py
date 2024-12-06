@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING, Iterable, Self, Union
 
-from adcm_aio_client.core.errors import OperationError
 from adcm_aio_client.core.objects._accessors import AccessorFilter, PaginatedAccessor, PaginatedChildAccessor
 from adcm_aio_client.core.objects._base import InteractiveChildObject
 from adcm_aio_client.core.types import Endpoint, QueryParameters, Requester, RequesterResponse
@@ -27,53 +26,59 @@ class HostInHostGroupNode(PaginatedAccessor["Host", None]):
 
         return super().__new__(cls)
 
-    async def add(self: Self, host: Host | Iterable[Host] | Filter) -> None:
+    async def add(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> None:
         hosts = await self._get_hosts_from_args(host=host)
-        errors = await safe_gather(
+        error = await safe_gather(
             coros=(self._requester.post(*self._path, data={"hostId": host.id}) for host in hosts),
-            objects=hosts,
+            msg=f"Some hosts can't be added to {self.group_type} host group",
         )
+        if error is not None:
+            raise error
 
-        if errors:
-            errors = ", ".join(str(err) for err in errors)
-            raise OperationError(f"Some hosts can't be added to {self.group_type} host group: {errors}")
-
-    async def remove(self: Self, host: Host | Iterable[Host] | Filter) -> None:
+    async def remove(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> None:
         hosts = await self._get_hosts_from_args(host=host)
-        errors = await safe_gather(
-            coros=(self._requester.delete(*self._path, host.id) for host in hosts), objects=hosts
+        error = await safe_gather(
+            coros=(self._requester.delete(*self._path, host.id) for host in hosts),
+            msg=f"Some hosts can't be removed from {self.group_type} host group",
         )
 
-        if errors:
-            errors = ", ".join(str(err) for err in errors)
-            raise OperationError(f"Some hosts can't be removed from {self.group_type} host group: {errors}")
+        if error is not None:
+            raise error
 
-    async def set(self: Self, host: Host | Iterable[Host] | Filter) -> None:
-        await self.remove(host=await self.all())
-        await self.add(host=await self._get_hosts_from_args(host=host))
+    async def set(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> None:
+        hosts = await self._get_hosts_from_args(host=host)
+        in_group_ids = {host["id"] for host in (await super()._request_endpoint(query={})).as_list()}
 
-    async def _get_hosts_from_args(self: Self, host: Host | Iterable[Host] | Filter) -> Iterable[Host]:
+        to_remove_ids = {host_id for host_id in in_group_ids if host_id not in (host.id for host in hosts)}
+        to_add_ids = {host.id for host in hosts if host.id not in in_group_ids}
+
+        if to_remove_ids:
+            await self.remove(host=Filter(id__in=to_remove_ids))  # type: ignore  # TODO: implement
+        if to_add_ids:
+            await self.add(host=Filter(id__in=to_add_ids))  # type: ignore  # TODO: implement
+
+    async def _get_hosts_from_args(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> list["Host"]:
         if isinstance(host, Filter):
             return await self.filter(host)  # type: ignore  # TODO
 
-        return host if isinstance(host, Iterable) else [host]
+        return list(host) if isinstance(host, Iterable) else [host]
 
     async def _request_endpoint(self: Self, query: QueryParameters) -> RequesterResponse:
         """HostGroup/hosts response have too little information to construct Host"""
 
-        response = (await super()._request_endpoint(query)).as_list()
-        ids = ",".join(str(host["id"]) for host in response)
+        data = (await super()._request_endpoint(query)).as_list()
+        ids = ",".join(str(host["id"]) for host in data)
         query = {"id__in": ids} if ids else {"id__in": "-1"}  # non-existent id to fetch 0 hosts
 
         return await self._requester.get("hosts", query=query)
 
 
 class HostGroupNode[
-    Parent: Union[Cluster, Service, Component, HostProvider],
-    Child: Union[ConfigHostGroup, ActionHostGroup],
+    Parent: Cluster | Service | Component | HostProvider,
+    Child: ConfigHostGroup | ActionHostGroup,
 ](PaginatedChildAccessor[Parent, Child, None]):
     async def create(  # TODO: can create HG with subset of `hosts` if adding some of them leads to an error
-        self: Self, name: str, description: str = "", hosts: list[Host] | None = None
+        self: Self, name: str, description: str = "", hosts: list["Host"] | None = None
     ) -> InteractiveChildObject:
         response = await self._requester.post(*self._path, data={"name": name, "description": description})
         host_group = self.class_type(parent=self._parent, data=response.as_dict())
@@ -82,12 +87,11 @@ class HostGroupNode[
             return host_group
 
         path = *host_group.get_own_path(), "hosts"
-        errors = await safe_gather(
-            coros=(self._requester.post(*path, data={"hostId": host.id}) for host in hosts), objects=hosts
+        error = await safe_gather(
+            coros=(self._requester.post(*path, data={"hostId": host.id}) for host in hosts),
+            msg=f"Some hosts can't be added to {host_group}",
         )
-
-        if errors:
-            errors = ", ".join(str(err) for err in errors)
-            raise OperationError(f"Some hosts can't be added to {host_group}: {errors}")
+        if error is not None:
+            raise error
 
         return host_group

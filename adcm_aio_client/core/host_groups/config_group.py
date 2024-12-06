@@ -25,8 +25,6 @@ class ConfigHostGroup(InteractiveChildObject, Deletable, WithConfig):
     def hosts(self: Self) -> "HostsInConfigHostGroupNode":
         return HostsInConfigHostGroupNode(path=(*self.get_own_path(), "hosts"), requester=self._requester)
 
-    def validate(self: Self) -> ...: ...
-
 
 class ConfigHostGroupNode(HostGroupNode[Union["Cluster", "Service", "Component"], ConfigHostGroup]):
     class_type = ConfigHostGroup
