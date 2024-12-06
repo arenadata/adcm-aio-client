@@ -27,7 +27,7 @@ class ActionHostGroup(InteractiveChildObject, Deletable):
         return HostsInActionHostGroupNode(path=(*self.get_own_path(), "hosts"), requester=self._requester)
 
     @cached_property
-    def actions(self: Self) -> ...:
+    def actions(self: Self) -> ActionsAccessor:
         return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
 
 
