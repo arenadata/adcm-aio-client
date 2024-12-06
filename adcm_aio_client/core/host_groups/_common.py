@@ -49,7 +49,7 @@ class HostInHostGroupNode(
             raise OperationError(f"Some hosts can't be removed from {self.group_type} host group: {errors}")
 
     async def set(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> None:
-        await self.remove(host=await self.list())
+        await self.remove(host=await self.all())
         await self.add(host=await self._get_hosts_from_args(host=host))
 
     async def _get_hosts_from_args(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> Iterable["Host"]:
