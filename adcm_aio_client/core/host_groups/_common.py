@@ -69,13 +69,11 @@ class HostInHostGroupNode(
 
 
 class HostGroupNode(PaginatedChildAccessor):
-    class_type: InteractiveChildObject  # pyright: ignore[reportIncompatibleVariableOverride]
-
     async def create(  # TODO: can create HG with subset of `hosts` if adding some of them leads to an error
         self: Self, name: str, description: str = "", hosts: list["Host"] | None = None
     ) -> InteractiveChildObject:
         response = await self._requester.post(*self._path, data={"name": name, "description": description})
-        host_group = self.class_type(parent=self._parent, data=response.as_dict())  # pyright: ignore[reportCallIssue]
+        host_group = self.class_type(parent=self._parent, data=response.as_dict())
 
         if not hosts:
             return host_group

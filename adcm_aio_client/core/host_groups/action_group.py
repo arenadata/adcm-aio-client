@@ -29,7 +29,7 @@ class ActionHostGroup(InteractiveChildObject, Deletable):
 
 
 class ActionHostGroupNode(HostGroupNode):
-    class_type = ActionHostGroup  # pyright: ignore[reportAssignmentType]
+    class_type = ActionHostGroup
 
 
 class HostsInActionHostGroupNode(HostInHostGroupNode):

@@ -26,7 +26,7 @@ class ConfigHostGroup(InteractiveChildObject, Deletable, WithConfig):
 
 
 class ConfigHostGroupNode(HostGroupNode):
-    class_type = ConfigHostGroup  # pyright: ignore[reportAssignmentType]
+    class_type = ConfigHostGroup
     # TODO: create() with `config` arg
 
 
