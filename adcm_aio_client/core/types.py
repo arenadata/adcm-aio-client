@@ -93,6 +93,16 @@ class MappingOperation(str, Enum):
     REMOVE = "remove"
 
 
+class JobStatus(str, Enum):
+    CREATED = "created"
+    SUCCESS = "success"
+    FAILED = "failed"
+    RUNNING = "running"
+    LOCKED = "locked"
+    ABORTED = "aborted"
+    BROKEN = "broken"
+
+
 class UrlPath(str):
     pass
 
