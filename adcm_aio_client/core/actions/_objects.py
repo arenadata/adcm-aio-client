@@ -66,16 +66,8 @@ class ActionsAccessor(NonPaginatedChildAccessor):
     class_type = Action
 
 
-class Upgrade(InteractiveChildObject):
+class Upgrade(Action):
     PATH_PREFIX = "upgrades"
-
-    def __init__(self: Self, parent: InteractiveChildObject, data: dict[str, Any]) -> None:
-        super().__init__(parent, data)
-        self._verbose = False
-
-    @property
-    def name(self: Self) -> str:
-        return str(self._data["name"])
 
     @property
     def bundle(self: Self) -> Bundle:
@@ -83,27 +75,16 @@ class Upgrade(InteractiveChildObject):
 
         return Bundle(requester=self._requester, data=self._data["bundle"])
 
-    @async_cached_property
-    async def _mapping_rule(self: Self) -> list[dict] | None:
-        return (await self._rich_data)["hostComponentMapRules"]
-
-    @async_cached_property
-    async def _rich_data(self: Self) -> dict:
-        return (await self._requester.get(*self.get_own_path())).as_dict()
-
     @async_cached_property  # TODO: Config class
     async def config(self: Self) -> ...:
         return (await self._rich_data)["configuration"]
 
-    async def run(self: Self) -> dict:  # TODO: implement Task, return Task
-        return (await self._requester.post(*self.get_own_path(), "run", data={"isVerbose": self._verbose})).as_dict()
-
-    def set_verbose(self: Self) -> Self:
-        self._verbose = True
-        return self
-
     def validate(self: Self) -> bool:
         return True
+
+
+class UpgradeNode(NonPaginatedChildAccessor):
+    class_type = Upgrade
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:

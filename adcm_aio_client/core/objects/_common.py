@@ -3,7 +3,7 @@ from typing import Self
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
-from adcm_aio_client.core.actions import ActionsAccessor
+from adcm_aio_client.core.actions import ActionsAccessor, UpgradeNode
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.core.config._objects import ConfigOwner
 from adcm_aio_client.core.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
@@ -40,7 +40,8 @@ class WithConfig(ConfigOwner):
 
 class WithUpgrades(WithProtectedRequester, AwareOfOwnPath):
     @cached_property
-    def upgrades(self: Self) -> ...: ...
+    def upgrades(self: Self) -> UpgradeNode:
+        return UpgradeNode(parent=self, path=(*self.get_own_path(), "upgrades"), requester=self._requester)
 
 
 class WithConfigGroups(WithProtectedRequester, AwareOfOwnPath):
