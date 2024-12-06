@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
-    _validate_filter = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
+    filtering = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
 
     def __new__(cls: type[Self], cluster: Cluster, requester: Requester) -> Self:
         _ = cluster, requester

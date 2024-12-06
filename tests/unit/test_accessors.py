@@ -3,7 +3,7 @@ from typing import Any, AsyncGenerator, Callable, Self
 import pytest
 
 from adcm_aio_client.core.errors import InvalidFilterError, MultipleObjectsReturnedError, ObjectDoesNotExistError
-from adcm_aio_client.core.filters import Filter, FilterBy, FilterByName, Filtering
+from adcm_aio_client.core.filters import FilterBy, FilterByName, Filtering
 from adcm_aio_client.core.objects._accessors import (
     Accessor,
     NonPaginatedChildAccessor,
@@ -18,9 +18,7 @@ from tests.unit.utils import n_entries_as_list
 pytestmark = [pytest.mark.asyncio]
 
 
-def no_validation(filter_: Filter) -> None:
-    _ = filter_
-    return
+no_validation = Filtering()
 
 
 class _OwnPath:
@@ -36,22 +34,22 @@ class DummyChild(_OwnPath, InteractiveChildObject): ...
 
 class DummyPaginatedAccessor(PaginatedAccessor[Dummy]):
     class_type = Dummy
-    _validate_filter = no_validation
+    filtering = no_validation
 
 
 class DummyChildPaginatedAccessor(PaginatedChildAccessor[Dummy, DummyChild]):
     class_type = DummyChild
-    _validate_filter = no_validation
+    filtering = no_validation
 
 
 class DummyChildNonPaginatedAccessor(NonPaginatedChildAccessor[Dummy, DummyChild]):
     class_type = DummyChild
-    _validate_filter = no_validation
+    filtering = no_validation
 
 
 class DummyAccessorWithFilter(PaginatedAccessor[Dummy]):
     class_type = Dummy
-    _validate_filter = Filtering(FilterByName, FilterBy("custom", {"eq"}, Dummy))
+    filtering = Filtering(FilterByName, FilterBy("custom", {"eq"}, Dummy))
 
 
 def create_paginated_response(amount: int) -> dict:
