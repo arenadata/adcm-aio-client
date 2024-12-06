@@ -9,7 +9,6 @@ from adcm_aio_client.core.errors import HostNotInClusterError, NoMappingRulesFor
 from adcm_aio_client.core.mapping import ActionMapping
 from adcm_aio_client.core.objects._accessors import NonPaginatedChildAccessor
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
-from adcm_aio_client.core.objects._common import Deletable, WithConfig
 
 if TYPE_CHECKING:
     from adcm_aio_client.core.objects.cm import Bundle, Cluster
@@ -67,7 +66,7 @@ class ActionsAccessor(NonPaginatedChildAccessor):
     class_type = Action
 
 
-class Upgrade(Deletable, WithConfig, InteractiveChildObject):
+class Upgrade(InteractiveChildObject):
     PATH_PREFIX = "upgrades"
 
     def __init__(self: Self, parent: InteractiveChildObject, data: dict[str, Any]) -> None:
@@ -91,6 +90,10 @@ class Upgrade(Deletable, WithConfig, InteractiveChildObject):
     @async_cached_property
     async def _rich_data(self: Self) -> dict:
         return (await self._requester.get(*self.get_own_path())).as_dict()
+
+    @async_cached_property  # TODO: Config class
+    async def config(self: Self) -> ...:
+        return (await self._rich_data)["configuration"]
 
     async def run(self: Self) -> dict:  # TODO: implement Task, return Task
         return (await self._requester.post(*self.get_own_path(), "run", data={"isVerbose": self._verbose})).as_dict()
