@@ -44,16 +44,6 @@ class WithUpgrades(WithProtectedRequester, AwareOfOwnPath):
         return UpgradeNode(parent=self, path=(*self.get_own_path(), "upgrades"), requester=self._requester)
 
 
-class WithConfigGroups(WithProtectedRequester, AwareOfOwnPath):
-    @cached_property
-    def config_groups(self: Self) -> ...: ...
-
-
-class WithActionHostGroups(WithProtectedRequester, AwareOfOwnPath):
-    @cached_property
-    def action_host_groups(self: Self) -> ...: ...
-
-
 class WithMaintenanceMode(WithProtectedRequester, AwareOfOwnPath):
     @async_cached_property
     async def maintenance_mode(self: Self) -> MaintenanceMode:

@@ -64,6 +64,18 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
             with suppress(AttributeError):
                 delattr(self, name)
 
+    def __str__(self: Self) -> str:
+        return self._repr
+
+    def __repr__(self: Self) -> str:
+        return self._repr
+
+    @property
+    def _repr(self: Self) -> str:
+        name = getattr(self, "name", None)
+        name = f" {name}" if isinstance(name, str) else ""
+        return f"<{self.__class__.__name__} #{self.id}{name}>"
+
 
 class RootInteractiveObject(InteractiveObject):
     PATH_PREFIX: str
