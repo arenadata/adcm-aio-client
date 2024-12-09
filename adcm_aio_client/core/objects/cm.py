@@ -7,7 +7,8 @@ import asyncio
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.actions._objects import Action
-from adcm_aio_client.core.errors import NotFoundError, OperationError, ResponseError
+from adcm_aio_client.core.errors import NotFoundError
+from adcm_aio_client.core.host_groups import WithActionHostGroups, WithConfigHostGroups
 from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
@@ -20,10 +21,8 @@ from adcm_aio_client.core.objects._base import (
 )
 from adcm_aio_client.core.objects._common import (
     Deletable,
-    WithActionHostGroups,
     WithActions,
     WithConfig,
-    WithConfigGroups,
     WithJobStatus,
     WithMaintenanceMode,
     WithStatus,
@@ -32,6 +31,7 @@ from adcm_aio_client.core.objects._common import (
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
 from adcm_aio_client.core.types import Endpoint, JobStatus, Requester, UrlPath, WithProtectedRequester
+from adcm_aio_client.core.utils import safe_gather
 
 type Filter = object  # TODO: implement
 
@@ -141,7 +141,7 @@ class Cluster(
     WithUpgrades,
     WithConfig,
     WithActionHostGroups,
-    WithConfigGroups,
+    WithConfigHostGroups,
     RootInteractiveObject,
 ):
     PATH_PREFIX = "clusters"
@@ -212,7 +212,7 @@ class Service(
     WithActions,
     WithConfig,
     WithActionHostGroups,
-    WithConfigGroups,
+    WithConfigHostGroups,
     InteractiveChildObject[Cluster],
 ):
     PATH_PREFIX = "services"
@@ -271,7 +271,7 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service, None]):
 
 
 class Component(
-    WithStatus, WithActions, WithConfig, WithActionHostGroups, WithConfigGroups, InteractiveChildObject[Service]
+    WithStatus, WithActions, WithConfig, WithActionHostGroups, WithConfigHostGroups, InteractiveChildObject[Service]
 ):
     PATH_PREFIX = "components"
 
@@ -313,7 +313,7 @@ class ComponentsNode(PaginatedChildAccessor[Service, Component, None]):
     class_type = Component
 
 
-class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInteractiveObject):
+class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, WithConfigHostGroups, RootInteractiveObject):
     PATH_PREFIX = "hostproviders"
     # data-based properties
 
@@ -368,9 +368,6 @@ class Host(Deletable, WithActions, WithStatus, WithMaintenanceMode, RootInteract
     async def hostprovider(self: Self) -> HostProvider:
         return await HostProvider.with_id(requester=self._requester, object_id=self._data["hostprovider"]["id"])
 
-    def __str__(self: Self) -> str:
-        return f"<{self.__class__.__name__} #{self.id} {self.name}>"
-
 
 class HostsAccessor(PaginatedAccessor[Host, None]):
     class_type = Host
@@ -395,27 +392,22 @@ class HostsInClusterNode(HostsAccessor):
     async def remove(self: Self, host: Host | Iterable[Host] | None = None, filters: Filter | None = None) -> None:
         hosts = await self._get_hosts_from_arg_or_filter(host=host, filters=filters)
 
-        results = await asyncio.gather(
-            *(self._requester.delete(*self._path, host_.id) for host_ in hosts), return_exceptions=True
+        error = await safe_gather(
+            coros=(self._requester.delete(*self._path, host_.id) for host_ in hosts),
+            msg="Some hosts can't be deleted from cluster",
         )
 
-        errors = set()
-        for host_, result in zip(hosts, results):
-            if isinstance(result, ResponseError):
-                errors.add(str(host_))
-
-        if errors:
-            errors = ", ".join(errors)
-            raise OperationError(f"Some hosts can't be deleted from cluster: {errors}")
+        if error is not None:
+            raise error
 
     async def _get_hosts_from_arg_or_filter(
         self: Self, host: Host | Iterable[Host] | None = None, filters: Filter | None = None
-    ) -> Iterable[Host]:
+    ) -> list[Host]:
         if all((host, filters)):
             raise ValueError("`host` and `filters` arguments are mutually exclusive.")
 
         if host:
-            hosts = [host] if isinstance(host, Host) else host
+            hosts = list(host) if isinstance(host, Iterable) else [host]
         else:
             hosts = await self.filter(filters)  # type: ignore  # TODO
 
