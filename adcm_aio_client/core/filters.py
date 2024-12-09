@@ -89,10 +89,6 @@ class Filtering:
             message = f"Operation {filter_.op} is not allowed. Allowed: {', '.join(sorted(allowed_filter.operations))}"
             raise InvalidFilterError(message)
 
-        # we don't want to empty generator here
-        if isinstance(filter_.value, Generator):
-            filter_.value = tuple(filter_.value)
-
         expected_type = allowed_filter.single_input
         if isinstance(filter_.value, Iterable):
             if not all(isinstance(entry, expected_type) for entry in filter_.value):
