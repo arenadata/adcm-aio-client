@@ -2,7 +2,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Self, Union
 
 from adcm_aio_client.core.actions import ActionsAccessor
-from adcm_aio_client.core.host_groups._common import HostGroupNode, HostInHostGroupNode
+from adcm_aio_client.core.host_groups._common import HostGroupNode, HostsInHostGroupNode
 from adcm_aio_client.core.objects._base import InteractiveChildObject
 from adcm_aio_client.core.objects._common import Deletable
 from adcm_aio_client.core.types import AwareOfOwnPath, WithProtectedRequester
@@ -35,7 +35,7 @@ class ActionHostGroupNode(HostGroupNode[Union["Cluster", "Service", "Component"]
     class_type = ActionHostGroup
 
 
-class HostsInActionHostGroupNode(HostInHostGroupNode):
+class HostsInActionHostGroupNode(HostsInHostGroupNode):
     group_type = "action"
 
 

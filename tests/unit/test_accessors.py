@@ -2,7 +2,8 @@ from typing import Any, AsyncGenerator, Callable, Self
 
 import pytest
 
-from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.core.errors import InvalidFilterError, MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.core.filters import FilterBy, FilterByName, Filtering
 from adcm_aio_client.core.objects._accessors import (
     Accessor,
     NonPaginatedChildAccessor,
@@ -17,6 +18,9 @@ from tests.unit.utils import n_entries_as_list
 pytestmark = [pytest.mark.asyncio]
 
 
+no_validation = Filtering()
+
+
 class _OwnPath:
     def get_own_path(self: Self) -> Endpoint:
         return ()
@@ -28,16 +32,24 @@ class Dummy(_OwnPath, InteractiveObject): ...
 class DummyChild(_OwnPath, InteractiveChildObject): ...
 
 
-class DummyPaginatedAccessor(PaginatedAccessor[Dummy, None]):
+class DummyPaginatedAccessor(PaginatedAccessor[Dummy]):
     class_type = Dummy
+    filtering = no_validation
 
 
-class DummyChildPaginatedAccessor(PaginatedChildAccessor[Dummy, DummyChild, None]):
+class DummyChildPaginatedAccessor(PaginatedChildAccessor[Dummy, DummyChild]):
     class_type = DummyChild
+    filtering = no_validation
 
 
-class DummyChildNonPaginatedAccessor(NonPaginatedChildAccessor[Dummy, DummyChild, None]):
+class DummyChildNonPaginatedAccessor(NonPaginatedChildAccessor[Dummy, DummyChild]):
     class_type = DummyChild
+    filtering = no_validation
+
+
+class DummyAccessorWithFilter(PaginatedAccessor[Dummy]):
+    class_type = Dummy
+    filtering = Filtering(FilterByName, FilterBy("custom", {"eq"}, Dummy))
 
 
 def create_paginated_response(amount: int) -> dict:
@@ -100,7 +112,6 @@ async def test_non_paginated_child(queue_requester: QueueRequester) -> None:
 
     with pytest.raises(ObjectDoesNotExistError):
         await accessor.get()
-
     requester.flush().queue_responses(create_response(2))
 
     with pytest.raises(MultipleObjectsReturnedError):
@@ -267,3 +278,28 @@ async def _test_paginated_accessor_common_methods[T: dict | list](
 
     # now all results are read
     assert len(requester.queue) == 0
+
+
+async def test_filter_validation(queue_requester: QueueRequester) -> None:
+    accessor = DummyAccessorWithFilter(requester=queue_requester, path=())
+
+    with pytest.raises(InvalidFilterError, match="by notexist is not allowed"):
+        await accessor.get(notexist__eq="sd")
+
+    with pytest.raises(InvalidFilterError, match="Operation in is not allowed"):
+        await accessor.get(custom__in=["sd"])
+
+    with pytest.raises(InvalidFilterError, match="At least one entry is not"):
+        await accessor.get(name__iin=("sdlfkj", 1))
+
+    with pytest.raises(InvalidFilterError, match=f"1 is not {str}"):
+        await accessor.get(name__eq=1)
+
+    with pytest.raises(InvalidFilterError, match="Multiple values expected for exclude"):
+        await accessor.get(name__exclude="sd")
+
+    with pytest.raises(InvalidFilterError, match="Collection for filter shouldn't be empty"):
+        await accessor.get(name__exclude=[])
+
+    with pytest.raises(InvalidFilterError, match="Only one value is expected for icontains"):
+        await accessor.get(name__icontains={"sldkfj"})

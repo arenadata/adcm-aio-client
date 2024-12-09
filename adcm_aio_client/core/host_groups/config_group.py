@@ -1,7 +1,7 @@
 from functools import cached_property
 from typing import TYPE_CHECKING, Self, Union
 
-from adcm_aio_client.core.host_groups._common import HostGroupNode, HostInHostGroupNode
+from adcm_aio_client.core.host_groups._common import HostGroupNode, HostsInHostGroupNode
 from adcm_aio_client.core.objects._base import InteractiveChildObject
 from adcm_aio_client.core.objects._common import Deletable, WithConfig
 from adcm_aio_client.core.types import AwareOfOwnPath, WithProtectedRequester
@@ -31,7 +31,7 @@ class ConfigHostGroupNode(HostGroupNode[Union["Cluster", "Service", "Component"]
     # TODO: create() with `config` arg
 
 
-class HostsInConfigHostGroupNode(HostInHostGroupNode):
+class HostsInConfigHostGroupNode(HostsInHostGroupNode):
     group_type = "config"
 
 
