@@ -34,29 +34,33 @@ class ADCMPostgresContainer(PostgresContainer):
         self.network = network
 
     def setup_postgres(self: Self, username: str, password: str, adcm_db_name: str) -> None:
-        postgres_port = find_free_port(postgres_port_range[0], postgres_port_range[1])
-
         self.adcm_env_kwargs = self.adcm_env_kwargs | {
-            "DB_HOST": f"{postgres_name}_{postgres_port}",
+            "DB_HOST": postgres_name,
             "DB_USER": db_user,
             "DB_NAME": db_name,
             "DB_PASS": db_password,
-            "DB_PORT": str(postgres_port),
+            "DB_PORT": "5432",
         }
 
-        self.with_name(f"{postgres_name}_{postgres_port}")
-        self.password = password
+        self.with_name(postgres_name)
+        self.adcm_username = username
+        self.adcm_db_name = adcm_db_name
+        self.adcm_password = password
         self.with_network(self.network)
-        self.with_bind_ports(postgres_port, postgres_port)
 
-        self.start()
+    def wait_ready(self):
         wait_container_is_ready(self)
 
-        self.exec(
-            f"psql --username test --dbname postgres "
-            f"-c \"CREATE USER {username} WITH ENCRYPTED PASSWORD '{db_password}';\""
+        # todo raise on error
+        ec, out = self.exec(
+            f"psql --username test --dbname test "
+            f"-c \"CREATE USER {self.adcm_username} WITH ENCRYPTED PASSWORD '{db_password}';\""
         )
-        self.exec(f"psql --username test --dbname postgres " f'-c "CREATE DATABASE {adcm_db_name} OWNER {username};"')
+        if ec != 0:
+            raise RuntimeError(out.decode("utf-8"))
+        ec, out = self.exec(f"psql --username test --dbname test " f'-c "CREATE DATABASE {self.adcm_db_name} OWNER {self.adcm_username};"')
+        if ec != 0:
+            raise RuntimeError(out.decode("utf-8"))
 
         wait_for_logs(self, "database system is ready to accept connections")
 
@@ -66,7 +70,6 @@ class ADCMContainer(DockerContainer):
 
     def __init__(self: Self, image: str, network: Network, env_kwargs: dict) -> None:
         super().__init__(image)
-        self.postgres_env_kwargs = {}
         self.network = network
         self.adcm_env_kwarg = env_kwargs
 
@@ -76,7 +79,7 @@ class ADCMContainer(DockerContainer):
         self.with_network(self.network)
         self.with_bind_ports(adcm_port, adcm_port)
 
-        for key, value in self.postgres_env_kwargs.items():
+        for key, value in self.adcm_env_kwarg.items():
             self.with_env(key, value)
 
         self.start()

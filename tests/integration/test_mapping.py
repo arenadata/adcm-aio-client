@@ -35,8 +35,9 @@ async def cluster(adcm_client: ADCMClient, cluster_bundle: Bundle) -> Cluster:
 async def hosts(adcm_client: ADCMClient, hostprovider_bundle: Bundle) -> FiveHosts:
     hp = await adcm_client.hostproviders.create(bundle=hostprovider_bundle, name="Awesome HostProvider")
     coros = (adcm_client.hosts.create(hostprovider=hp, name=f"host-{i}") for i in range (5))
-    result = await asyncio.gather(*coros)
-    return tuple(result)  # type: ignore
+    await asyncio.gather(*coros)
+    hosts = await adcm_client.hosts.all()
+    return tuple(hosts)
     
 
 async def test_cluster_mapping(cluster: Cluster, hosts: FiveHosts) -> None:

@@ -153,6 +153,7 @@ class DefaultRequester(Requester):
             raise LoginError(message)
 
         self._credentials = credentials
+        self.client.headers["X-CSRFToken"] = response.cookies["csrftoken"]
         return self
 
     async def get(self: Self, *path: PathPart, query: QueryParameters | None = None) -> HTTPXRequesterResponse:

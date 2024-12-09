@@ -28,8 +28,10 @@ def network() -> Generator[Network, None, None]:
 
 @pytest.fixture(scope="function")
 def postgres(network: Network) -> Generator[ADCMPostgresContainer, None, None]:
-    with ADCMPostgresContainer(postgres_image_name, network) as container:
-        container.setup_postgres(db_user, db_password, db_name)
+    container = ADCMPostgresContainer(postgres_image_name, network)
+    container.setup_postgres(db_user, db_password, db_name)
+    with container:
+        container.wait_ready()
         yield container
 
 
