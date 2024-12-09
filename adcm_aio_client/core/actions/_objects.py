@@ -11,7 +11,7 @@ from adcm_aio_client.core.objects._accessors import NonPaginatedChildAccessor
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
 
 if TYPE_CHECKING:
-    from adcm_aio_client.core.objects.cm import Cluster
+    from adcm_aio_client.core.objects.cm import Bundle, Cluster
 
 
 class Action(InteractiveChildObject):
@@ -64,6 +64,27 @@ class Action(InteractiveChildObject):
 
 class ActionsAccessor(NonPaginatedChildAccessor):
     class_type = Action
+
+
+class Upgrade(Action):
+    PATH_PREFIX = "upgrades"
+
+    @property
+    def bundle(self: Self) -> Bundle:
+        from adcm_aio_client.core.objects.cm import Bundle
+
+        return Bundle(requester=self._requester, data=self._data["bundle"])
+
+    @async_cached_property  # TODO: Config class
+    async def config(self: Self) -> ...:
+        return (await self._rich_data)["configuration"]
+
+    def validate(self: Self) -> bool:
+        return True
+
+
+class UpgradeNode(NonPaginatedChildAccessor):
+    class_type = Upgrade
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:

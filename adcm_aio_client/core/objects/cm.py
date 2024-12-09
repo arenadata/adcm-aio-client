@@ -1,7 +1,8 @@
 from collections import deque
+from datetime import datetime
 from functools import cached_property
 from pathlib import Path
-from typing import Iterable, Literal, Self
+from typing import Callable, Iterable, Literal, Self
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
@@ -17,6 +18,9 @@ from adcm_aio_client.core.filters import (
     FilterByStatus,
     Filtering,
 )
+from adcm_aio_client.core.actions._objects import Action
+from adcm_aio_client.core.errors import NotFoundError
+from adcm_aio_client.core.host_groups import WithActionHostGroups, WithConfigHostGroups
 from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
@@ -30,22 +34,17 @@ from adcm_aio_client.core.objects._base import (
 )
 from adcm_aio_client.core.objects._common import (
     Deletable,
-    WithActionHostGroups,
     WithActions,
     WithConfig,
-    WithConfigGroups,
+    WithJobStatus,
     WithMaintenanceMode,
     WithStatus,
     WithUpgrades,
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
-from adcm_aio_client.core.types import (
-    Endpoint,
-    Requester,
-    UrlPath,
-    WithProtectedRequester,
-)
+from adcm_aio_client.core.types import Endpoint, JobStatus, Requester, UrlPath, WithProtectedRequester
+from adcm_aio_client.core.utils import safe_gather
 
 
 class ADCM(InteractiveObject, WithActions, WithConfig):
@@ -159,7 +158,7 @@ class Cluster(
     WithUpgrades,
     WithConfig,
     WithActionHostGroups,
-    WithConfigGroups,
+    WithConfigHostGroups,
     RootInteractiveObject,
 ):
     PATH_PREFIX = "clusters"
@@ -234,7 +233,7 @@ class Service(
     WithActions,
     WithConfig,
     WithActionHostGroups,
-    WithConfigGroups,
+    WithConfigHostGroups,
     InteractiveChildObject[Cluster],
 ):
     PATH_PREFIX = "services"
@@ -303,7 +302,7 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
 
 
 class Component(
-    WithStatus, WithActions, WithConfig, WithActionHostGroups, WithConfigGroups, InteractiveChildObject[Service]
+    WithStatus, WithActions, WithConfig, WithActionHostGroups, WithConfigHostGroups, InteractiveChildObject[Service]
 ):
     PATH_PREFIX = "components"
 
@@ -346,7 +345,7 @@ class ComponentsNode(PaginatedChildAccessor[Service, Component]):
     filtering = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
 
 
-class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, RootInteractiveObject):
+class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, WithConfigHostGroups, RootInteractiveObject):
     PATH_PREFIX = "hostproviders"
     filtering = Filtering(FilterByName, FilterByBundle)
 
@@ -402,9 +401,6 @@ class Host(Deletable, WithActions, WithStatus, WithMaintenanceMode, RootInteract
     async def hostprovider(self: Self) -> HostProvider:
         return await HostProvider.with_id(requester=self._requester, object_id=self._data["hostprovider"]["id"])
 
-    def __str__(self: Self) -> str:
-        return f"<{self.__class__.__name__} #{self.id} {self.name}>"
-
 
 class HostsAccessor(PaginatedAccessor[Host]):
     class_type = Host
@@ -430,18 +426,13 @@ class HostsInClusterNode(HostsAccessor):
     async def remove(self: Self, host: Host | Iterable[Host] | Filter) -> None:
         hosts = await self._get_hosts(host=host)
 
-        results = await asyncio.gather(
-            *(self._requester.delete(*self._path, host_.id) for host_ in hosts), return_exceptions=True
+        error = await safe_gather(
+            coros=(self._requester.delete(*self._path, host_.id) for host_ in hosts),
+            msg="Some hosts can't be deleted from cluster",
         )
 
-        errors = set()
-        for host_, result in zip(hosts, results):
-            if isinstance(result, ResponseError):
-                errors.add(str(host_))
-
-        if errors:
-            errors = ", ".join(errors)
-            raise OperationError(f"Some hosts can't be deleted from cluster: {errors}")
+        if error is not None:
+            raise error
 
     async def _get_hosts(self: Self, host: Host | Iterable[Host] | Filter) -> Iterable[Host]:
         if isinstance(host, Host):
@@ -453,3 +444,52 @@ class HostsInClusterNode(HostsAccessor):
             hosts = host
 
         return hosts
+
+
+class Job[Object: "InteractiveObject"](WithStatus, WithActions, WithJobStatus, RootInteractiveObject):
+    PATH_PREFIX = "tasks"
+
+    @property
+    def name(self: Self) -> str:
+        return str(self._data["name"])
+
+    @property
+    def start_time(self: Self) -> datetime:
+        return self._data["startTime"]
+
+    @property
+    def finish_time(self: Self) -> datetime:
+        return self._data["endTime"]
+
+    @property
+    def object(self: Self) -> Object:
+        obj_data = self._data["objects"][0]
+        obj_type = obj_data["type"]
+
+        obj_dict = {
+            "host": Host,
+            "component": Component,
+            "provider": HostProvider,
+            "cluster": Cluster,
+            "service": Service,
+            "adcm": ADCM,
+        }
+
+        return self._construct(what=obj_dict[obj_type], from_data=obj_data)
+
+    @property
+    def action(self: Self) -> Action:
+        return self._construct(what=Action, from_data=self._data["action"])
+
+    async def wait(self: Self, status_predicate: Callable[[], bool], timeout: int = 30, poll: int = 5) -> None:
+        if self._data["status"] not in (JobStatus.RUNNING, JobStatus.CREATED):
+            return
+
+        for _ in range(timeout // poll):
+            await asyncio.sleep(poll)
+            if status_predicate():
+                self._data["status"] = self.get_status()
+                return
+
+    async def terminate(self: Self) -> None:
+        await self._requester.post(*self.get_own_path(), "terminate", data={})

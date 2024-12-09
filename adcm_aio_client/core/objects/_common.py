@@ -3,11 +3,11 @@ from typing import Self
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
-from adcm_aio_client.core.actions import ActionsAccessor
+from adcm_aio_client.core.actions import ActionsAccessor, UpgradeNode
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.core.config._objects import ConfigOwner
 from adcm_aio_client.core.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
-from adcm_aio_client.core.types import ADCMEntityStatus
+from adcm_aio_client.core.types import ADCMEntityStatus, JobStatus
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):
@@ -40,17 +40,8 @@ class WithConfig(ConfigOwner):
 
 class WithUpgrades(WithProtectedRequester, AwareOfOwnPath):
     @cached_property
-    def upgrades(self: Self) -> ...: ...
-
-
-class WithConfigGroups(WithProtectedRequester, AwareOfOwnPath):
-    @cached_property
-    def config_groups(self: Self) -> ...: ...
-
-
-class WithActionHostGroups(WithProtectedRequester, AwareOfOwnPath):
-    @cached_property
-    def action_host_groups(self: Self) -> ...: ...
+    def upgrades(self: Self) -> UpgradeNode:
+        return UpgradeNode(parent=self, path=(*self.get_own_path(), "upgrades"), requester=self._requester)
 
 
 class WithMaintenanceMode(WithProtectedRequester, AwareOfOwnPath):
@@ -59,3 +50,9 @@ class WithMaintenanceMode(WithProtectedRequester, AwareOfOwnPath):
         maintenance_mode = MaintenanceMode(self._data["maintenanceMode"], self._requester, self.get_own_path())  # pyright: ignore[reportAttributeAccessIssue]
         self._data["maintenanceMode"] = maintenance_mode.value  # pyright: ignore[reportAttributeAccessIssue]
         return maintenance_mode
+
+
+class WithJobStatus(WithProtectedRequester, AwareOfOwnPath):
+    async def get_job_status(self: Self) -> JobStatus:
+        response = await self._requester.get(*self.get_own_path())
+        return JobStatus(response.as_dict()["status"])
