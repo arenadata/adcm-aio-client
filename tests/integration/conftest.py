@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import AsyncGenerator, Generator
 
 from testcontainers.core.network import Network
@@ -15,6 +16,8 @@ from tests.integration.setup_environment import (
     db_user,
     postgres_image_name,
 )
+
+BUNDLES = Path(__file__).parent / "bundles"
 
 
 @pytest.fixture(scope="session")
@@ -40,4 +43,4 @@ def adcm(postgres: ADCMPostgresContainer) -> Generator[ADCMContainer, None, None
 @pytest_asyncio.fixture(scope="function")
 async def adcm_client(adcm: ADCMContainer) -> AsyncGenerator[ADCMClient, None]:
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
-    yield await build_client(url=adcm.url, credentials=credentials, retries=1, retry_interval=1, timeout=1)
+    yield await build_client(url=adcm.url, credentials=credentials, retries=1, retry_interval=1, timeout=10)

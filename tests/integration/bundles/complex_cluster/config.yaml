@@ -1,0 +1,28 @@
+- type: cluster
+  name: Some Cluster
+  version: 1
+
+- type: service
+  name: example_1
+  display_name: First Example
+  version: 1.0
+
+  config:
+    - name: root_int
+      display_name: Integer At Root
+      type: integer
+      default: 100
+
+  components: &example_c
+    first:
+      display_name: First Component
+    second:
+      display_name: Second Component
+    third_one:
+      display_name: Thirs Is Different
+
+- type: service
+  name: example_2
+  version: "4.23.456"
+
+  components: *example_c
