@@ -6,16 +6,19 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Any, Iterable, Self
 import asyncio
 
+from adcm_aio_client.core.filters import Filter, FilterByDisplayName, FilterByName, FilterByStatus, Filtering
 from adcm_aio_client.core.mapping.refresh import apply_local_changes, apply_remote_changes
 from adcm_aio_client.core.mapping.types import LocalMappings, MappingEntry, MappingPair, MappingRefreshStrategy
-from adcm_aio_client.core.objects._accessors import NonPaginatedAccessor
+from adcm_aio_client.core.objects._accessors import NonPaginatedAccessor, filters_to_inline
 from adcm_aio_client.core.types import ComponentID, HostID, Requester
 
 if TYPE_CHECKING:
     from adcm_aio_client.core.objects.cm import Cluster, Component, Host, HostsAccessor, Service
 
 
-class ComponentsMappingNode(NonPaginatedAccessor["Component", None]):
+class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
+    filtering = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
+
     def __new__(cls: type[Self], cluster: Cluster, requester: Requester) -> Self:
         _ = cluster, requester
 
@@ -28,7 +31,7 @@ class ComponentsMappingNode(NonPaginatedAccessor["Component", None]):
 
     def __init__(self: Self, cluster: Cluster, requester: Requester) -> None:
         path = (*cluster.get_own_path(), "mapping", "components")
-        super().__init__(path=path, requester=requester, accessor_filter=None)
+        super().__init__(path=path, requester=requester, default_query=None)
         self._cluster = cluster
 
     def _create_object(self: Self, data: dict[str, Any]) -> Component:
@@ -72,16 +75,18 @@ class ActionMapping:
         for entry in self._current:
             yield (self._components[entry.component_id], self._hosts[entry.host_id])
 
-    async def add(self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host]) -> Self:
-        components, hosts = self._ensure_collections(component=component, host=host)
+    async def add(self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter) -> Self:
+        components, hosts = await self._get_components_and_hosts(component=component, host=host)
         to_add = self._to_entries(components=components, hosts=hosts)
 
         self._current |= to_add
 
         return self
 
-    async def remove(self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host]) -> Self:
-        components, hosts = self._ensure_collections(component=component, host=host)
+    async def remove(
+        self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter
+    ) -> Self:
+        components, hosts = await self._get_components_and_hosts(component=component, host=host)
         to_remove = self._to_entries(components=components, hosts=hosts)
 
         self._current -= to_remove
@@ -100,14 +105,17 @@ class ActionMapping:
 
         return HostsAccessor(path=cluster_path, requester=self._owner.requester)
 
-    def _ensure_collections(
-        self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host]
+    async def _get_components_and_hosts(
+        self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter
     ) -> tuple[Iterable[Component], Iterable[Host]]:
         if isinstance(component, Component):
             component = (component,)
 
         if isinstance(host, Host):
             host = (host,)
+        elif isinstance(host, Filter):
+            inline_filters = filters_to_inline(host)
+            host = await self.hosts.filter(**inline_filters)
 
         return component, host
 
