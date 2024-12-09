@@ -40,4 +40,4 @@ def adcm(postgres: ADCMPostgresContainer) -> Generator[ADCMContainer, None, None
 @pytest_asyncio.fixture(scope="function")
 async def adcm_client(adcm: ADCMContainer) -> AsyncGenerator[ADCMClient, None]:
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
-    yield await build_client(url=adcm.url, credentials=credentials, retries=3, retry_interval=15, timeout=30)
+    yield await build_client(url=adcm.url, credentials=credentials, retries=1, retry_interval=1, timeout=1)

@@ -46,7 +46,7 @@ class ADCMClient:
 
 async def build_client(
     url: str,
-    credentials: Credentials | AuthToken,  # noqa: ARG001
+    credentials: Credentials ,
     *,
     verify: Verify | None = None,  # noqa: ARG001
     cert: Cert | None = None,  # noqa: ARG001
@@ -55,5 +55,5 @@ async def build_client(
     retry_interval: float = 5.0,
 ) -> ADCMClient:
     requester = DefaultRequester(base_url=url, retries=retries, retry_interval=retry_interval, timeout=timeout)
-    await requester.login(credentials=Credentials(username="admin", password="admin"))  # noqa: S106
+    await requester.login(credentials=credentials)
     return ADCMClient(requester=requester, bundle_retriever=BundleRetriever())
