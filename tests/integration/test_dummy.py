@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from adcm_aio_client.core.client import ADCMClient
+from adcm_aio_client.core.client._client import ADCMClient
 
 logging.basicConfig(level=logging.DEBUG)
 

@@ -4,7 +4,8 @@ from testcontainers.core.network import Network
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.client import ADCMClient, build_client
+from adcm_aio_client.core.client import build_client
+from adcm_aio_client.core.client._client import ADCMClient
 from adcm_aio_client.core.types import Credentials
 from tests.integration.setup_environment import (
     ADCMContainer,

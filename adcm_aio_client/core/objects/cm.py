@@ -2,7 +2,7 @@ from collections import deque
 from datetime import datetime
 from functools import cached_property
 from pathlib import Path
-from typing import Callable, Iterable, Literal, Self
+from typing import Any, Callable, Iterable, Literal, Self
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
@@ -47,15 +47,17 @@ from adcm_aio_client.core.utils import safe_gather
 
 
 class ADCM(InteractiveObject, WithActions, WithConfig):
+    def __init__(self: Self, requester: Requester, data: dict[str, Any], version: str) -> None:
+        super().__init__(requester=requester, data=data)
+        self._version = version
+
     @cached_property
     def id(self: Self) -> int:
         return 1
 
-    @async_cached_property
-    async def version(self: Self) -> str:
-        # TODO: override root_path for being without /api/v2
-        response = await self._requester.get("versions")
-        return response.as_dict()["adcm"]["version"]
+    @property
+    def version(self: Self) -> str:
+        return self._version
 
     def get_own_path(self: Self) -> Endpoint:
         return ("adcm",)
