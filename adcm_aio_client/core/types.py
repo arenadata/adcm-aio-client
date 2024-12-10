@@ -90,4 +90,3 @@ class MappingOperation(str, Enum):
 
 class UrlPath(str):
     pass
-
