@@ -7,7 +7,6 @@ from adcm_aio_client.core.actions import ActionsAccessor, UpgradeNode
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.core.config._objects import ConfigOwner
 from adcm_aio_client.core.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
-from adcm_aio_client.core.types import ADCMEntityStatus, JobStatus
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):
@@ -16,9 +15,9 @@ class Deletable(WithProtectedRequester, AwareOfOwnPath):
 
 
 class WithStatus(WithProtectedRequester, AwareOfOwnPath):
-    async def get_status(self: Self) -> ADCMEntityStatus:
+    async def get_status(self: Self) -> str:
         response = await self._requester.get(*self.get_own_path())
-        return ADCMEntityStatus(response.as_dict()["status"])
+        return response.as_dict()["status"]
 
 
 class WithActions(WithProtectedRequester, AwareOfOwnPath):
@@ -53,6 +52,6 @@ class WithMaintenanceMode(WithProtectedRequester, AwareOfOwnPath):
 
 
 class WithJobStatus(WithProtectedRequester, AwareOfOwnPath):
-    async def get_job_status(self: Self) -> JobStatus:
+    async def get_job_status(self: Self) -> str:
         response = await self._requester.get(*self.get_own_path())
-        return JobStatus(response.as_dict()["status"])
+        return response.as_dict()["status"]

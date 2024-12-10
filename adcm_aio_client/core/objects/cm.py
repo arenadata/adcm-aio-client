@@ -42,7 +42,7 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
-from adcm_aio_client.core.types import Endpoint, JobStatus, Requester, UrlPath, WithProtectedRequester
+from adcm_aio_client.core.types import Endpoint, Requester, UrlPath, WithProtectedRequester
 from adcm_aio_client.core.utils import safe_gather
 
 
@@ -481,7 +481,7 @@ class Job[Object: "InteractiveObject"](WithStatus, WithActions, WithJobStatus, R
         return self._construct(what=Action, from_data=self._data["action"])
 
     async def wait(self: Self, status_predicate: Callable[[], bool], timeout: int = 30, poll: int = 5) -> None:
-        if self._data["status"] not in (JobStatus.RUNNING, JobStatus.CREATED):
+        if self._data["status"] not in ("running", "created"):
             return
 
         for _ in range(timeout // poll):
