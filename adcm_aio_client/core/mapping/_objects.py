@@ -73,7 +73,7 @@ class ActionMapping:
 
     def iter(self: Self) -> Generator[MappingPair, None, None]:
         for entry in self._current:
-            yield (self._components[entry.component_id], self._hosts[entry.host_id])
+            yield self._components[entry.component_id], self._hosts[entry.host_id]
 
     async def add(self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter) -> Self:
         components, hosts = await self._resolve_components_and_hosts(component=component, host=host)
@@ -157,7 +157,9 @@ class ClusterMapping(ActionMapping):
 
     async def refresh(self: Self, strategy: MappingRefreshStrategy = apply_local_changes) -> Self:
         response = await self._requester.get(*self._cluster.get_own_path(), "mapping")
-        remote = {MappingEntry(**entry) for entry in response.as_list()}
+        remote = {
+            MappingEntry(component_id=entry["componentId"], host_id=entry["hostId"]) for entry in response.as_list()
+        }
 
         local = LocalMappings(initial=self._initial, current=self._current)
         merged_mapping = strategy(local=local, remote=remote)
@@ -182,15 +184,11 @@ class ClusterMapping(ActionMapping):
 
         hosts_task = None
         if missing_hosts:
-            hosts_task = asyncio.create_task(
-                self.hosts.list(query={"id__in": missing_hosts, "limit": len(missing_hosts)})
-            )
+            hosts_task = asyncio.create_task(self.hosts.list(query={"id__in": missing_hosts}))
 
         components_task = None
         if missing_components:
-            components_task = asyncio.create_task(
-                self.components.list(query={"id__in": missing_components, "limit": len(missing_components)})
-            )
+            components_task = asyncio.create_task(self.components.list(query={"id__in": missing_components}))
 
         if hosts_task is not None:
             self._hosts |= {host.id: host for host in await hosts_task}
