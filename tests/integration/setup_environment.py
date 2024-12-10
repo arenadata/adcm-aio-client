@@ -8,7 +8,8 @@ from testcontainers.core.waiting_utils import wait_container_is_ready, wait_for_
 from testcontainers.postgres import PostgresContainer
 
 postgres_image_name = "postgres:latest"
-adcm_image_name = "hub.adsw.io/adcm/adcm:develop"
+# adcm_image_name = "hub.adsw.io/adcm/adcm:feature_ADCM-6181"
+adcm_image_name = "hub.adsw.io/adcm/adcm:ADCM-6181-component"
 adcm_port_range = (8000, 8010)
 postgres_port_range = (5432, 5442)
 adcm_container_name = "test_adcm"
@@ -58,7 +59,10 @@ class ADCMPostgresContainer(PostgresContainer):
         )
         if ec != 0:
             raise RuntimeError(out.decode("utf-8"))
-        ec, out = self.exec(f"psql --username test --dbname test " f'-c "CREATE DATABASE {self.adcm_db_name} OWNER {self.adcm_username};"')
+        ec, out = self.exec(
+            f"psql --username test --dbname test "
+            f'-c "CREATE DATABASE {self.adcm_db_name} OWNER {self.adcm_username};"'
+        )
         if ec != 0:
             raise RuntimeError(out.decode("utf-8"))
 

@@ -132,9 +132,9 @@ class BundlesNode(PaginatedAccessor[Bundle]):
 
     async def create(self: Self, source: Path | UrlPath, accept_license: bool = False) -> Bundle:  # noqa: FBT001, FBT002
         if isinstance(source, UrlPath):
-            file= await self._bundle_retriever.download_external_bundle(source)
+            file = await self._bundle_retriever.download_external_bundle(source)
         else:
-            file =  Path(source).read_bytes()
+            file = Path(source).read_bytes()
 
         data = {"file": file}
         response = await self._requester.post("bundles", data=data, as_files=True)

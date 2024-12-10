@@ -19,7 +19,7 @@
     second:
       display_name: Second Component
     third_one:
-      display_name: Thirs Is Different
+      display_name: This Is Different
 
 - type: service
   name: example_2

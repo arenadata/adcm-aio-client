@@ -30,6 +30,8 @@ testcontainers = "^4.8.2"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.pytest]
+asyncio_default_fixture_loop_scope = "function"
 [tool.ruff]
 line-length = 120
 

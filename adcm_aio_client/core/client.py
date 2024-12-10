@@ -15,7 +15,7 @@ from typing import Self
 
 from adcm_aio_client.core.objects.cm import ADCM, BundlesNode, ClustersNode, HostProvidersNode, HostsNode
 from adcm_aio_client.core.requesters import BundleRetriever, BundleRetrieverInterface, DefaultRequester, Requester
-from adcm_aio_client.core.types import AuthToken, Cert, Credentials, Verify
+from adcm_aio_client.core.types import Cert, Credentials, Verify
 
 
 class ADCMClient:
@@ -46,7 +46,7 @@ class ADCMClient:
 
 async def build_client(
     url: str,
-    credentials: Credentials ,
+    credentials: Credentials,
     *,
     verify: Verify | None = None,  # noqa: ARG001
     cert: Cert | None = None,  # noqa: ARG001

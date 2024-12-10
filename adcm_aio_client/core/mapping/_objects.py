@@ -76,7 +76,9 @@ class ActionMapping:
             yield (self._components[entry.component_id], self._hosts[entry.host_id])
 
     async def add(self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter) -> Self:
-        components, hosts = await self._get_components_and_hosts(component=component, host=host)
+        components, hosts = await self._resolve_components_and_hosts(component=component, host=host)
+        self._cache_components_and_hosts(components, hosts)
+
         to_add = self._to_entries(components=components, hosts=hosts)
 
         self._current |= to_add
@@ -86,7 +88,9 @@ class ActionMapping:
     async def remove(
         self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter
     ) -> Self:
-        components, hosts = await self._get_components_and_hosts(component=component, host=host)
+        components, hosts = await self._resolve_components_and_hosts(component=component, host=host)
+        self._cache_components_and_hosts(components, hosts)
+
         to_remove = self._to_entries(components=components, hosts=hosts)
 
         self._current -= to_remove
@@ -101,13 +105,15 @@ class ActionMapping:
     def hosts(self: Self) -> HostsAccessor:
         from adcm_aio_client.core.objects.cm import HostsAccessor
 
-        cluster_path = self._cluster.get_own_path()
+        cluster_hosts_path = (*self._cluster.get_own_path(), "hosts")
 
-        return HostsAccessor(path=cluster_path, requester=self._owner.requester)
+        return HostsAccessor(path=cluster_hosts_path, requester=self._owner.requester)
 
-    async def _get_components_and_hosts(
+    async def _resolve_components_and_hosts(
         self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter
     ) -> tuple[Iterable[Component], Iterable[Host]]:
+        from adcm_aio_client.core.objects.cm import Component, Host
+
         if isinstance(component, Component):
             component = (component,)
 
@@ -118,6 +124,10 @@ class ActionMapping:
             host = await self.hosts.filter(**inline_filters)
 
         return component, host
+
+    def _cache_components_and_hosts(self: Self, components: Iterable[Component], hosts: Iterable[Host]) -> None:
+        self._components |= {component.id: component for component in components}
+        self._hosts |= {host.id: host for host in hosts}
 
     def _to_entries(self: Self, components: Iterable[Component], hosts: Iterable[Host]) -> set[MappingEntry]:
         return {MappingEntry(host_id=host.id, component_id=component.id) for host in hosts for component in components}
