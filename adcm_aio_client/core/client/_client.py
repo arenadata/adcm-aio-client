@@ -74,7 +74,7 @@ async def _get_and_check_adcm_version(url: str, timeout: float) -> str:
     try:
         adcm_version = await _get_adcm_version(url=url, timeout=timeout)
     except VersionRetrievalError as e:
-        message = f"Can't get ADCM version for {url}"
+        message = f"Can't get ADCM version for {url}. Most likely ADCM version is lesser than {MIN_ADCM_VERSION}"
         raise NotSupportedVersionError(message) from e
 
     if compare_adcm_versions(adcm_version, MIN_ADCM_VERSION) < 0:
