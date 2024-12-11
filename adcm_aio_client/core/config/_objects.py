@@ -257,6 +257,8 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
             # config isn't saved, no data update is in play,
             # returning "pre-saved" parsed values
             self._parse_json_fields_inplace_safe(config_to_save)
+
+            raise
         else:
             new_config = ConfigData.from_v2_response(data_in_v2_format=response.as_dict())
             self._initial_config = self._parse_json_fields_inplace_safe(new_config)
