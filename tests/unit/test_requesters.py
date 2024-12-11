@@ -15,6 +15,7 @@ pytestmark = [pytest.mark.asyncio]
 class HTTPXLikeResponse:
     status_code: int = 200
     data: str = "{}"
+    content: bytes = b""
 
     def json(self: Self) -> Any:  # noqa: ANN401
         return json.loads(self.data)

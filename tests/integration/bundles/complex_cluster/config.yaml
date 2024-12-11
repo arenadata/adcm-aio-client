@@ -1,0 +1,133 @@
+- type: cluster
+  name: Some Cluster
+  version: 1
+
+- type: service
+  name: example_1
+  display_name: First Example
+  version: 1.0
+
+  config:
+    - name: root_int
+      display_name: Integer At Root
+      type: integer
+      default: 100
+
+  components: &example_c
+    first:
+      display_name: First Component
+    second:
+      display_name: Second Component
+    third_one:
+      display_name: This Is Different
+
+- type: service
+  name: example_2
+  version: "4.23.456"
+
+  components: *example_c
+
+- type: service
+  name: complex_config
+  version: 0.3
+  config_group_customization: yes
+
+  config:
+    - &complexity_level
+      name: complexity_level
+      display_name: Complexity Level
+      type: integer
+      default: 4
+      required: no
+
+    - name: very_important_flag
+      display_name: Set me
+      type: float
+      required: true
+
+    - name: cant_find
+      type: string
+      default: "cantCme"
+      ui_options:
+        invisible: true
+
+    - &country_codes
+      name: country_codes
+      type: structure
+      yspec: ./schema.yaml
+      default:
+        - country: Greece
+          code: 30
+        - country: France
+          code: 33
+        - country: Spain
+          code: 34
+
+    - &a_lot_of_text
+      name: a_lot_of_text
+      display_name: A lot of text
+      type: group
+      subs:
+        - name: cant_find
+          type: string
+          default: "cantCme"
+          ui_options:
+            invisible: true
+        - name: simple_string
+          type: string
+          required: no
+          default: "simple string here"
+        - name: big_text
+          type: text
+          required: no
+          default: ""
+        - name: license
+          description: "Edit license as you want :3"
+          read_only: any
+          type: file
+          default: ./text.txt
+        - name: pass
+          type: password
+          required: no
+
+    - &from_doc
+      name: from_doc
+      display_name: Examples from documentation
+      type: group
+      ui_options:
+        advanced: true
+      subs:
+        - name: memory_size
+          type: integer
+          default: 16
+          min: 2
+          max: 64
+          ui_options:
+            invinsible: true
+        - name: cluster_host
+          type: variant
+          required: false
+          source:
+            type: builtin
+            name: host_in_cluster
+        - name: secret_mapping
+          display_name: Map Secrets
+          type: secretmap
+          required: no
+        - name: mount_points
+          type: list
+          default:
+            - /dev/rdisk0s1
+            - /dev/rdisk0s2
+            - /dev/rdisk0s3
+          read_only: any
+        - name: person
+          type: map
+          default:
+            name: Joe
+            age: "24"
+            sex: m
+        - name: protocol
+          type: option
+          option: { http: "80", https: "443" }
+          default: "80"

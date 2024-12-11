@@ -20,7 +20,7 @@ import httpx
 from adcm_aio_client.core.errors import NotSupportedVersionError, VersionRetrievalError
 from adcm_aio_client.core.objects.cm import ADCM, BundlesNode, ClustersNode, HostProvidersNode, HostsNode
 from adcm_aio_client.core.requesters import BundleRetriever, BundleRetrieverInterface, DefaultRequester, Requester
-from adcm_aio_client.core.types import AuthToken, Cert, Credentials, Verify
+from adcm_aio_client.core.types import Cert, Credentials, Verify
 
 MIN_ADCM_VERSION = "2.5.0"
 
@@ -56,7 +56,7 @@ class ADCMClient:
 
 async def build_client(
     url: str,
-    credentials: Credentials | AuthToken,  # noqa: ARG001
+    credentials: Credentials,
     *,
     verify: Verify | None = None,  # noqa: ARG001
     cert: Cert | None = None,  # noqa: ARG001
@@ -66,7 +66,7 @@ async def build_client(
 ) -> ADCMClient:
     adcm_version = await _get_and_check_adcm_version(url=url, timeout=timeout)
     requester = DefaultRequester(base_url=url, retries=retries, retry_interval=retry_interval, timeout=timeout)
-    await requester.login(credentials=Credentials(username="admin", password="admin"))  # noqa: S106
+    await requester.login(credentials=credentials)
     return ADCMClient(requester=requester, bundle_retriever=BundleRetriever(), adcm_version=adcm_version)
 
 
