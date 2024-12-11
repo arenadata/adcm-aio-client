@@ -94,7 +94,10 @@ def convert_exceptions(func: DoRequestFunc) -> DoRequestFunc:
         if response.status_code >= 300:
             error_cls = STATUS_ERRORS_MAP.get(response.status_code, ResponseError)
             # not safe, because can be not json
-            message = response.json()
+            try:
+                message = response.json()
+            except JSONDecodeError:
+                message = f"Request failed with > 300 response code: {response.content.decode('utf-8')}"
             raise error_cls(message)
 
         return response
