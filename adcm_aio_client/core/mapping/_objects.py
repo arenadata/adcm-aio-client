@@ -184,11 +184,16 @@ class ClusterMapping(ActionMapping):
 
         hosts_task = None
         if missing_hosts:
-            hosts_task = asyncio.create_task(self.hosts.list(query={"id__in": missing_hosts}))
+            # limit in case more than 1 page entries are missing
+            hosts_task = asyncio.create_task(
+                self.hosts.list(query={"id__in": missing_hosts, "limit": len(missing_hosts)})
+            )
 
         components_task = None
         if missing_components:
-            components_task = asyncio.create_task(self.components.list(query={"id__in": missing_components}))
+            components_task = asyncio.create_task(
+                self.components.list(query={"id__in": missing_components, "limit": len(missing_components)})
+            )
 
         if hosts_task is not None:
             self._hosts |= {host.id: host for host in await hosts_task}

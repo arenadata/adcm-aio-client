@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from copy import deepcopy
 from itertools import chain
 from pathlib import Path
 import asyncio
@@ -8,6 +9,7 @@ import pytest_asyncio
 
 from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.filters import Filter
+from adcm_aio_client.core.mapping.refresh import apply_local_changes, apply_remote_changes
 from adcm_aio_client.core.mapping.types import MappingPair
 from adcm_aio_client.core.objects.cm import Bundle, Cluster, Host
 from tests.integration.bundle import pack_bundle
@@ -16,6 +18,10 @@ from tests.integration.conftest import BUNDLES
 pytestmark = [pytest.mark.asyncio]
 
 type FiveHosts = tuple[Host, Host, Host, Host, Host]
+
+
+def build_name_mapping(*iterables: Iterable[MappingPair]) -> set[tuple[str, str, str]]:
+    return {(c.service.name, c.name, h.name) for c, h in chain.from_iterable(iterables)}
 
 
 @pytest_asyncio.fixture()
@@ -98,18 +104,48 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
     cluster_alt = await adcm_client.clusters.get(name__eq=cluster.name)
     mapping_alt = await cluster_alt.mapping
 
-    saved_mapping = build_name_mapping(mapping.iter())
-    new_mapping = build_name_mapping(mapping_alt.iter())
+    assert build_name_mapping(mapping.iter()) == build_name_mapping(mapping_alt.iter())
 
-    assert saved_mapping == new_mapping
+    component_3_s2 = await service_2.components.get(name__eq="third_one")
+    components_except_3_s2 = tuple(c for c in all_components if c.id != component_3_s2.id)
+
+    await mapping_alt.remove(component_1_s1, host_3)
+    await mapping_alt.add(component_3_s2, (host_2, host_4))
+
+    await mapping.add((component_1_s1, component_3_s2), host_1)
+    await mapping.remove(component_3_s2, host_5)
+
+    await mapping_alt.save()
+
+    pre_refresh_mapping = deepcopy(mapping)
+    await mapping.refresh(strategy=apply_remote_changes)
+
+    expected_mapping = build_name_mapping(
+        ((c, host_5) for c in components_except_3_s2),
+        ((component_1_s1, h) for h in (host_1, host_2)),
+        ((component_3_s2, h) for h in (host_1, host_2, host_4)),
+    )
+    actual_mapping = build_name_mapping(mapping.iter())
+    assert actual_mapping == expected_mapping
+
+    mapping = pre_refresh_mapping
+    await mapping.refresh(strategy=apply_local_changes)
+
+    expected_mapping = (
+        # base is remote, but with local changes
+        build_name_mapping(mapping_alt.iter())
+        # add what's added locally
+        | build_name_mapping(((component_1_s1, host_1), (component_3_s2, host_1)))
+        # remove what's removed locally
+        - build_name_mapping(((component_3_s2, host_5),))
+    )
+    actual_mapping = build_name_mapping(mapping.iter())
+    assert actual_mapping == expected_mapping
 
 
+# todo add case with removing with filter too
 #    await mapping.add(
 #        component=await mapping.components.filter(display_name__icontains="different"),
 #        host=Filter(attr="name", op="in", value=(host_2.name, host_5.name)),
 #    )
 #    assert len(mapping.all()) == 10
-
-
-def build_name_mapping(*iterables: Iterable[MappingPair]) -> set[tuple[str, str, str]]:
-    return {(c.service.name, c.name, h.name) for c, h in chain.from_iterable(iterables)}
