@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-from copy import deepcopy
 from itertools import chain
 from pathlib import Path
 import asyncio
@@ -46,7 +45,7 @@ async def cluster(adcm_client: ADCMClient, cluster_bundle: Bundle) -> Cluster:
 @pytest_asyncio.fixture()
 async def hosts(adcm_client: ADCMClient, hostprovider_bundle: Bundle) -> FiveHosts:
     hp = await adcm_client.hostproviders.create(bundle=hostprovider_bundle, name="Awesome HostProvider")
-    coros = (adcm_client.hosts.create(hostprovider=hp, name=f"host-{i}") for i in range(5))
+    coros = (adcm_client.hosts.create(hostprovider=hp, name=f"host-{i+1}") for i in range(5))
     await asyncio.gather(*coros)
     hosts = await adcm_client.hosts.all()
     return tuple(hosts)  # type: ignore[reportReturnType]
@@ -129,7 +128,6 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
 
     await mapping_alt.save()
 
-    pre_refresh_mapping = deepcopy(mapping)
     await mapping.refresh(strategy=apply_remote_changes)
 
     expected_mapping = build_name_mapping(
@@ -140,16 +138,22 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
     actual_mapping = build_name_mapping(mapping.iter())
     assert actual_mapping == expected_mapping
 
-    mapping = pre_refresh_mapping
+    # drop cached mapping and apply the same local changes
+    await cluster.refresh()
+    mapping = await cluster.mapping
+
+    await mapping.add((component_1_s1, component_3_s2), host_1)
+    await mapping.remove(component_3_s2, host_5)
+
     await mapping.refresh(strategy=apply_local_changes)
 
     expected_mapping = (
         # base is remote, but with local changes
         build_name_mapping(mapping_alt.iter())
-        # add what's added locally
-        | build_name_mapping(((component_1_s1, host_1), (component_3_s2, host_1)))
         # remove what's removed locally
         - build_name_mapping(((component_3_s2, host_5),))
+        # add what's added locally
+        | build_name_mapping(((component_1_s1, host_1), (component_3_s2, host_1)))
     )
     actual_mapping = build_name_mapping(mapping.iter())
     assert actual_mapping == expected_mapping

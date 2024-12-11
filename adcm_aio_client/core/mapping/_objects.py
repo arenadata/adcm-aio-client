@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Generator
 from copy import copy
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Iterable, Self
+from typing import TYPE_CHECKING, Any, Callable, Coroutine, Iterable, Self
 import asyncio
 
 from adcm_aio_client.core.filters import Filter, FilterByDisplayName, FilterByName, FilterByStatus, Filtering
@@ -182,21 +182,27 @@ class ClusterMapping(ActionMapping):
             if entry.component_id not in self._components:
                 missing_components.add(entry.component_id)
 
-        hosts_task = None
-        if missing_hosts:
-            # limit in case more than 1 page entries are missing
-            hosts_task = asyncio.create_task(
-                self.hosts.list(query={"id__in": missing_hosts, "limit": len(missing_hosts)})
-            )
+        hosts_task = self._run_task_if_objects_are_missing(method=self.hosts.list, missing_objects=missing_hosts)
 
-        components_task = None
-        if missing_components:
-            components_task = asyncio.create_task(
-                self.components.list(query={"id__in": missing_components, "limit": len(missing_components)})
-            )
+        components_task = self._run_task_if_objects_are_missing(
+            method=self.components.list, missing_objects=missing_components
+        )
 
         if hosts_task is not None:
             self._hosts |= {host.id: host for host in await hosts_task}
 
         if components_task is not None:
             self._components |= {component.id: component for component in await components_task}
+
+    def _run_task_if_objects_are_missing(
+        self: Self, method: Callable[[dict], Coroutine], missing_objects: set[int]
+    ) -> asyncio.Task | None:
+        if not missing_objects:
+            return None
+
+        ids_str = ",".join(map(str, missing_objects))
+        # limit in case there are more than 1 page of objects
+        records_amount = len(missing_objects)
+        query = {"id__in": ids_str, "limit": records_amount}
+
+        return asyncio.create_task(method(query))
