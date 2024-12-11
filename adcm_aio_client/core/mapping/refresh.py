@@ -21,6 +21,8 @@ def apply_remote_changes(local: LocalMappings, remote: MappingData) -> MappingDa
 
     remote_added, remote_removed = _find_difference(previous=local.initial, current=remote)
 
+    # `to_add` feels impossible, because remote can't remove what we haven't added,
+    # yet it's general rule for this strategy, so we'll keep it for a time being
     to_add = local_added - remote_removed
     to_remove = local_removed - remote_added
 

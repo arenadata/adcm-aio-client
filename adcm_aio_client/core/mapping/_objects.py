@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Generator
 from copy import copy
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Iterable, Self
+from typing import TYPE_CHECKING, Any, Callable, Coroutine, Iterable, Self
 import asyncio
 
 from adcm_aio_client.core.filters import Filter, FilterByDisplayName, FilterByName, FilterByStatus, Filtering
@@ -73,10 +73,12 @@ class ActionMapping:
 
     def iter(self: Self) -> Generator[MappingPair, None, None]:
         for entry in self._current:
-            yield (self._components[entry.component_id], self._hosts[entry.host_id])
+            yield self._components[entry.component_id], self._hosts[entry.host_id]
 
     async def add(self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter) -> Self:
-        components, hosts = await self._get_components_and_hosts(component=component, host=host)
+        components, hosts = await self._resolve_components_and_hosts(component=component, host=host)
+        self._cache_components_and_hosts(components, hosts)
+
         to_add = self._to_entries(components=components, hosts=hosts)
 
         self._current |= to_add
@@ -86,7 +88,9 @@ class ActionMapping:
     async def remove(
         self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter
     ) -> Self:
-        components, hosts = await self._get_components_and_hosts(component=component, host=host)
+        components, hosts = await self._resolve_components_and_hosts(component=component, host=host)
+        self._cache_components_and_hosts(components, hosts)
+
         to_remove = self._to_entries(components=components, hosts=hosts)
 
         self._current -= to_remove
@@ -101,13 +105,15 @@ class ActionMapping:
     def hosts(self: Self) -> HostsAccessor:
         from adcm_aio_client.core.objects.cm import HostsAccessor
 
-        cluster_path = self._cluster.get_own_path()
+        cluster_hosts_path = (*self._cluster.get_own_path(), "hosts")
 
-        return HostsAccessor(path=cluster_path, requester=self._owner.requester)
+        return HostsAccessor(path=cluster_hosts_path, requester=self._owner.requester)
 
-    async def _get_components_and_hosts(
+    async def _resolve_components_and_hosts(
         self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter
     ) -> tuple[Iterable[Component], Iterable[Host]]:
+        from adcm_aio_client.core.objects.cm import Component, Host
+
         if isinstance(component, Component):
             component = (component,)
 
@@ -118,6 +124,10 @@ class ActionMapping:
             host = await self.hosts.filter(**inline_filters)
 
         return component, host
+
+    def _cache_components_and_hosts(self: Self, components: Iterable[Component], hosts: Iterable[Host]) -> None:
+        self._components |= {component.id: component for component in components}
+        self._hosts |= {host.id: host for host in hosts}
 
     def _to_entries(self: Self, components: Iterable[Component], hosts: Iterable[Host]) -> set[MappingEntry]:
         return {MappingEntry(host_id=host.id, component_id=component.id) for host in hosts for component in components}
@@ -147,7 +157,9 @@ class ClusterMapping(ActionMapping):
 
     async def refresh(self: Self, strategy: MappingRefreshStrategy = apply_local_changes) -> Self:
         response = await self._requester.get(*self._cluster.get_own_path(), "mapping")
-        remote = {MappingEntry(**entry) for entry in response.as_list()}
+        remote = {
+            MappingEntry(component_id=entry["componentId"], host_id=entry["hostId"]) for entry in response.as_list()
+        }
 
         local = LocalMappings(initial=self._initial, current=self._current)
         merged_mapping = strategy(local=local, remote=remote)
@@ -170,20 +182,27 @@ class ClusterMapping(ActionMapping):
             if entry.component_id not in self._components:
                 missing_components.add(entry.component_id)
 
-        hosts_task = None
-        if missing_hosts:
-            hosts_task = asyncio.create_task(
-                self.hosts.list(query={"id__in": missing_hosts, "limit": len(missing_hosts)})
-            )
+        hosts_task = self._run_task_if_objects_are_missing(method=self.hosts.list, missing_objects=missing_hosts)
 
-        components_task = None
-        if missing_components:
-            components_task = asyncio.create_task(
-                self.components.list(query={"id__in": missing_components, "limit": len(missing_components)})
-            )
+        components_task = self._run_task_if_objects_are_missing(
+            method=self.components.list, missing_objects=missing_components
+        )
 
         if hosts_task is not None:
             self._hosts |= {host.id: host for host in await hosts_task}
 
         if components_task is not None:
             self._components |= {component.id: component for component in await components_task}
+
+    def _run_task_if_objects_are_missing(
+        self: Self, method: Callable[[dict], Coroutine], missing_objects: set[int]
+    ) -> asyncio.Task | None:
+        if not missing_objects:
+            return None
+
+        ids_str = ",".join(map(str, missing_objects))
+        # limit in case there are more than 1 page of objects
+        records_amount = len(missing_objects)
+        query = {"id__in": ids_str, "limit": records_amount}
+
+        return asyncio.create_task(method(query))

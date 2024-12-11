@@ -39,8 +39,8 @@ class QueueRequester(Requester):
         _ = path, query
         return self._return_next_response()
 
-    async def post(self: Self, *path: PathPart, data: dict | list) -> RequesterResponse:
-        _ = path, data
+    async def post(self: Self, *path: PathPart, data: dict | list, **_kw) -> RequesterResponse:  # noqa: ANN003
+        _ = path, data, _kw
         return self._return_next_response()
 
     async def patch(self: Self, *path: PathPart, data: dict | list) -> RequesterResponse:
