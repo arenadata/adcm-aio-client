@@ -8,6 +8,7 @@ from asyncstdlib.functools import CachedProperty
 from adcm_aio_client.core.types import (
     AwareOfOwnPath,
     Endpoint,
+    MaintenanceModeStatus,
     Requester,
     WithProtectedRequester,
     WithRequesterProperty,
@@ -104,21 +105,31 @@ class InteractiveChildObject[Parent: InteractiveObject](InteractiveObject):
 
 
 class MaintenanceMode:
-    def __init__(self: Self, maintenance_mode_status: str, requester: Requester, path: Endpoint) -> None:
+    def __init__(
+        self: Self, maintenance_mode_status: MaintenanceModeStatus, requester: Requester, path: Endpoint
+    ) -> None:
         self._maintenance_mode_status = maintenance_mode_status
         self._requester = requester
         self._path = path
 
     def __repr__(self: Self) -> str:
-        return self._maintenance_mode_status
+        return self._maintenance_mode_status.value
 
     def __str__(self: Self) -> str:
-        return self._maintenance_mode_status
+        return self._maintenance_mode_status.value
+
+    @property
+    def value(self: Self) -> str:
+        return self._maintenance_mode_status.value
 
     async def on(self: Self) -> None:
-        current_mm_status = await self._requester.post(*self._path, "maintenance-mode", data={"maintenanceMode": "on"})
+        current_mm_status = await self._requester.post(
+            *self._path, "maintenance-mode", data={"maintenanceMode": MaintenanceModeStatus.ON}
+        )
         self._maintenance_mode_status = current_mm_status.as_dict()["maintenanceMode"]
 
     async def off(self: Self) -> None:
-        current_mm_status = await self._requester.post(*self._path, "maintenanceMode", data={"maintenanceMode": "off"})
+        current_mm_status = await self._requester.post(
+            *self._path, "maintenanceMode", data={"maintenanceMode": MaintenanceModeStatus.OFF}
+        )
         self._maintenance_mode_status = current_mm_status.as_dict()["maintenanceMode"]

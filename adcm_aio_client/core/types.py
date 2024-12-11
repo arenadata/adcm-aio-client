@@ -90,3 +90,9 @@ class MappingOperation(str, Enum):
 
 class UrlPath(str):
     pass
+
+
+class MaintenanceModeStatus(str, Enum):
+    ON = "on"
+    OFF = "off"
+    CHANGING = "changing"
