@@ -1,0 +1,7 @@
+- type: provider
+  name: simple_provider
+  version: 4
+
+- type: host
+  name: simple_host
+  version: 2

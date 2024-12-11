@@ -132,12 +132,12 @@ class BundlesNode(PaginatedAccessor[Bundle]):
 
     async def create(self: Self, source: Path | UrlPath, accept_license: bool = False) -> Bundle:  # noqa: FBT001, FBT002
         if isinstance(source, UrlPath):
-            file_content = await self._bundle_retriever.download_external_bundle(source)
-            files = {"file": file_content}
+            file = await self._bundle_retriever.download_external_bundle(source)
         else:
-            files = {"file": Path(source).read_bytes()}
+            file = Path(source).read_bytes()
 
-        response = await self._requester.post("bundles", data=files)
+        data = {"file": file}
+        response = await self._requester.post("bundles", data=data, as_files=True)
 
         bundle = Bundle(requester=self._requester, data=response.as_dict())
 
@@ -408,9 +408,9 @@ class HostsAccessor(PaginatedAccessor[Host]):
 
 class HostsNode(HostsAccessor):
     async def create(
-        self: Self, provider: HostProvider, name: str, description: str, cluster: Cluster | None = None
+        self: Self, hostprovider: HostProvider, name: str, description: str = "", cluster: Cluster | None = None
     ) -> None:
-        data = {"hostproviderId": provider.id, "name": name, "description": description}
+        data = {"hostproviderId": hostprovider.id, "name": name, "description": description}
         if cluster:
             data["clusterId"] = cluster.id
         await self._requester.post(*self._path, data=data)
