@@ -82,6 +82,18 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
     await mapping.remove(component=(component_1_s1, component_2_s2), host=host_1)
     assert len(mapping.all()) == 3
 
+    await mapping.add(
+        component=await mapping.components.filter(display_name__icontains="different"),
+        host=Filter(attr="name", op="in", value=(host_2.name, host_5.name)),
+    )
+    assert len(mapping.all()) == 7
+
+    await mapping.remove(
+        component=await mapping.components.filter(display_name__icontains="different"),
+        host=Filter(attr="name", op="in", value=(host_2.name, host_5.name)),
+    )
+    assert len(mapping.all()) == 3
+
     mapping.empty()
     assert mapping.all() == []
 
@@ -141,11 +153,3 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
     )
     actual_mapping = build_name_mapping(mapping.iter())
     assert actual_mapping == expected_mapping
-
-
-# todo add case with removing with filter too
-#    await mapping.add(
-#        component=await mapping.components.filter(display_name__icontains="different"),
-#        host=Filter(attr="name", op="in", value=(host_2.name, host_5.name)),
-#    )
-#    assert len(mapping.all()) == 10
