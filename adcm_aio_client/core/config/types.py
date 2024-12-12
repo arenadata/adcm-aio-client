@@ -141,7 +141,7 @@ class ConfigDifference:
 
     @property
     def is_empty(self: Self) -> bool:
-        return bool(self.values or self.attributes)
+        return not bool(self.values or self.attributes)
 
     def __str__(self: Self) -> str:
         values_nested = self._to_nested_dict(self.values)
