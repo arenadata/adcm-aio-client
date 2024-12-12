@@ -91,6 +91,9 @@ class MappingOperation(str, Enum):
 type URLStr = str
 
 
+DEFAULT_JOB_TERMINAL_STATUSES = frozenset(("broken", "aborted", "failed", "success"))
+
+
 class MaintenanceModeStatus(str, Enum):
     ON = "on"
     OFF = "off"
