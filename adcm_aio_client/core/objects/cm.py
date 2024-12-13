@@ -508,9 +508,9 @@ class Job[Object: "InteractiveObject"](WithStatus, WithActions, RootInteractiveO
     ) -> Self:
         timeout_condition = datetime.max if timeout is None else (datetime.now() + timedelta(seconds=timeout))  # noqa: DTZ005
         while datetime.now() < timeout_condition:  # noqa: DTZ005
-            await asyncio.sleep(poll_interval)
             if exit_condition(self):
                 return self
+            await asyncio.sleep(poll_interval)
 
         raise TimeoutError
 
