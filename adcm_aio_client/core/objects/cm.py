@@ -41,12 +41,11 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
-from adcm_aio_client.core.types import Endpoint, Requester, URLStr, WithProtectedRequester
 from adcm_aio_client.core.types import (
     DEFAULT_JOB_TERMINAL_STATUSES,
     Endpoint,
     Requester,
-    UrlPath,
+    URLStr,
     WithProtectedRequester,
 )
 from adcm_aio_client.core.utils import safe_gather
