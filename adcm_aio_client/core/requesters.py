@@ -92,7 +92,13 @@ def convert_exceptions(func: DoRequestFunc) -> DoRequestFunc:
     async def wrapper(*arg: Params.args, **kwargs: Params.kwargs) -> httpx.Response:
         response = await func(*arg, **kwargs)
         if response.status_code >= 300:
-            raise STATUS_ERRORS_MAP.get(response.status_code, ResponseError)
+            error_cls = STATUS_ERRORS_MAP.get(response.status_code, ResponseError)
+            # not safe, because can be not json
+            try:
+                message = response.json()
+            except JSONDecodeError:
+                message = f"Request failed with > 300 response code: {response.content.decode('utf-8')}"
+            raise error_cls(message)
 
         return response
 
@@ -150,12 +156,16 @@ class DefaultRequester(Requester):
             raise LoginError(message)
 
         self._credentials = credentials
+        self.client.headers["X-CSRFToken"] = response.cookies["csrftoken"]
         return self
 
     async def get(self: Self, *path: PathPart, query: QueryParameters | None = None) -> HTTPXRequesterResponse:
         return await self.request(*path, method=self.client.get, params=query or {})
 
-    async def post(self: Self, *path: PathPart, data: dict | list) -> HTTPXRequesterResponse:
+    async def post(self: Self, *path: PathPart, data: dict | list, as_files: bool = False) -> HTTPXRequesterResponse:
+        if as_files:
+            return await self.request(*path, method=self.client.post, files=data)
+
         return await self.request(*path, method=self.client.post, json=data)
 
     async def patch(self: Self, *path: PathPart, data: dict | list) -> HTTPXRequesterResponse:

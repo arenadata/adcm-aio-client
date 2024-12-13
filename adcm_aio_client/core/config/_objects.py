@@ -38,6 +38,9 @@ class _ConfigWrapper:
         self._schema = schema
         self._data = data
 
+    def _on_data_change(self: Self) -> None:
+        pass
+
 
 class _Group(_ConfigWrapper):
     __slots__ = ("_name", "_schema", "_data", "_wrappers_cache")
@@ -77,6 +80,12 @@ class _Group(_ConfigWrapper):
         self._wrappers_cache[level_name] = wrapper
 
         return wrapper
+
+    def _on_data_change(self: Self) -> None:
+        # need to drop caches when data is changed,
+        # because each entry may already point to a different data
+        # and return incorrect nodes for a seach (=> can't be edited too)
+        self._wrappers_cache = {}
 
 
 class Parameter[T](_ConfigWrapper):
@@ -192,6 +201,7 @@ class _ConfigWrapperCreator(_ConfigWrapper):
 
     def change_data(self: Self, new_data: ConfigData) -> ConfigData:
         self._data = new_data
+        self._on_data_change()
         return self._data
 
 
@@ -257,6 +267,8 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
             # config isn't saved, no data update is in play,
             # returning "pre-saved" parsed values
             self._parse_json_fields_inplace_safe(config_to_save)
+
+            raise
         else:
             new_config = ConfigData.from_v2_response(data_in_v2_format=response.as_dict())
             self._initial_config = self._parse_json_fields_inplace_safe(new_config)

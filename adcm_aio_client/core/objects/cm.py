@@ -2,7 +2,7 @@ from collections import deque
 from datetime import datetime
 from functools import cached_property
 from pathlib import Path
-from typing import Callable, Iterable, Literal, Self
+from typing import Any, Callable, Iterable, Literal, Self
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
@@ -47,15 +47,17 @@ from adcm_aio_client.core.utils import safe_gather
 
 
 class ADCM(InteractiveObject, WithActions, WithConfig):
+    def __init__(self: Self, requester: Requester, data: dict[str, Any], version: str) -> None:
+        super().__init__(requester=requester, data=data)
+        self._version = version
+
     @cached_property
     def id(self: Self) -> int:
         return 1
 
-    @async_cached_property
-    async def version(self: Self) -> str:
-        # TODO: override root_path for being without /api/v2
-        response = await self._requester.get("versions")
-        return response.as_dict()["adcm"]["version"]
+    @property
+    def version(self: Self) -> str:
+        return self._version
 
     def get_own_path(self: Self) -> Endpoint:
         return ("adcm",)
@@ -132,12 +134,12 @@ class BundlesNode(PaginatedAccessor[Bundle]):
 
     async def create(self: Self, source: Path | UrlPath, accept_license: bool = False) -> Bundle:  # noqa: FBT001, FBT002
         if isinstance(source, UrlPath):
-            file_content = await self._bundle_retriever.download_external_bundle(source)
-            files = {"file": file_content}
+            file = await self._bundle_retriever.download_external_bundle(source)
         else:
-            files = {"file": Path(source).read_bytes()}
+            file = Path(source).read_bytes()
 
-        response = await self._requester.post("bundles", data=files)
+        data = {"file": file}
+        response = await self._requester.post("bundles", data=data, as_files=True)
 
         bundle = Bundle(requester=self._requester, data=response.as_dict())
 
@@ -369,6 +371,7 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, WithConfigH
 
 class HostProvidersNode(PaginatedAccessor[HostProvider]):
     class_type = HostProvider
+    filtering = Filtering(FilterByName, FilterByBundle)
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
         response = await self._requester.post(
@@ -408,9 +411,9 @@ class HostsAccessor(PaginatedAccessor[Host]):
 
 class HostsNode(HostsAccessor):
     async def create(
-        self: Self, provider: HostProvider, name: str, description: str, cluster: Cluster | None = None
+        self: Self, hostprovider: HostProvider, name: str, description: str = "", cluster: Cluster | None = None
     ) -> None:
-        data = {"hostproviderId": provider.id, "name": name, "description": description}
+        data = {"hostproviderId": hostprovider.id, "name": name, "description": description}
         if cluster:
             data["clusterId"] = cluster.id
         await self._requester.post(*self._path, data=data)

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Self
 import socket
 
@@ -5,17 +6,24 @@ from docker.errors import DockerException
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.network import Network
 from testcontainers.core.waiting_utils import wait_container_is_ready, wait_for_logs
-from testcontainers.postgres import PostgresContainer
+from testcontainers.postgres import DbContainer, PostgresContainer
 
 postgres_image_name = "postgres:latest"
-adcm_image_name = "hub.adsw.io/adcm/adcm:develop"
-adcm_port_range = (8000, 8010)
-postgres_port_range = (5432, 5442)
+adcm_image_name = "hub.adsw.io/adcm/adcm:feature_ADCM-6181"
 adcm_container_name = "test_adcm"
 postgres_name = "test_pg_db"
-db_user = "adcm"
-db_name = "adcm"
-db_password = "password"  # noqa: S105
+
+# for now runtime relies that those values are always used for their purpose
+DB_USER = "adcm"
+DB_PASSWORD = "password"  # noqa: S105
+
+
+@dataclass(slots=True)
+class DatabaseInfo:
+    name: str
+
+    host: str
+    port: int = 5432
 
 
 def find_free_port(start: int, end: int) -> int:
@@ -30,61 +38,60 @@ def find_free_port(start: int, end: int) -> int:
 class ADCMPostgresContainer(PostgresContainer):
     def __init__(self: Self, image: str, network: Network) -> None:
         super().__init__(image)
-        self.adcm_env_kwargs = {"STATISTICS_ENABLED": 0}
-        self.network = network
+        self.name = postgres_name
+        self.with_name(self.name)
+        self.with_network(network)
 
-    def setup_postgres(self: Self, username: str, password: str, adcm_db_name: str) -> None:
-        postgres_port = find_free_port(postgres_port_range[0], postgres_port_range[1])
+    def execute_statement(self: Self, statement: str) -> None:
+        exit_code, out = self.exec(f'psql --username test --dbname test -c "{statement}"')
+        if exit_code != 0:
+            output = out.decode("utf-8")
+            message = f"Failed to execute psql statement: {output}"
+            raise RuntimeError(message)
 
-        self.adcm_env_kwargs = self.adcm_env_kwargs | {
-            "DB_HOST": f"{postgres_name}_{postgres_port}",
-            "DB_USER": db_user,
-            "DB_NAME": db_name,
-            "DB_PASS": db_password,
-            "DB_PORT": str(postgres_port),
-        }
+    def start(self: Self) -> DbContainer:
+        super().start()
 
-        self.with_name(f"{postgres_name}_{postgres_port}")
-        self.password = password
-        self.with_network(self.network)
-        self.with_bind_ports(postgres_port, postgres_port)
-
-        self.start()
         wait_container_is_ready(self)
-
-        self.exec(
-            f"psql --username test --dbname postgres "
-            f"-c \"CREATE USER {username} WITH ENCRYPTED PASSWORD '{db_password}';\""
-        )
-        self.exec(f"psql --username test --dbname postgres " f'-c "CREATE DATABASE {adcm_db_name} OWNER {username};"')
-
         wait_for_logs(self, "database system is ready to accept connections")
+
+        self.execute_statement(f"CREATE USER {DB_USER} WITH ENCRYPTED PASSWORD '{DB_PASSWORD}'")
+
+        return self
 
 
 class ADCMContainer(DockerContainer):
     url: str
 
-    def __init__(self: Self, image: str, network: Network, env_kwargs: dict) -> None:
+    def __init__(self: Self, image: str, network: Network, db: DatabaseInfo) -> None:
         super().__init__(image)
-        self.postgres_env_kwargs = {}
-        self.network = network
-        self.adcm_env_kwarg = env_kwargs
+        self._db = db
 
-    def setup_container(self: Self) -> None:
-        adcm_port = find_free_port(adcm_port_range[0], adcm_port_range[1])
+        self.with_network(network)
+
+        self.with_env("STATISTICS_ENABLED", "0")
+        self.with_env("DB_USER", DB_USER)
+        self.with_env("DB_PASS", DB_PASSWORD)
+        self.with_env("DB_NAME", self._db.name)
+        self.with_env("DB_HOST", self._db.host)
+        self.with_env("DB_PORT", str(self._db.port))
+
+    def start(self: Self) -> Self:
+        adcm_port = find_free_port(start=8000, end=8080)
+        self.with_bind_ports(8000, adcm_port)
+
         self.with_name(f"{adcm_container_name}_{adcm_port}")
-        self.with_network(self.network)
-        self.with_bind_ports(adcm_port, adcm_port)
 
-        for key, value in self.postgres_env_kwargs.items():
-            self.with_env(key, value)
-
-        self.start()
+        super().start()
 
         wait_container_is_ready(self)
         wait_for_logs(self, "Run Nginx ...")
 
-        self.url = f"http://{self.get_container_host_ip()}:{self.get_exposed_port(adcm_port)}"
+        ip = self.get_container_host_ip()
+        port = self.get_exposed_port(8000)
+        self.url = f"http://{ip}:{port}"
+
+        return self
 
 
 class DockerContainerError(DockerException):

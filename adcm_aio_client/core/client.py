@@ -12,16 +12,26 @@
 
 from functools import cached_property
 from typing import Self
+from urllib.parse import urljoin
 
+from adcm_version import compare_adcm_versions
+import httpx
+
+from adcm_aio_client.core.errors import NotSupportedVersionError, VersionRetrievalError
 from adcm_aio_client.core.objects.cm import ADCM, BundlesNode, ClustersNode, HostProvidersNode, HostsNode
 from adcm_aio_client.core.requesters import BundleRetriever, BundleRetrieverInterface, DefaultRequester, Requester
-from adcm_aio_client.core.types import AuthToken, Cert, Credentials, Verify
+from adcm_aio_client.core.types import Cert, Credentials, Verify
+
+MIN_ADCM_VERSION = "2.5.0"
 
 
 class ADCMClient:
-    def __init__(self: Self, requester: Requester, bundle_retriever: BundleRetrieverInterface) -> None:
+    def __init__(
+        self: Self, requester: Requester, bundle_retriever: BundleRetrieverInterface, adcm_version: str
+    ) -> None:
         self._requester = requester
         self.bundle_retriever = bundle_retriever
+        self._adcm_version = adcm_version
 
     @cached_property
     def clusters(self: Self) -> ClustersNode:
@@ -37,7 +47,7 @@ class ADCMClient:
 
     @cached_property
     def adcm(self: Self) -> ADCM:
-        return ADCM(requester=self._requester, data={})
+        return ADCM(requester=self._requester, data={}, version=self._adcm_version)
 
     @cached_property
     def bundles(self: Self) -> BundlesNode:
@@ -46,14 +56,36 @@ class ADCMClient:
 
 async def build_client(
     url: str,
-    credentials: Credentials | AuthToken,  # noqa: ARG001
+    credentials: Credentials,
     *,
     verify: Verify | None = None,  # noqa: ARG001
     cert: Cert | None = None,  # noqa: ARG001
-    timeout: float = 0.5,
+    timeout: float = 1.5,
     retries: int = 5,
     retry_interval: float = 5.0,
 ) -> ADCMClient:
+    adcm_version = await _get_and_check_adcm_version(url=url, timeout=timeout)
     requester = DefaultRequester(base_url=url, retries=retries, retry_interval=retry_interval, timeout=timeout)
-    await requester.login(credentials=Credentials(username="admin", password="admin"))  # noqa: S106
-    return ADCMClient(requester=requester, bundle_retriever=BundleRetriever())
+    await requester.login(credentials=credentials)
+    return ADCMClient(requester=requester, bundle_retriever=BundleRetriever(), adcm_version=adcm_version)
+
+
+async def _get_and_check_adcm_version(url: str, timeout: float) -> str:
+    try:
+        adcm_version = await _get_adcm_version(url=url, timeout=timeout)
+    except VersionRetrievalError as e:
+        message = f"Can't get ADCM version for {url}. Most likely ADCM version is lesser than {MIN_ADCM_VERSION}"
+        raise NotSupportedVersionError(message) from e
+
+    if compare_adcm_versions(adcm_version, MIN_ADCM_VERSION) < 0:
+        message = f"Minimal supported ADCM version is {MIN_ADCM_VERSION}. Got {adcm_version}"
+        raise NotSupportedVersionError(message)
+
+    return adcm_version
+
+
+async def _get_adcm_version(url: str, timeout: float) -> str:
+    try:
+        return (await httpx.AsyncClient(timeout=timeout).get(urljoin(url, "versions/"))).json()["adcm"]["version"]
+    except Exception as e:
+        raise VersionRetrievalError from e

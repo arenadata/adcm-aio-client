@@ -117,3 +117,14 @@ class FilterPreparationError(FilterError): ...
 
 
 class InvalidFilterError(FilterError): ...
+
+
+# Version
+
+
+class VersionRetrievalError(ADCMClientError):
+    pass
+
+
+class NotSupportedVersionError(ADCMClientError):
+    pass
