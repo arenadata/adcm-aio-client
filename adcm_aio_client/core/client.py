@@ -60,9 +60,9 @@ async def build_client(
     *,
     verify: Verify | None = None,  # noqa: ARG001
     cert: Cert | None = None,  # noqa: ARG001
-    timeout: float = 1.5,
-    retries: int = 5,
-    retry_interval: float = 5.0,
+    timeout: float = 600.0,
+    retries: int = 3,
+    retry_interval: float = 1.0,
 ) -> ADCMClient:
     adcm_version = await _get_and_check_adcm_version(url=url, timeout=timeout)
     requester = DefaultRequester(base_url=url, retries=retries, retry_interval=retry_interval, timeout=timeout)
