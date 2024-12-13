@@ -112,11 +112,11 @@ class MaintenanceMode:
         self._requester = requester
         self._path = path
 
-    def __repr__(self: Self) -> MaintenanceModeStatus:
-        return self._maintenance_mode_status
+    def __repr__(self: Self) -> str:
+        return self._maintenance_mode_status.value
 
-    def __str__(self: Self) -> MaintenanceModeStatus:
-        return self._maintenance_mode_status
+    def __str__(self: Self) -> str:
+        return self._maintenance_mode_status.value
 
     @property
     def value(self: Self) -> str:
