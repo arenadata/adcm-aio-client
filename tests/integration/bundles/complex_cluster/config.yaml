@@ -89,6 +89,11 @@
         - name: pass
           type: password
           required: no
+        - name: sag
+          display_name: Group-like stucture
+          type: structure
+          yspec: ./sag.yaml
+          required: false
 
     - &from_doc
       name: from_doc
@@ -131,3 +136,12 @@
           type: option
           option: { http: "80", https: "443" }
           default: "80"
+    - name: agroup
+      display_name: Optional
+      type: group
+      activatable: true
+      active: false
+      subs:
+        - name: justhere
+          type: integer
+          required: false
