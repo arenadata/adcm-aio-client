@@ -502,7 +502,7 @@ class Job[Object: "InteractiveObject"](WithStatus, WithActions, RootInteractiveO
 
     async def wait(
         self: Self,
-        timeout: int = 60,
+        timeout: int | None = None,
         poll_interval: int = 10,
         exit_condition: Callable[[Self], bool] = default_exit_condition,
     ) -> Self:
