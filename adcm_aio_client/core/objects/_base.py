@@ -44,11 +44,14 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
         return int(self._data["id"])
 
     async def refresh(self: Self) -> Self:
-        response = await self._requester.get(*self.get_own_path())
-        self._data = response.as_dict()
+        self._data = await self._retrieve_data()
         self._clear_cache()
 
         return self
+
+    async def _retrieve_data(self: Self) -> dict:
+        response = await self._requester.get(*self.get_own_path())
+        return response.as_dict()
 
     def _construct[Object: "InteractiveObject"](self: Self, what: type[Object], from_data: dict[str, Any]) -> Object:
         return what(requester=self._requester, data=from_data)

@@ -1,5 +1,5 @@
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable, Literal, Self
@@ -35,14 +35,19 @@ from adcm_aio_client.core.objects._common import (
     Deletable,
     WithActions,
     WithConfig,
-    WithJobStatus,
     WithMaintenanceMode,
     WithStatus,
     WithUpgrades,
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
-from adcm_aio_client.core.types import Endpoint, Requester, URLStr, WithProtectedRequester
+from adcm_aio_client.core.types import (
+    DEFAULT_JOB_TERMINAL_STATUSES,
+    Endpoint,
+    Requester,
+    URLStr,
+    WithProtectedRequester,
+)
 from adcm_aio_client.core.utils import safe_gather
 
 
@@ -456,7 +461,11 @@ class HostsInClusterNode(HostsAccessor):
         return tuple(hosts)
 
 
-class Job[Object: "InteractiveObject"](WithStatus, WithActions, WithJobStatus, RootInteractiveObject):
+def default_exit_condition(job: "Job") -> bool:
+    return job.get_status() in DEFAULT_JOB_TERMINAL_STATUSES
+
+
+class Job[Object: "InteractiveObject"](WithStatus, WithActions, RootInteractiveObject):
     PATH_PREFIX = "tasks"
 
     @property
@@ -491,15 +500,19 @@ class Job[Object: "InteractiveObject"](WithStatus, WithActions, WithJobStatus, R
     def action(self: Self) -> Action:
         return self._construct(what=Action, from_data=self._data["action"])
 
-    async def wait(self: Self, status_predicate: Callable[[], bool], timeout: int = 30, poll: int = 5) -> None:
-        if self._data["status"] not in ("running", "created"):
-            return
+    async def wait(
+        self: Self,
+        timeout: int | None = None,
+        poll_interval: int = 10,
+        exit_condition: Callable[[Self], bool] = default_exit_condition,
+    ) -> Self:
+        timeout_condition = datetime.max if timeout is None else (datetime.now() + timedelta(seconds=timeout))  # noqa: DTZ005
+        while datetime.now() < timeout_condition:  # noqa: DTZ005
+            if exit_condition(self):
+                return self
+            await asyncio.sleep(poll_interval)
 
-        for _ in range(timeout // poll):
-            await asyncio.sleep(poll)
-            if status_predicate():
-                self._data["status"] = self.get_status()
-                return
+        raise TimeoutError
 
     async def terminate(self: Self) -> None:
         await self._requester.post(*self.get_own_path(), "terminate", data={})
