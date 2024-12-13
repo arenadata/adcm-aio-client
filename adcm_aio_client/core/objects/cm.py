@@ -371,6 +371,7 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, WithConfigH
 
 class HostProvidersNode(PaginatedAccessor[HostProvider]):
     class_type = HostProvider
+    filtering = Filtering(FilterByName, FilterByBundle)
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
         response = await self._requester.post(
