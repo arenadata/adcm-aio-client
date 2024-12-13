@@ -88,8 +88,7 @@ class MappingOperation(str, Enum):
     REMOVE = "remove"
 
 
-class UrlPath(str):
-    pass
+type URLStr = str
 
 
 class MaintenanceModeStatus(str, Enum):

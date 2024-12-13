@@ -35,7 +35,7 @@ from adcm_aio_client.core.errors import (
     UnauthorizedError,
     WrongCredentialsError,
 )
-from adcm_aio_client.core.types import Credentials, PathPart, QueryParameters, Requester, UrlPath
+from adcm_aio_client.core.types import Credentials, PathPart, QueryParameters, Requester, URLStr
 
 Json: TypeAlias = Any
 Params = ParamSpec("Params")
@@ -198,12 +198,12 @@ class DefaultRequester(Requester):
 
 class BundleRetrieverInterface(ABC):
     @abstractmethod
-    async def download_external_bundle(self: Self, url: UrlPath) -> bytes:
+    async def download_external_bundle(self: Self, url: URLStr) -> bytes:
         pass
 
 
 class BundleRetriever(BundleRetrieverInterface):
-    async def download_external_bundle(self: Self, url: UrlPath) -> bytes:
+    async def download_external_bundle(self: Self, url: URLStr) -> bytes:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(url)

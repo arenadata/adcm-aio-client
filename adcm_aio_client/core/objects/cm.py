@@ -2,7 +2,7 @@ from collections import deque
 from datetime import datetime
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Callable, Iterable, Literal, Self
+from typing import Any, Awaitable, Callable, Iterable, Literal, Self
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
@@ -42,7 +42,7 @@ from adcm_aio_client.core.objects._common import (
 )
 from adcm_aio_client.core.objects._imports import ClusterImports
 from adcm_aio_client.core.requesters import BundleRetrieverInterface
-from adcm_aio_client.core.types import Endpoint, Requester, UrlPath, WithProtectedRequester
+from adcm_aio_client.core.types import Endpoint, Requester, URLStr, WithProtectedRequester
 from adcm_aio_client.core.utils import safe_gather
 
 
@@ -132,11 +132,11 @@ class BundlesNode(PaginatedAccessor[Bundle]):
         super().__init__(path, requester)
         self._bundle_retriever = retriever
 
-    async def create(self: Self, source: Path | UrlPath, accept_license: bool = False) -> Bundle:  # noqa: FBT001, FBT002
-        if isinstance(source, UrlPath):
-            file = await self._bundle_retriever.download_external_bundle(source)
-        else:
+    async def create(self: Self, source: Path | URLStr, *, accept_license: bool = False) -> Bundle:
+        if isinstance(source, Path):
             file = Path(source).read_bytes()
+        else:
+            file = await self._bundle_retriever.download_external_bundle(source)
 
         data = {"file": file}
         response = await self._requester.post("bundles", data=data, as_files=True)
@@ -206,7 +206,7 @@ class Cluster(
 
     @cached_property
     def hosts(self: Self) -> "HostsInClusterNode":
-        return HostsInClusterNode(path=(*self.get_own_path(), "hosts"), requester=self._requester)
+        return HostsInClusterNode(cluster=self)
 
     @cached_property
     def imports(self: Self) -> ClusterImports:
@@ -420,13 +420,19 @@ class HostsNode(HostsAccessor):
 
 
 class HostsInClusterNode(HostsAccessor):
+    def __init__(self: Self, cluster: Cluster) -> None:
+        path = (*cluster.get_own_path(), "hosts")
+        super().__init__(path=path, requester=cluster.requester)
+
+        self._root_host_filter = HostsAccessor(path=("hosts",), requester=cluster.requester).filter
+
     async def add(self: Self, host: Host | Iterable[Host] | Filter) -> None:
-        hosts = await self._get_hosts(host=host)
+        hosts = await self._get_hosts(host=host, filter_func=self._root_host_filter)
 
         await self._requester.post(*self._path, data=[{"hostId": host.id} for host in hosts])
 
     async def remove(self: Self, host: Host | Iterable[Host] | Filter) -> None:
-        hosts = await self._get_hosts(host=host)
+        hosts = await self._get_hosts(host=host, filter_func=self.filter)
 
         error = await safe_gather(
             coros=(self._requester.delete(*self._path, host_.id) for host_ in hosts),
@@ -436,16 +442,18 @@ class HostsInClusterNode(HostsAccessor):
         if error is not None:
             raise error
 
-    async def _get_hosts(self: Self, host: Host | Iterable[Host] | Filter) -> Iterable[Host]:
+    async def _get_hosts(
+        self: Self, host: Host | Iterable[Host] | Filter, filter_func: Callable[..., Awaitable[list[Host]]]
+    ) -> tuple[Host, ...]:
         if isinstance(host, Host):
-            hosts = [host]
+            hosts = (host,)
         elif isinstance(host, Filter):
             inline_filters = filters_to_inline(host)
-            hosts = await self.filter(**inline_filters)
+            hosts = await filter_func(**inline_filters)
         else:
             hosts = host
 
-        return hosts
+        return tuple(hosts)
 
 
 class Job[Object: "InteractiveObject"](WithStatus, WithActions, WithJobStatus, RootInteractiveObject):
