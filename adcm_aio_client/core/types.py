@@ -83,24 +83,9 @@ class AwareOfOwnPath(Protocol):
     def get_own_path(self: Self) -> Endpoint: ...
 
 
-class ADCMEntityStatus(str, Enum):
-    UP = "up"
-    DOWN = "down"
-
-
 class MappingOperation(str, Enum):
     ADD = "add"
     REMOVE = "remove"
-
-
-class JobStatus(str, Enum):
-    CREATED = "created"
-    SUCCESS = "success"
-    FAILED = "failed"
-    RUNNING = "running"
-    LOCKED = "locked"
-    ABORTED = "aborted"
-    BROKEN = "broken"
 
 
 class UrlPath(str):
