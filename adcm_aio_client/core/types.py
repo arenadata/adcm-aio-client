@@ -17,7 +17,7 @@ from typing import Optional, Protocol, Self
 # Init / Authorization
 
 type AuthToken = str
-type Cert = str | tuple[str, Optional[str], Optional[str]] | None
+type Cert = str | tuple[str, str | None, str | None]
 type Verify = str | bool
 
 
