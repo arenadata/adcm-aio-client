@@ -25,6 +25,7 @@ from adcm_aio_client.core.errors import (
     ConflictError,
     ForbiddenError,
     LoginError,
+    LogoutError,
     NoCredentialsError,
     NotFoundError,
     OperationError,
@@ -35,7 +36,7 @@ from adcm_aio_client.core.errors import (
     UnauthorizedError,
     WrongCredentialsError,
 )
-from adcm_aio_client.core.types import Credentials, PathPart, QueryParameters, Requester, URLStr
+from adcm_aio_client.core.types import Credentials, PathPart, QueryParameters, Requester, RetryPolicy, URLStr
 
 Json: TypeAlias = Any
 Params = ParamSpec("Params")
@@ -108,64 +109,80 @@ def convert_exceptions(func: DoRequestFunc) -> DoRequestFunc:
 def retry_request(request_func: RequestFunc) -> RequestFunc:
     @wraps(request_func)
     async def wrapper(self: "DefaultRequester", *args: Params.args, **kwargs: Params.kwargs) -> HTTPXRequesterResponse:
-        for attempt in range(self.retries):
+        retries = self._retries
+        for attempt in range(retries.attempts):
             try:
                 response = await request_func(self, *args, **kwargs)
             except (UnauthorizedError, httpx.NetworkError, httpx.TransportError):
-                if attempt >= self.retries - 1:
+                if attempt >= retries.attempts - 1:
                     continue
-                await sleep(self.retry_interval)
+
+                await sleep(retries.interval)
+
                 with suppress(httpx.NetworkError, httpx.TransportError):
                     await self.login(self._ensure_credentials())
             else:
                 break
         else:
-            message = f"Request failed in {self.retries} attempts"
+            message = f"Request failed in {retries.interval} attempts"
             raise RetryRequestError(message)
+
         return response
 
     return wrapper
 
 
 class DefaultRequester(Requester):
-    __slots__ = ("_credentials", "api_root", "client", "retries", "retry_interval")
+    __slots__ = ("_credentials", "_client", "_retries", "_prefix")
 
-    def __init__(
-        self: Self,
-        base_url: str,
-        root_path: str = "/api/v2/",
-        timeout: float = 5.0,
-        retries: int = 5,
-        retry_interval: float = 5.0,
-    ) -> None:
-        self.retries = retries
-        self.retry_interval = retry_interval
-        self.api_root = self._make_url(root_path, base=base_url)
-        self.client = httpx.AsyncClient(timeout=timeout)
+    def __init__(self: Self, http_client: httpx.AsyncClient, retries: RetryPolicy) -> None:
+        self._retries = retries
+        self._client = http_client
+        self._prefix = "/api/v2/"
+        self._credentials = None
+
+    @property
+    def client(self: Self) -> httpx.AsyncClient:
+        return self._client
 
     async def login(self: Self, credentials: Credentials) -> Self:
-        login_url = self._make_url("login", base=self.api_root)
+        login_url = self._make_url("login")
 
         try:
             response = await self._do_request(self.client.post(url=login_url, data=credentials.dict()))
         except UnauthorizedError as e:
-            raise WrongCredentialsError from e
-
-        if response.status_code != 200:
-            message = f"Authentication error: {response.status_code} for url: {login_url}"
-            raise LoginError(message)
+            message = f"Login to ADCM at {self.client.base_url} has failed for user {credentials.username} most likely due to incorrect credentials"
+            raise WrongCredentialsError(message) from e
+        except ResponseError as e:
+            message = f"Login to ADCM at {self.client.base_url} has failed for user {credentials.username}: {e}"
+            raise LoginError(message) from e
 
         self._credentials = credentials
         self.client.headers["X-CSRFToken"] = response.cookies["csrftoken"]
+
+        return self
+
+    async def logout(self: Self) -> Self:
+        logout_url = self._make_url("logout")
+
+        try:
+            request_coro = self.client.post(url=logout_url, data={})
+            await self._do_request(request_coro)
+        except ResponseError as e:
+            message = f"Logout from ADCM at {self.client.base_url} has failed"
+            raise LogoutError(message) from e
+
+        self.client.headers.pop("X-CSRFToken", None)
+
         return self
 
     async def get(self: Self, *path: PathPart, query: QueryParameters | None = None) -> HTTPXRequesterResponse:
         return await self.request(*path, method=self.client.get, params=query or {})
 
-    async def post(self: Self, *path: PathPart, data: dict | list, as_files: bool = False) -> HTTPXRequesterResponse:
-        if as_files:
-            return await self.request(*path, method=self.client.post, files=data)
+    async def post_files(self: Self, *path: PathPart, files: dict) -> HTTPXRequesterResponse:
+        return await self.request(*path, method=self.client.post, files=files)
 
+    async def post(self: Self, *path: PathPart, data: dict | list) -> HTTPXRequesterResponse:
         return await self.request(*path, method=self.client.post, json=data)
 
     async def patch(self: Self, *path: PathPart, data: dict | list) -> HTTPXRequesterResponse:
@@ -176,14 +193,13 @@ class DefaultRequester(Requester):
 
     @retry_request
     async def request(self: Self, *path: PathPart, method: Callable, **kwargs: dict) -> HTTPXRequesterResponse:
-        url = self._make_url(*path, base=self.api_root)
+        url = self._make_url(*path)
         response = await self._do_request(method(url, **kwargs))
 
         return HTTPXRequesterResponse(response=response)
 
-    @staticmethod
-    def _make_url(*path: PathPart, base: str) -> str:
-        return urljoin(base, "/".join(map(str, (*path, ""))))
+    def _make_url(self, *path: PathPart) -> str:
+        return urljoin(self._prefix, "/".join(map(str, (*path, ""))))
 
     @convert_exceptions
     async def _do_request(self: Self, request_coro: Coroutine[Any, Any, httpx.Response]) -> httpx.Response:

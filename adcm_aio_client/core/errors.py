@@ -15,6 +15,24 @@ class ADCMClientError(Exception):
     pass
 
 
+# Session
+
+
+class ClientInitError(ADCMClientError):
+    pass
+
+
+# Version
+
+
+class VersionRetrievalError(ADCMClientError):
+    pass
+
+
+class NotSupportedVersionError(ADCMClientError):
+    pass
+
+
 # Requester
 
 
@@ -31,6 +49,10 @@ class WrongCredentialsError(RequesterError):
 
 
 class LoginError(RequesterError):
+    pass
+
+
+class LogoutError(RequesterError):
     pass
 
 
@@ -117,14 +139,3 @@ class FilterPreparationError(FilterError): ...
 
 
 class InvalidFilterError(FilterError): ...
-
-
-# Version
-
-
-class VersionRetrievalError(ADCMClientError):
-    pass
-
-
-class NotSupportedVersionError(ADCMClientError):
-    pass

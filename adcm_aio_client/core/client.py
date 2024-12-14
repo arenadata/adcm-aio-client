@@ -30,7 +30,7 @@ class ADCMClient:
         self: Self, requester: Requester, bundle_retriever: BundleRetrieverInterface, adcm_version: str
     ) -> None:
         self._requester = requester
-        self.bundle_retriever = bundle_retriever
+        self._retrieve_bundle_from_remote_url = bundle_retriever
         self._adcm_version = adcm_version
 
     @cached_property
@@ -51,7 +51,9 @@ class ADCMClient:
 
     @cached_property
     def bundles(self: Self) -> BundlesNode:
-        return BundlesNode(path=("bundles",), requester=self._requester, retriever=self.bundle_retriever)
+        return BundlesNode(
+            path=("bundles",), requester=self._requester, retriever=self._retrieve_bundle_from_remote_url
+        )
 
 
 async def build_client(

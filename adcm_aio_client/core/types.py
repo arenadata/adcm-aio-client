@@ -17,7 +17,7 @@ from typing import Optional, Protocol, Self
 # Init / Authorization
 
 type AuthToken = str
-type Cert = str | tuple[str, Optional[str], Optional[str]] | None
+type Cert = str | tuple[str, Optional[str], Optional[str]]
 type Verify = str | bool
 
 
@@ -48,15 +48,43 @@ class RequesterResponse(Protocol):
 
 
 class Requester(Protocol):
-    async def login(self: Self, credentials: Credentials) -> Self: ...
-
     async def get(self: Self, *path: PathPart, query: QueryParameters | None = None) -> RequesterResponse: ...
 
-    async def post(self: Self, *path: PathPart, data: dict | list, as_files: bool = False) -> RequesterResponse: ...
+    async def post_files(self: Self, *path: PathPart, files: dict) -> RequesterResponse: ...
+
+    async def post(self: Self, *path: PathPart, data: dict | list) -> RequesterResponse: ...
 
     async def patch(self: Self, *path: PathPart, data: dict | list) -> RequesterResponse: ...
 
     async def delete(self: Self, *path: PathPart) -> RequesterResponse: ...
+
+
+# Session
+
+
+@dataclass(slots=True)
+class ConnectionSecurity:
+    verify: str | bool
+    certificate: Cert | None
+
+
+@dataclass(slots=True)
+class SessionInfo:
+    url: str
+    credentials: Credentials
+    security: ConnectionSecurity
+
+
+@dataclass(slots=True)
+class RetryPolicy:
+    attempts: int
+    interval: int
+
+
+@dataclass(slots=True)
+class RequestPolicy:
+    timeout: int
+    retry: RetryPolicy
 
 
 # Objects
