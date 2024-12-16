@@ -19,6 +19,7 @@ class ADCMSession:
         # basics
         url: str,
         credentials: Credentials,
+        *,
         # security
         verify: str | bool = True,
         cert: Cert | None = None,
@@ -43,10 +44,14 @@ class ADCMSession:
     async def __aenter__(self: Self) -> ADCMClient:
         self._http_client = await self._prepare_http_client_for_running_adcm()
         adcm_version_ = await _ensure_adcm_version_is_supported(client=self._http_client)
-        self._requester = self._prepare_api_v2_requester()
-        # todo think about handling errors here
-        #   so at least http client will be closed properly
-        await self._requester.login(self._session_info.credentials)
+
+        try:
+            self._requester = self._prepare_api_v2_requester()
+            await self._requester.login(self._session_info.credentials)
+        except Exception as e:
+            await self.__aexit__(exc_type=type(e), exc_value=e)
+            raise
+
         self._adcm_client = self._prepare_adcm_client(version=adcm_version_)
         return self._adcm_client
 
@@ -56,15 +61,29 @@ class ADCMSession:
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None,
     ) -> None:
+        await self.__close_requester_safe(exc_type, exc_value, traceback)
+        await self.__close_http_client_safe(exc_type, exc_value, traceback)
+
+    async def __close_requester_safe(
+        self: Self,
+        exc_type: type[BaseException] | None = None,
+        exc_value: BaseException | None = None,
+        traceback: TracebackType | None = None,
+    ) -> None:
         if self._requester:
             try:
                 await self._requester.logout()
             except:
-                if self._http_client:
-                    await self._http_client.__aexit__(exc_type, exc_value, traceback)
+                await self.__close_http_client_safe(exc_type, exc_value, traceback)
 
                 raise
 
+    async def __close_http_client_safe(
+        self: Self,
+        exc_type: type[BaseException] | None = None,
+        exc_value: BaseException | None = None,
+        traceback: TracebackType | None = None,
+    ) -> None:
         if self._http_client:
             await self._http_client.__aexit__(exc_type, exc_value, traceback)
 
@@ -81,6 +100,7 @@ class ADCMSession:
         try:
             await client.head("/")
         except httpx.NetworkError as e:
+            await client.__aexit__(type(e), e)
             message = f"Failed to connect to ADCM at URL {self._session_info.url}"
             raise ClientInitError(message) from e
 
@@ -109,12 +129,12 @@ async def _ensure_adcm_version_is_supported(client: httpx.AsyncClient) -> str:
         response = await client.get("/versions/")
         data = response.json()
         version = str(data["adcm"]["version"])
-    except (JSONDecodeError, KeyError):
+    except (JSONDecodeError, KeyError) as e:
         message = (
             f"Failed to detect ADCM version at {client.base_url}. "
             f"Most likely ADCM version is lesser than {MIN_ADCM_VERSION}"
         )
-        raise NotSupportedVersionError(message)
+        raise NotSupportedVersionError(message) from e
 
     if adcm_version.compare_adcm_versions(version, MIN_ADCM_VERSION) < 0:
         message = f"Minimal supported ADCM version is {MIN_ADCM_VERSION}. Got {adcm_version}"

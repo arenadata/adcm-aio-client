@@ -151,7 +151,10 @@ class DefaultRequester(Requester):
         try:
             response = await self._do_request(self.client.post(url=login_url, data=credentials.dict()))
         except UnauthorizedError as e:
-            message = f"Login to ADCM at {self.client.base_url} has failed for user {credentials.username} most likely due to incorrect credentials"
+            message = (
+                f"Login to ADCM at {self.client.base_url} has failed for "
+                f"user {credentials.username} most likely due to incorrect credentials"
+            )
             raise WrongCredentialsError(message) from e
         except ResponseError as e:
             message = f"Login to ADCM at {self.client.base_url} has failed for user {credentials.username}: {e}"
@@ -198,7 +201,7 @@ class DefaultRequester(Requester):
 
         return HTTPXRequesterResponse(response=response)
 
-    def _make_url(self, *path: PathPart) -> str:
+    def _make_url(self: Self, *path: PathPart) -> str:
         return urljoin(self._prefix, "/".join(map(str, (*path, ""))))
 
     @convert_exceptions
