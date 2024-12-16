@@ -7,7 +7,8 @@ from testcontainers.core.network import Network
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.client import ADCMClient, build_client
+from adcm_aio_client._session import ADCMSession
+from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.types import Credentials
 from tests.integration.setup_environment import (
     DB_USER,
@@ -48,4 +49,6 @@ def adcm(network: Network, postgres: ADCMPostgresContainer) -> Generator[ADCMCon
 @pytest_asyncio.fixture(scope="function")
 async def adcm_client(adcm: ADCMContainer) -> AsyncGenerator[ADCMClient, None]:
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
-    yield await build_client(url=adcm.url, credentials=credentials, retries=1, retry_interval=1, timeout=10)
+    url = adcm.url
+    async with ADCMSession(url=url, credentials=credentials, timeout=10, retry_interval=1, retry_attempts=1) as client:
+        yield client
