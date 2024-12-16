@@ -179,6 +179,7 @@ class ConfigSchema:
         self._jsons: set[LevelNames] = set()
         self._groups: set[LevelNames] = set()
         self._activatable_groups: set[LevelNames] = set()
+        self._invisible_fields: set[LevelNames] = set()
         self._display_name_map: dict[tuple[LevelNames, ParameterDisplayName], ParameterName] = {}
         self._param_map: dict[LevelNames, dict] = {}
 
@@ -203,6 +204,12 @@ class ConfigSchema:
     def is_activatable_group(self: Self, parameter_name: LevelNames) -> bool:
         return parameter_name in self._activatable_groups
 
+    def is_invisible(self: Self, parameter_name: LevelNames) -> bool:
+        return parameter_name in self._invisible_fields
+
+    def is_visible_parameter(self: Self, parameter_name: LevelNames) -> bool:
+        return parameter_name in self._param_map and not self.is_invisible(parameter_name)
+
     def get_level_name(self: Self, group: LevelNames, display_name: ParameterDisplayName) -> ParameterName | None:
         key = (group, display_name)
         return self._display_name_map.get(key)
@@ -224,6 +231,9 @@ class ConfigSchema:
 
             elif is_json_v2(param_spec):
                 self._jsons.add(level_names)
+
+            if param_spec.get("adcmMeta", {}).get("isInvisible"):
+                self._invisible_fields.add(level_names)
 
             *group, own_level_name = level_names
             display_name = param_spec["title"]

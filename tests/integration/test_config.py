@@ -27,6 +27,30 @@ async def cluster(adcm_client: ADCMClient, cluster_bundle: Bundle) -> Cluster:
     return cluster
 
 
+async def test_invisible_fields(cluster: Cluster) -> None:
+    expected_error = KeyError
+
+    service = await cluster.services.get()
+    config = await service.config
+
+    # invisible fields can't be found via `__getitem__` interface
+
+    with pytest.raises(expected_error):
+        config["cant_find"]
+
+    group = config["A lot of text", ParameterGroup]
+    with pytest.raises(expected_error):
+        group["cantCme"]
+
+    # non initialized structure-based group
+    structure_group = group["sag", ParameterGroup]
+    inner_group = structure_group["nested", ParameterGroup]
+    with pytest.raises(expected_error):
+        inner_group["tech"]
+
+    # they aren't displayed in difference
+
+
 async def test_structure_groups(cluster: Cluster) -> None:
     service = await cluster.services.get()
     config = await service.config

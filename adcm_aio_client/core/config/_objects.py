@@ -71,7 +71,11 @@ class _Group(_ConfigWrapper):
 
         parameter_full_name = (*self._name, level_name)
 
-        # todo check existence
+        if not self._schema.is_visible_parameter(parameter_full_name):
+            message = f"No parameter named {name}"
+            if self._name:
+                message = f"{message} in group {'/'.join(self._name)}"
+            raise KeyError(message)
 
         class_ = value_class
         if self._schema.is_group(parameter_full_name):
