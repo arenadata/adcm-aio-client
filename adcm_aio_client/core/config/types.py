@@ -180,6 +180,7 @@ class ConfigSchema:
         self._groups: set[LevelNames] = set()
         self._activatable_groups: set[LevelNames] = set()
         self._display_name_map: dict[tuple[LevelNames, ParameterDisplayName], ParameterName] = {}
+        self._param_map: dict[LevelNames, dict] = {}
 
         self._analyze_schema()
 
@@ -206,6 +207,13 @@ class ConfigSchema:
         key = (group, display_name)
         return self._display_name_map.get(key)
 
+    def get_default(self: Self, parameter_name: LevelNames) -> Any:  # noqa: ANN401
+        param_spec = self._param_map[parameter_name]
+        if not self.is_group(parameter_name):
+            return param_spec.get("default", None)
+
+        return {child_name: self.get_default((*parameter_name, child_name)) for child_name in param_spec["properties"]}
+
     def _analyze_schema(self: Self) -> None:
         for level_names, param_spec in self._iterate_parameters(object_schema=self._raw):
             if is_group_v2(param_spec):
@@ -220,6 +228,7 @@ class ConfigSchema:
             *group, own_level_name = level_names
             display_name = param_spec["title"]
             self._display_name_map[tuple(group), display_name] = own_level_name
+            self._param_map[level_names] = param_spec
 
     def _retrieve_name_type_mapping(self: Self) -> dict[LevelNames, str]:
         return {
@@ -250,9 +259,8 @@ class ConfigSchema:
 def is_group_v2(attributes: dict) -> bool:
     # todo need to check group-like structures, because they are almost impossible to distinct from groups
     return (
-        attributes.get("type") == "object"
-        and attributes.get("additionalProperties") is False
-        and attributes.get("default") == {}
+        attributes.get("type") == "object" and attributes.get("additionalProperties") is False
+        #        and attributes.get("default") == {}
     )
 
 

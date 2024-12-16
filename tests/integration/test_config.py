@@ -27,6 +27,21 @@ async def cluster(adcm_client: ADCMClient, cluster_bundle: Bundle) -> Cluster:
     return cluster
 
 
+async def test_structure_groups(cluster: Cluster) -> None:
+    service = await cluster.services.get()
+    config = await service.config
+    group = config["A lot of text"]
+    assert isinstance(group, ParameterGroup)
+    group_like = group["Group-like structure"]
+    # structure with "dict" root is a group
+    assert isinstance(group_like, ParameterGroup)
+    assert isinstance(group_like["quantity"], Parameter)
+    nested_group = group_like["nested"]
+    assert isinstance(nested_group, ParameterGroup)
+    nested_group["attr", Parameter].set("something")
+    nested_group["op", Parameter].set("good")
+
+
 async def test_config(cluster: Cluster) -> None:
     # save two configs for later refresh usage
     service = await cluster.services.get()
@@ -60,15 +75,6 @@ async def test_config(cluster: Cluster) -> None:
 
     group = config["A lot of text"]
     assert isinstance(group, ParameterGroup)
-
-    #    group_like = group["Group-like structure"]
-    #    # structure with "dict" root is a group
-    #    assert isinstance(group_like, ParameterGroup)
-    #    assert isinstance(group_like["quantity"], Parameter)
-    #    nested_group = group_like["nested"]
-    #    assert isinstance(nested_group, ParameterGroup)
-    #    nested_group["attr", Parameter].set("something")
-    #    nested_group["op", Parameter].set("good")
 
     field = group["big_text"]
     assert isinstance(field, Parameter)

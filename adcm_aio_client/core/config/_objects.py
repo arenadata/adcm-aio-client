@@ -71,6 +71,8 @@ class _Group(_ConfigWrapper):
 
         parameter_full_name = (*self._name, level_name)
 
+        # todo check existence
+
         class_ = value_class
         if self._schema.is_group(parameter_full_name):
             class_ = a_group_class if self._schema.is_activatable_group(parameter_full_name) else group_class
@@ -84,7 +86,7 @@ class _Group(_ConfigWrapper):
     def _on_data_change(self: Self) -> None:
         # need to drop caches when data is changed,
         # because each entry may already point to a different data
-        # and return incorrect nodes for a seach (=> can't be edited too)
+        # and return incorrect nodes for a search (=> can't be edited too)
         self._wrappers_cache = {}
 
 
@@ -92,11 +94,49 @@ class Parameter[T](_ConfigWrapper):
     @property
     def value(self: Self) -> T:
         # todo probably want to return read-only proxies for list/dict
-        return self._data.get_value(parameter=self._name)
+        try:
+            return self._data.get_value(parameter=self._name)
+        except (TypeError, KeyError):
+            if len(self._name) == 1:
+                # not in any sort of group, should continue with exception
+                raise
+
+            return self._schema.get_default(self._name)
 
     def set(self: Self, value: Any) -> Self:  # noqa: ANN401
-        self._data.set_value(parameter=self._name, value=value)
+        try:
+            self._data.set_value(parameter=self._name, value=value)
+        except (TypeError, KeyError) as err:
+            if len(self._name) == 1:
+                # not in any sort of group, should continue with exception
+                raise
+
+            self._set_parent_groups_to_defaults(err=err)
+            self._data.set_value(parameter=self._name, value=value)
+
         return self
+
+    def _set_parent_groups_to_defaults(self: Self, err: Exception) -> None:
+        # find first `None` group
+        root_group_name, *rest = self._name[:-1]
+        group = (root_group_name,)
+
+        while rest:
+            value_ = self._data.get_value(group)
+            if value_ is None:
+                break
+
+            next_group_name, *rest = rest
+            group = (*group, next_group_name)
+
+        value_ = self._data.get_value(group)
+        if value_ is not None:
+            # error was legit and not about None group
+            raise err
+
+        # actually build defaults
+        defaults = self._schema.get_default(group)
+        self._data.set_value(group, defaults)
 
 
 class _Desyncable(_ConfigWrapper):
