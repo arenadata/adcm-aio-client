@@ -50,6 +50,23 @@ async def test_invisible_fields(cluster: Cluster) -> None:
 
     # they aren't displayed in difference
 
+    # this change uses "internal" implementation
+    # and isn't supposed to be used in production code
+    data = config.data._values
+    data["very_important_flag"] = 2
+    data["cant_find"] = "changed value"
+    data["a_lot_of_text"]["cant_find"] = "also changed"
+
+    await config.save()
+
+    first_config = await service.config_history[0]
+    second_config = await service.config_history[-1]
+
+    diff = first_config.difference(second_config)
+    assert len(diff.values) == 1
+    assert ("very_important_flag",) in diff.values
+    assert first_config.data._values["cant_find"] != second_config.data._values["cant_find"]
+
 
 async def test_structure_groups(cluster: Cluster) -> None:
     service = await cluster.services.get()
