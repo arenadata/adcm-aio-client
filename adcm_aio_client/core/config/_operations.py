@@ -1,6 +1,6 @@
 from adcm_aio_client.core.config.types import (
-    ConfigDifference,
     ConfigSchema,
+    FullConfigDifference,
     GenericConfigData,
     LevelNames,
     ValueChange,
@@ -11,8 +11,8 @@ from adcm_aio_client.core.config.types import (
 # Difference
 def find_config_difference(
     previous: GenericConfigData, current: GenericConfigData, schema: ConfigSchema
-) -> ConfigDifference:
-    diff = ConfigDifference(schema=schema)
+) -> FullConfigDifference:
+    diff = FullConfigDifference(schema=schema)
 
     _fill_values_diff_at_level(level=(), diff=diff, previous=previous.values, current=current.values)
     _fill_attributes_diff(diff=diff, previous=previous.attributes, current=current.attributes)
@@ -20,7 +20,7 @@ def find_config_difference(
     return diff
 
 
-def _fill_values_diff_at_level(level: LevelNames, diff: ConfigDifference, previous: dict, current: dict) -> None:
+def _fill_values_diff_at_level(level: LevelNames, diff: FullConfigDifference, previous: dict, current: dict) -> None:
     missing = object()
     for key, cur_value in current.items():
         level_names = (*level, key)
@@ -41,7 +41,7 @@ def _fill_values_diff_at_level(level: LevelNames, diff: ConfigDifference, previo
         _fill_values_diff_at_level(diff=diff, level=level_names, previous=prev_value, current=cur_value)
 
 
-def _fill_attributes_diff(diff: ConfigDifference, previous: dict, current: dict) -> None:
+def _fill_attributes_diff(diff: FullConfigDifference, previous: dict, current: dict) -> None:
     missing = object()
     for full_name, cur_value in current.items():
         prev_value = previous.get(full_name, missing)

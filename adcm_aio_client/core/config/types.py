@@ -134,7 +134,7 @@ def recursive_defaultdict() -> defaultdict:
 
 
 @dataclass(slots=True)
-class ConfigDifference:
+class FullConfigDifference:
     schema: "ConfigSchema"
     values: dict[LevelNames, ValueChange] = field(default_factory=dict)
     attributes: dict[LevelNames, ValueChange] = field(default_factory=dict)
@@ -142,6 +142,15 @@ class ConfigDifference:
     @property
     def is_empty(self: Self) -> bool:
         return not bool(self.values or self.attributes)
+
+
+@dataclass(slots=True)
+class ConfigDifference(FullConfigDifference):
+    @classmethod
+    def from_full_format(cls: type[Self], diff: FullConfigDifference) -> Self:
+        visible_value_changes = {k: v for k, v in diff.values.items() if not diff.schema.is_invisible(k)}
+        visible_attr_changes = {k: v for k, v in diff.attributes.items() if not diff.schema.is_invisible(k)}
+        return cls(schema=diff.schema, values=visible_value_changes, attributes=visible_attr_changes)
 
     def __str__(self: Self) -> str:
         values_nested = self._to_nested_dict(self.values)

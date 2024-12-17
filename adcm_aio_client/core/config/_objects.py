@@ -298,7 +298,8 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
             previous = self
             current = other
 
-        return find_config_difference(previous=previous.data, current=current.data, schema=self._schema)
+        full_diff = find_config_difference(previous=previous.data, current=current.data, schema=self._schema)
+        return ConfigDifference.from_full_format(full_diff)
 
     async def save(self: Self, description: str = "") -> Self:
         config_to_save = self._current_config.config
