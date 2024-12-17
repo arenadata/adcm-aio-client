@@ -18,14 +18,14 @@ class Imports:
         for import_data in response.as_dict()["results"]:
             binds = import_data.get("binds", [])
             for bind in binds:
-                bind_id = int(bind["source"].get("id"))
-                bind_type = bind["source"].get("type")
+                bind_id = int(bind["source"]["id"])
+                bind_type = bind["source"]["type"]
                 data_binds.add((bind_id, bind_type))
 
         return data_binds
 
     def _create_post_data(self: Self, binds: Iterable[tuple[int, str]]) -> list[dict[str, dict[str, int | str]]]:
-        return [{"source": {"id": int(source[0]), "type": source[1]}} for source in binds]
+        return [{"source": {"id": source[0], "type": source[1]}} for source in binds]
 
     def _sources_to_binds(self: Self, sources: Collection[Union["Cluster", "Service"]]) -> set[tuple[int, str]]:
         return {(s.id, s.__class__.__name__.lower()) for s in sources}
