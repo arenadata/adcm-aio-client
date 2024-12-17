@@ -144,8 +144,19 @@ class FullConfigDifference:
         return not bool(self.values or self.attributes)
 
 
-@dataclass(slots=True)
-class ConfigDifference(FullConfigDifference):
+class ConfigDifference:
+    __slots__ = ("_schema", "_values", "_attributes")
+
+    def __init__(
+        self: Self,
+        schema: "ConfigSchema",
+        values: dict[LevelNames, ValueChange],
+        attributes: dict[LevelNames, ValueChange],
+    ) -> None:
+        self._schema = schema
+        self._values = values
+        self._attributes = attributes
+
     @classmethod
     def from_full_format(cls: type[Self], diff: FullConfigDifference) -> Self:
         visible_value_changes = {k: v for k, v in diff.values.items() if not diff.schema.is_invisible(k)}
@@ -153,8 +164,8 @@ class ConfigDifference(FullConfigDifference):
         return cls(schema=diff.schema, values=visible_value_changes, attributes=visible_attr_changes)
 
     def __str__(self: Self) -> str:
-        values_nested = self._to_nested_dict(self.values)
-        attributes_nested = self._to_nested_dict(self.attributes)
+        values_nested = self._to_nested_dict(self._values)
+        attributes_nested = self._to_nested_dict(self._attributes)
 
         if not (values_nested or attributes_nested):
             return "No Changes"
@@ -168,17 +179,46 @@ class ConfigDifference(FullConfigDifference):
         result = recursive_defaultdict()
 
         for names, change in changes.items():
-            changes_tuple = (change.previous, change.current)
+            changes_repr = self._prepare_change(change)
 
             if len(names) == 1:
-                result[names[0]] = changes_tuple
+                result[names[0]] = changes_repr
                 continue
 
             *groups, name = names
             group_node = reduce(dict.__getitem__, groups, result)
-            group_node[name] = changes_tuple
+            group_node[name] = changes_repr
 
-        return result
+        # get rid of `defaultdict` in favor of `dict`
+        # may be not optimal
+        return self._simplify_dict(result)
+
+    def _prepare_change(self: Self, change: ValueChange) -> tuple | dict:
+        if not (isinstance(change.previous, dict) and isinstance(change.current, dict)):
+            return (change.previous, change.current)
+
+        dict_diff = {}
+
+        for key, cur_value in change.current.items():
+            prev_value = change.previous.get(key)
+            dict_diff[key] = self._prepare_change(change=ValueChange(previous=prev_value, current=cur_value))
+
+        missing_in_current = set(change.previous.keys()).difference(change.current.keys())
+        for key in missing_in_current:
+            dict_diff[key] = self._prepare_change(change=ValueChange(previous=change.previous[key], current=None))
+
+        return dict_diff
+
+    def _simplify_dict(self: Self, dd: dict) -> dict:
+        simplified = {}
+
+        for k, v in dd.items():
+            if isinstance(v, dict):
+                v = self._simplify_dict(v)
+
+            simplified[k] = v
+
+        return simplified
 
 
 class ConfigSchema:
