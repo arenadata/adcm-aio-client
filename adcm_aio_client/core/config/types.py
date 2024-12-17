@@ -134,7 +134,7 @@ def recursive_defaultdict() -> defaultdict:
 
 
 @dataclass(slots=True)
-class ConfigDifference:
+class FullConfigDifference:
     schema: "ConfigSchema"
     values: dict[LevelNames, ValueChange] = field(default_factory=dict)
     attributes: dict[LevelNames, ValueChange] = field(default_factory=dict)
@@ -143,9 +143,29 @@ class ConfigDifference:
     def is_empty(self: Self) -> bool:
         return not bool(self.values or self.attributes)
 
+
+class ConfigDifference:
+    __slots__ = ("_schema", "_values", "_attributes")
+
+    def __init__(
+        self: Self,
+        schema: "ConfigSchema",
+        values: dict[LevelNames, ValueChange],
+        attributes: dict[LevelNames, ValueChange],
+    ) -> None:
+        self._schema = schema
+        self._values = values
+        self._attributes = attributes
+
+    @classmethod
+    def from_full_format(cls: type[Self], diff: FullConfigDifference) -> Self:
+        visible_value_changes = {k: v for k, v in diff.values.items() if not diff.schema.is_invisible(k)}
+        visible_attr_changes = {k: v for k, v in diff.attributes.items() if not diff.schema.is_invisible(k)}
+        return cls(schema=diff.schema, values=visible_value_changes, attributes=visible_attr_changes)
+
     def __str__(self: Self) -> str:
-        values_nested = self._to_nested_dict(self.values)
-        attributes_nested = self._to_nested_dict(self.attributes)
+        values_nested = self._to_nested_dict(self._values)
+        attributes_nested = self._to_nested_dict(self._attributes)
 
         if not (values_nested or attributes_nested):
             return "No Changes"
@@ -159,17 +179,47 @@ class ConfigDifference:
         result = recursive_defaultdict()
 
         for names, change in changes.items():
-            changes_tuple = (change.previous, change.current)
+            changes_repr = self._prepare_change(change)
 
             if len(names) == 1:
-                result[names[0]] = changes_tuple
+                result[names[0]] = changes_repr
                 continue
 
             *groups, name = names
             group_node = reduce(dict.__getitem__, groups, result)
-            group_node[name] = changes_tuple
+            group_node[name] = changes_repr
 
-        return result
+        # get rid of `defaultdict` in favor of `dict`
+        # may be not optimal
+        return self._simplify_dict(result)
+
+    def _prepare_change(self: Self, change: ValueChange) -> tuple | dict:
+        if not (isinstance(change.previous, dict) and isinstance(change.current, dict)):
+            return (change.previous, change.current)
+
+        dict_diff = {}
+
+        for key, cur_value in change.current.items():
+            prev_value = change.previous.get(key)
+            if prev_value != cur_value:
+                dict_diff[key] = self._prepare_change(change=ValueChange(previous=prev_value, current=cur_value))
+
+        missing_in_current = set(change.previous.keys()).difference(change.current.keys())
+        for key in missing_in_current:
+            dict_diff[key] = self._prepare_change(change=ValueChange(previous=change.previous[key], current=None))
+
+        return dict_diff
+
+    def _simplify_dict(self: Self, dd: dict) -> dict:
+        simplified = {}
+
+        for k, v in dd.items():
+            if isinstance(v, dict):
+                v = self._simplify_dict(v)
+
+            simplified[k] = v
+
+        return simplified
 
 
 class ConfigSchema:
@@ -179,7 +229,9 @@ class ConfigSchema:
         self._jsons: set[LevelNames] = set()
         self._groups: set[LevelNames] = set()
         self._activatable_groups: set[LevelNames] = set()
+        self._invisible_fields: set[LevelNames] = set()
         self._display_name_map: dict[tuple[LevelNames, ParameterDisplayName], ParameterName] = {}
+        self._param_map: dict[LevelNames, dict] = {}
 
         self._analyze_schema()
 
@@ -202,9 +254,22 @@ class ConfigSchema:
     def is_activatable_group(self: Self, parameter_name: LevelNames) -> bool:
         return parameter_name in self._activatable_groups
 
+    def is_invisible(self: Self, parameter_name: LevelNames) -> bool:
+        return parameter_name in self._invisible_fields
+
+    def is_visible_parameter(self: Self, parameter_name: LevelNames) -> bool:
+        return parameter_name in self._param_map and not self.is_invisible(parameter_name)
+
     def get_level_name(self: Self, group: LevelNames, display_name: ParameterDisplayName) -> ParameterName | None:
         key = (group, display_name)
         return self._display_name_map.get(key)
+
+    def get_default(self: Self, parameter_name: LevelNames) -> Any:  # noqa: ANN401
+        param_spec = self._param_map[parameter_name]
+        if not self.is_group(parameter_name):
+            return param_spec.get("default", None)
+
+        return {child_name: self.get_default((*parameter_name, child_name)) for child_name in param_spec["properties"]}
 
     def _analyze_schema(self: Self) -> None:
         for level_names, param_spec in self._iterate_parameters(object_schema=self._raw):
@@ -217,9 +282,13 @@ class ConfigSchema:
             elif is_json_v2(param_spec):
                 self._jsons.add(level_names)
 
+            if param_spec.get("adcmMeta", {}).get("isInvisible"):
+                self._invisible_fields.add(level_names)
+
             *group, own_level_name = level_names
             display_name = param_spec["title"]
             self._display_name_map[tuple(group), display_name] = own_level_name
+            self._param_map[level_names] = param_spec
 
     def _retrieve_name_type_mapping(self: Self) -> dict[LevelNames, str]:
         return {
@@ -248,12 +317,7 @@ class ConfigSchema:
 
 
 def is_group_v2(attributes: dict) -> bool:
-    # todo need to check group-like structures, because they are almost impossible to distinct from groups
-    return (
-        attributes.get("type") == "object"
-        and attributes.get("additionalProperties") is False
-        and attributes.get("default") == {}
-    )
+    return attributes.get("type") == "object" and attributes.get("additionalProperties") is False
 
 
 def is_activatable_v2(attributes: dict) -> bool:
