@@ -201,7 +201,8 @@ class ConfigDifference:
 
         for key, cur_value in change.current.items():
             prev_value = change.previous.get(key)
-            dict_diff[key] = self._prepare_change(change=ValueChange(previous=prev_value, current=cur_value))
+            if prev_value != cur_value:
+                dict_diff[key] = self._prepare_change(change=ValueChange(previous=prev_value, current=cur_value))
 
         missing_in_current = set(change.previous.keys()).difference(change.current.keys())
         for key in missing_in_current:
