@@ -7,6 +7,7 @@ from adcm_aio_client.core.actions import ActionsAccessor, UpgradeNode
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.core.config._objects import ConfigOwner
 from adcm_aio_client.core.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
+from adcm_aio_client.core.objects._imports import Imports
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):
@@ -55,3 +56,9 @@ class WithJobStatus(WithProtectedRequester, AwareOfOwnPath):
     async def get_job_status(self: Self) -> str:
         response = await self._requester.get(*self.get_own_path())
         return response.as_dict()["status"]
+
+
+class WithImports(WithProtectedRequester, AwareOfOwnPath):
+    @async_cached_property
+    async def imports(self: Self) -> Imports:
+        return Imports(requester=self._requester, path=(*self.get_own_path(), "imports"))
