@@ -15,7 +15,7 @@ from adcm_aio_client.core.config.types import (
     LevelNames,
     LocalConfigs,
 )
-from adcm_aio_client.core.errors import ConfigComparisonError, RequesterError
+from adcm_aio_client.core.errors import ConfigComparisonError, ConfigNoParameterError, RequesterError
 from adcm_aio_client.core.types import AwareOfOwnPath, WithRequesterProperty
 
 
@@ -75,7 +75,7 @@ class _Group(_ConfigWrapper):
             message = f"No parameter named {name}"
             if self._name:
                 message = f"{message} in group {'/'.join(self._name)}"
-            raise KeyError(message)
+            raise ConfigNoParameterError(message)
 
         class_ = value_class
         if self._schema.is_group(parameter_full_name):

@@ -123,6 +123,9 @@ class ConfigError(ADCMClientError): ...
 class ConfigComparisonError(ConfigError): ...
 
 
+class ConfigNoParameterError(ConfigError): ...
+
+
 # Mapping
 
 

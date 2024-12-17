@@ -6,8 +6,9 @@ import pytest_asyncio
 from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.config import ActivatableParameterGroup, Parameter, ParameterGroup
 from adcm_aio_client.core.config.refresh import apply_local_changes, apply_remote_changes
+from adcm_aio_client.core.errors import ConfigNoParameterError
 from adcm_aio_client.core.filters import Filter
-from adcm_aio_client.core.objects.cm import Bundle, Cluster
+from adcm_aio_client.core.objects.cm import Bundle, Cluster, Service
 from tests.integration.bundle import pack_bundle
 from tests.integration.conftest import BUNDLES
 
@@ -27,10 +28,14 @@ async def cluster(adcm_client: ADCMClient, cluster_bundle: Bundle) -> Cluster:
     return cluster
 
 
-async def test_invisible_fields(cluster: Cluster) -> None:
-    expected_error = KeyError
+async def get_service_with_config(cluster: Cluster) -> Service:
+    return await cluster.services.get(name__eq="complex_config")
 
-    service = await cluster.services.get()
+
+async def test_invisible_fields(cluster: Cluster) -> None:
+    expected_error = ConfigNoParameterError
+
+    service = await get_service_with_config(cluster)
     config = await service.config
 
     # invisible fields can't be found via `__getitem__` interface
@@ -69,7 +74,7 @@ async def test_invisible_fields(cluster: Cluster) -> None:
 
 
 async def test_structure_groups(cluster: Cluster) -> None:
-    service = await cluster.services.get()
+    service = await get_service_with_config(cluster)
     config = await service.config
     group = config["A lot of text"]
     assert isinstance(group, ParameterGroup)
@@ -85,14 +90,12 @@ async def test_structure_groups(cluster: Cluster) -> None:
 
 async def test_config(cluster: Cluster) -> None:
     # save two configs for later refresh usage
-    service = await cluster.services.get()
-    config_1 = await service.config
-    service = await cluster.services.get()
-    config_2 = await service.config
+    service = await get_service_with_config(cluster)
+    config_1 = await service.config_history.current()
+    config_2 = await service.config_history.current()
 
     # change and save
 
-    service = await cluster.services.get()
     config = await service.config
 
     required_value = 100
