@@ -90,7 +90,7 @@
           type: password
           required: no
         - name: sag
-          display_name: Group-like stucture
+          display_name: Group-like structure
           type: structure
           yspec: ./sag.yaml
           required: false

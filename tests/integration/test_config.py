@@ -6,8 +6,9 @@ import pytest_asyncio
 from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.config import ActivatableParameterGroup, Parameter, ParameterGroup
 from adcm_aio_client.core.config.refresh import apply_local_changes, apply_remote_changes
+from adcm_aio_client.core.errors import ConfigNoParameterError
 from adcm_aio_client.core.filters import Filter
-from adcm_aio_client.core.objects.cm import Bundle, Cluster
+from adcm_aio_client.core.objects.cm import Bundle, Cluster, Service
 from tests.integration.bundle import pack_bundle
 from tests.integration.conftest import BUNDLES
 
@@ -27,16 +28,74 @@ async def cluster(adcm_client: ADCMClient, cluster_bundle: Bundle) -> Cluster:
     return cluster
 
 
+async def get_service_with_config(cluster: Cluster) -> Service:
+    return await cluster.services.get(name__eq="complex_config")
+
+
+async def test_invisible_fields(cluster: Cluster) -> None:
+    expected_error = ConfigNoParameterError
+
+    service = await get_service_with_config(cluster)
+    config = await service.config
+
+    # invisible fields can't be found via `__getitem__` interface
+
+    with pytest.raises(expected_error):
+        config["cant_find"]
+
+    group = config["A lot of text", ParameterGroup]
+    with pytest.raises(expected_error):
+        group["cantCme"]
+
+    # non initialized structure-based group
+    structure_group = group["sag", ParameterGroup]
+    inner_group = structure_group["nested", ParameterGroup]
+    with pytest.raises(expected_error):
+        inner_group["tech"]
+
+    # they aren't displayed in difference
+
+    # this change uses "internal" implementation
+    # and isn't supposed to be used in production code
+    data = config.data._values
+    data["very_important_flag"] = 2
+    data["cant_find"] = "changed value"
+    data["a_lot_of_text"]["cant_find"] = "also changed"
+
+    await config.save()
+
+    first_config = await service.config_history[0]
+    second_config = await service.config_history[-1]
+
+    diff = first_config.difference(second_config)
+    assert len(diff._values) == 1
+    assert ("very_important_flag",) in diff._values
+    assert first_config.data._values["cant_find"] != second_config.data._values["cant_find"]
+
+
+async def test_structure_groups(cluster: Cluster) -> None:
+    service = await get_service_with_config(cluster)
+    config = await service.config
+    group = config["A lot of text"]
+    assert isinstance(group, ParameterGroup)
+    group_like = group["Group-like structure"]
+    # structure with "dict" root is a group
+    assert isinstance(group_like, ParameterGroup)
+    assert isinstance(group_like["quantity"], Parameter)
+    nested_group = group_like["nested"]
+    assert isinstance(nested_group, ParameterGroup)
+    nested_group["attr", Parameter].set("something")
+    nested_group["op", Parameter].set("good")
+
+
 async def test_config(cluster: Cluster) -> None:
     # save two configs for later refresh usage
-    service = await cluster.services.get()
-    config_1 = await service.config
-    service = await cluster.services.get()
-    config_2 = await service.config
+    service = await get_service_with_config(cluster)
+    config_1 = await service.config_history.current()
+    config_2 = await service.config_history.current()
 
     # change and save
 
-    service = await cluster.services.get()
     config = await service.config
 
     required_value = 100
@@ -60,15 +119,6 @@ async def test_config(cluster: Cluster) -> None:
 
     group = config["A lot of text"]
     assert isinstance(group, ParameterGroup)
-
-    #    group_like = group["Group-like structure"]
-    #    # structure with "dict" root is a group
-    #    assert isinstance(group_like, ParameterGroup)
-    #    assert isinstance(group_like["quantity"], Parameter)
-    #    nested_group = group_like["nested"]
-    #    assert isinstance(nested_group, ParameterGroup)
-    #    nested_group["attr", Parameter].set("something")
-    #    nested_group["op", Parameter].set("good")
 
     field = group["big_text"]
     assert isinstance(field, Parameter)
@@ -156,6 +206,6 @@ async def test_config(cluster: Cluster) -> None:
     diff = latest_config.difference(earliest_config)
     # group was activated, then deactivated, so returned to initial state
     # => no diff
-    assert len(diff.attributes) == 0
+    assert len(diff._attributes) == 0
     # field values changed from earliest to latest
-    assert len(diff.values) == 6
+    assert len(diff._values) == 6

@@ -9,6 +9,8 @@ inner_group:
   items:
     attr: string
     op: string
+    tech: string
+  invisible_items: [ "tech" ]
 
 integer:
   match: int
