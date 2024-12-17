@@ -276,11 +276,7 @@ class ConfigSchema:
 
 
 def is_group_v2(attributes: dict) -> bool:
-    # todo need to check group-like structures, because they are almost impossible to distinct from groups
-    return (
-        attributes.get("type") == "object" and attributes.get("additionalProperties") is False
-        #        and attributes.get("default") == {}
-    )
+    return attributes.get("type") == "object" and attributes.get("additionalProperties") is False
 
 
 def is_activatable_v2(attributes: dict) -> bool:
