@@ -143,8 +143,7 @@ class BundlesNode(PaginatedAccessor[Bundle]):
         else:
             file = await self._bundle_retriever.download_external_bundle(source)
 
-        data = {"file": file}
-        response = await self._requester.post("bundles", data=data, as_files=True)
+        response = await self._requester.post_files("bundles", files={"file": file})
 
         bundle = Bundle(requester=self._requester, data=response.as_dict())
 

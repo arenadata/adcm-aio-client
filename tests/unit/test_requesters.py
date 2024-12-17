@@ -1,12 +1,15 @@
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Self
+from typing import Any, AsyncGenerator, Self
 import json
 
+from httpx import AsyncClient
 import pytest
+import pytest_asyncio
 
 from adcm_aio_client.core.errors import ResponseDataConversionError, ResponseError
 from adcm_aio_client.core.requesters import DefaultRequester, HTTPXRequesterResponse
+from adcm_aio_client.core.types import RetryPolicy
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -29,9 +32,11 @@ def build_mock_response(response: HTTPXLikeResponse):  # noqa: ANN201
     return return_response
 
 
-@pytest.fixture()
-def httpx_requester() -> DefaultRequester:
-    return DefaultRequester(base_url="dummy", retries=1, retry_interval=0)
+@pytest_asyncio.fixture()
+async def httpx_requester() -> AsyncGenerator[DefaultRequester, None]:
+    retry_policy = RetryPolicy(1, 1)
+    async with AsyncClient() as dummy_client:
+        yield DefaultRequester(http_client=dummy_client, retries=retry_policy)
 
 
 @pytest.mark.parametrize(
