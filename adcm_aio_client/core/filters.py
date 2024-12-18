@@ -14,7 +14,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Generator, Iterable, Self
 
-from adcm_aio_client.core.errors import InvalidFilterError
+from adcm_aio_client.core.errors import FilterPreparationError, InvalidFilterError
 from adcm_aio_client.core.objects._base import InteractiveObject
 from adcm_aio_client.core.types import QueryParameters
 
@@ -53,7 +53,16 @@ class Filtering:
         converted_filters = deque()
 
         for inline_filter, value in filters.items():
-            attr, op = inline_filter.rsplit("__", maxsplit=1)
+            try:
+                attr, op = inline_filter.rsplit("__", maxsplit=1)
+            except ValueError:
+                message = (
+                    f"Invalid inline filter format: {inline_filter}. "
+                    "Attribute and operation should be joined with `__` for inline filters. "
+                    f"Maybe you've meant `{inline_filter}__eq={value}`"
+                )
+                raise FilterPreparationError(message) from None
+
             filter_ = Filter(attr=attr, op=op, value=value)
             converted_filters.append(filter_)
 
