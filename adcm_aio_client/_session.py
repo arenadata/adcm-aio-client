@@ -49,7 +49,7 @@ class ADCMSession:
             self._requester = self._prepare_api_v2_requester()
             await self._requester.login(self._session_info.credentials)
         except Exception as e:
-            await self.__aexit__(exc_type=type(e), exc_value=e)
+            await self.__close_http_client_safe(exc_type=type(e), exc_value=e)
             raise
 
         self._adcm_client = self._prepare_adcm_client(version=adcm_version_)
