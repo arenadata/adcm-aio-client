@@ -1,9 +1,9 @@
+import asyncio
 from collections import deque
 from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable, Literal, Self
-import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
@@ -223,7 +223,12 @@ class ClustersNode(PaginatedAccessor[Cluster]):
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
         response = await self._requester.post(
-            "clusters", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
+            "clusters",
+            data={
+                "prototypeId": bundle._main_prototype_id,
+                "name": name,
+                "description": description,
+            },
         )
 
         return Cluster(requester=self._requester, data=response.as_dict())
@@ -377,7 +382,12 @@ class HostProvidersNode(PaginatedAccessor[HostProvider]):
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
         response = await self._requester.post(
-            "hostproviders", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
+            "hostproviders",
+            data={
+                "prototypeId": bundle._main_prototype_id,
+                "name": name,
+                "description": description,
+            },
         )
 
         return HostProvider(requester=self._requester, data=response.as_dict())
