@@ -18,8 +18,11 @@ from tests.integration.conftest import BUNDLES
 pytestmark = [pytest.mark.asyncio]
 
 
-def _get_httpx_client_api_root(adcm_client: ADCMClient) -> tuple[AsyncClient, str]:
-    return adcm_client._requester.client, adcm_client._requester.api_root  # pyright: ignore[reportAttributeAccessIssue]
+def _get_httpx_client_base_url(adcm_client: ADCMClient) -> tuple[AsyncClient, str]:
+    httpx_client = adcm_client._requester._client  # pyright: ignore[reportAttributeAccessIssue]
+    base_url = urljoin(str(adcm_client._requester._client.base_url), "api/v2/")  # pyright: ignore[reportAttributeAccessIssue]
+
+    return httpx_client, base_url
 
 
 @pytest_asyncio.fixture()
@@ -72,7 +75,7 @@ async def _assert_cluster(cluster: Cluster, expected: dict, api_root: str, httpx
 
 
 async def _test_cluster_create_delete_api(adcm_client: ADCMClient, bundle: Bundle) -> None:
-    httpx_client, api_root = _get_httpx_client_api_root(adcm_client)
+    httpx_client, api_root = _get_httpx_client_base_url(adcm_client)
 
     name = "Test-cluster"
     description = "des\ncription"
@@ -170,7 +173,7 @@ async def _test_clusters_node(
 
 
 async def _get_ansible_forks(adcm_client: ADCMClient, cluster: Cluster) -> int:
-    httpx_client, api_root = _get_httpx_client_api_root(adcm_client)
+    httpx_client, api_root = _get_httpx_client_base_url(adcm_client)
     ansible_cfg_url = urljoin(api_root, f"clusters/{cluster.id}/ansible-config/")
     response = await httpx_client.get(ansible_cfg_url)
     assert response.status_code == 200
@@ -179,7 +182,7 @@ async def _get_ansible_forks(adcm_client: ADCMClient, cluster: Cluster) -> int:
 
 
 async def _update_cluster_name(adcm_client: ADCMClient, cluster: Cluster, new_name: str) -> None:
-    httpx_client, api_root = _get_httpx_client_api_root(adcm_client)
+    httpx_client, api_root = _get_httpx_client_base_url(adcm_client)
     cluster_url = urljoin(api_root, f"clusters/{cluster.id}/")
     response = await httpx_client.patch(cluster_url, json={"name": new_name})
     assert response.status_code == 200
