@@ -2,13 +2,13 @@ from collections import deque
 from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Iterable, Literal, Self
+from typing import Any, AsyncGenerator, Awaitable, Callable, Iterable, Literal, Self
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.actions._objects import Action
-from adcm_aio_client.core.errors import NotFoundError
+from adcm_aio_client.core.errors import InvalidFilterError, NotFoundError
 from adcm_aio_client.core.filters import (
     ALL_OPERATIONS,
     COMMON_OPERATIONS,
@@ -18,8 +18,10 @@ from adcm_aio_client.core.filters import (
     FilterByName,
     FilterByStatus,
     Filtering,
+    FilterValue,
 )
 from adcm_aio_client.core.host_groups import WithActionHostGroups, WithConfigHostGroups
+from adcm_aio_client.core.host_groups.action_group import ActionHostGroup
 from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
@@ -470,11 +472,12 @@ class Job[Object: "InteractiveObject"](WithStatus, WithActions, RootInteractiveO
         return str(self._data["name"])
 
     @property
-    def start_time(self: Self) -> datetime:
+    def start_time(self: Self) -> datetime | None:
+        # todo test it that it should be datetime, not str
         return self._data["startTime"]
 
     @property
-    def finish_time(self: Self) -> datetime:
+    def finish_time(self: Self) -> datetime | None:
         return self._data["endTime"]
 
     @property
@@ -513,3 +516,59 @@ class Job[Object: "InteractiveObject"](WithStatus, WithActions, RootInteractiveO
 
     async def terminate(self: Self) -> None:
         await self._requester.post(*self.get_own_path(), "terminate", data={})
+
+
+class JobsNode(PaginatedAccessor[Job]):
+    class_type = Job
+    filtering = Filtering(
+        FilterByName,
+        FilterByDisplayName,
+        FilterByStatus,
+        FilterBy("action", COMMON_OPERATIONS, Action),
+        # technical filters, don't use them directly
+        FilterBy("target_id", ("eq",), int),
+        FilterBy("target_type", ("eq",), str),
+    )
+
+    # override accessor methods to allow passing object
+
+    async def get(self: Self, *, object: InteractiveObject | None = None, **filters: FilterValue) -> Job:
+        object_filter = self._prepare_filter_by_object(object)
+        all_filters = filters | object_filter
+        return await super().get(**all_filters)
+
+    async def get_or_none(self: Self, *, object: InteractiveObject | None = None, **filters: FilterValue) -> Job | None:
+        object_filter = self._prepare_filter_by_object(object)
+        all_filters = filters | object_filter
+        return await super().get(**all_filters)
+
+    async def filter(self: Self, *, object: InteractiveObject | None = None, **filters: FilterValue) -> list[Job]:
+        object_filter = self._prepare_filter_by_object(object)
+        all_filters = filters | object_filter
+        return await super().filter(**all_filters)
+
+    async def iter(
+        self: Self, *, object: InteractiveObject | None = None, **filters: FilterValue
+    ) -> AsyncGenerator[Job, None]:
+        object_filter = self._prepare_filter_by_object(object)
+        all_filters = filters | object_filter
+        async for entry in super().iter(**all_filters):
+            yield entry
+
+    def _prepare_filter_by_object(self: Self, object_: InteractiveObject | None) -> dict:
+        if object_ is None:
+            return {}
+
+        object_id = object_.id
+
+        if isinstance(object_, (Cluster, Service, Component, Host)):
+            object_type = object_.__class__.__name__.lower()
+        elif isinstance(object_, HostProvider):
+            object_type = "provider"
+        elif isinstance(object_, ActionHostGroup):
+            object_type = "action-host-group"
+        else:
+            message = f"Failed to build filter: {object_.__class__.__name__} " "can't be an owner of Job"
+            raise InvalidFilterError(message)
+
+        return {"target_id__eq": object_id, "target_type__eq": object_type}

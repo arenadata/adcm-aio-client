@@ -9,7 +9,9 @@ import pytest_asyncio
 
 from adcm_aio_client._session import ADCMSession
 from adcm_aio_client.core.client import ADCMClient
+from adcm_aio_client.core.objects.cm import Bundle
 from adcm_aio_client.core.types import Credentials
+from tests.integration.bundle import pack_bundle
 from tests.integration.setup_environment import (
     DB_USER,
     ADCMContainer,
@@ -52,3 +54,15 @@ async def adcm_client(adcm: ADCMContainer) -> AsyncGenerator[ADCMClient, None]:
     url = adcm.url
     async with ADCMSession(url=url, credentials=credentials, timeout=10, retry_interval=1, retry_attempts=1) as client:
         yield client
+
+
+@pytest_asyncio.fixture()
+async def complex_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
+    bundle_path = pack_bundle(from_dir=BUNDLES / "complex_cluster", to=tmp_path)
+    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
+
+
+@pytest_asyncio.fixture()
+async def simple_hostprovider_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
+    bundle_path = pack_bundle(from_dir=BUNDLES / "simple_hostprovider", to=tmp_path)
+    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)

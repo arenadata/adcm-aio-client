@@ -6,12 +6,13 @@ from typing import TYPE_CHECKING, Any, Self
 from asyncstdlib import cached_property as async_cached_property
 
 from adcm_aio_client.core.errors import HostNotInClusterError, NoMappingRulesForActionError
+from adcm_aio_client.core.filters import FilterByDisplayName, FilterByName, Filtering
 from adcm_aio_client.core.mapping import ActionMapping
 from adcm_aio_client.core.objects._accessors import NonPaginatedChildAccessor
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
 
 if TYPE_CHECKING:
-    from adcm_aio_client.core.objects.cm import Bundle, Cluster
+    from adcm_aio_client.core.objects.cm import Bundle, Cluster, Job
 
 
 class Action(InteractiveChildObject):
@@ -20,6 +21,25 @@ class Action(InteractiveChildObject):
     def __init__(self: Self, parent: InteractiveObject, data: dict[str, Any]) -> None:
         super().__init__(parent, data)
         self._verbose = False
+        self._blocking = True
+
+    @property
+    def verbose(self: Self) -> bool:
+        return self._verbose
+
+    @verbose.setter
+    def verbose(self: Self, value: bool) -> bool:
+        self._verbose = value
+        return self._verbose
+
+    @property
+    def blocking(self: Self) -> bool:
+        return self._blocking
+
+    @blocking.setter
+    def blocking(self: Self, value: bool) -> bool:
+        self._blocking = value
+        return self._blocking
 
     @cached_property
     def name(self: Self) -> str:
@@ -29,8 +49,14 @@ class Action(InteractiveChildObject):
     def display_name(self: Self) -> str:
         return self._data["displayName"]
 
-    async def run(self: Self) -> dict:  # TODO: implement Task, return Task
-        return (await self._requester.post(*self.get_own_path(), "run", data={"isVerbose": self._verbose})).as_dict()
+    async def run(self: Self) -> Job:
+        from adcm_aio_client.core.objects.cm import Job
+
+        # todo build data for config and mapping
+        data = {"isVerbose": self._verbose, "isBlocking": self._blocking}
+        response = await self._requester.post(*self.get_own_path(), "run", data=data)
+        job = Job(requester=self._requester, data=response.as_dict())
+        return job
 
     @async_cached_property
     async def _mapping_rule(self: Self) -> list[dict] | None:
@@ -49,10 +75,6 @@ class Action(InteractiveChildObject):
 
         return ActionMapping(owner=self._parent, cluster=cluster, entries=entries)
 
-    def set_verbose(self: Self) -> Self:
-        self._verbose = True
-        return self
-
     @async_cached_property  # TODO: Config class
     async def config(self: Self) -> ...:
         return (await self._rich_data)["configuration"]
@@ -64,6 +86,7 @@ class Action(InteractiveChildObject):
 
 class ActionsAccessor(NonPaginatedChildAccessor):
     class_type = Action
+    filtering = Filtering(FilterByName, FilterByDisplayName)
 
 
 class Upgrade(Action):
@@ -85,6 +108,7 @@ class Upgrade(Action):
 
 class UpgradeNode(NonPaginatedChildAccessor):
     class_type = Upgrade
+    filtering = Filtering(FilterByName, FilterByDisplayName)
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:
