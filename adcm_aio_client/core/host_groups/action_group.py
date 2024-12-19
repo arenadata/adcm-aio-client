@@ -34,12 +34,7 @@ class ActionHostGroup(InteractiveChildObject, Deletable):
 
 class ActionHostGroupNode(HostGroupNode[Union["Cluster", "Service", "Component"], ActionHostGroup]):
     class_type = ActionHostGroup
-    filtering = Filtering(
-        FilterBy("id", COMMON_OPERATIONS, int),
-        FilterByName,
-        FilterBy("owner_id", {"eq"}, int),
-        FilterBy("owner_type", {"eq"}, str),
-    )
+    filtering = Filtering(FilterBy("id", COMMON_OPERATIONS, int), FilterByName)
 
 
 class HostsInActionHostGroupNode(HostsInHostGroupNode):

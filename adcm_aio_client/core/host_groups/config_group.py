@@ -29,12 +29,7 @@ class ConfigHostGroup(InteractiveChildObject, Deletable, WithConfig):
 
 class ConfigHostGroupNode(HostGroupNode[Union["Cluster", "Service", "Component"], ConfigHostGroup]):
     class_type = ConfigHostGroup
-    filtering = Filtering(
-        FilterBy("id", COMMON_OPERATIONS, int),
-        FilterByName,
-        FilterBy("owner_id", {"eq"}, int),
-        FilterBy("owner_type", {"eq"}, str),
-    )
+    filtering = Filtering(FilterBy("id", COMMON_OPERATIONS, int), FilterByName)
     # TODO: create() with `config` arg
 
 
