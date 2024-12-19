@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing import Collection
-from urllib.parse import urljoin
 import asyncio
 
 from httpx import AsyncClient
@@ -18,11 +17,38 @@ from tests.integration.conftest import BUNDLES
 pytestmark = [pytest.mark.asyncio]
 
 
-def _get_httpx_client_base_url(adcm_client: ADCMClient) -> tuple[AsyncClient, str]:
-    httpx_client = adcm_client._requester._client  # pyright: ignore[reportAttributeAccessIssue]
-    base_url = urljoin(str(adcm_client._requester._client.base_url), "api/v2/")  # pyright: ignore[reportAttributeAccessIssue]
+async def get_ansible_forks(httpx_client: AsyncClient, cluster: Cluster) -> int:
+    ansible_cfg_url = f"clusters/{cluster.id}/ansible-config/"
+    response = await httpx_client.get(ansible_cfg_url)
+    assert response.status_code == 200
 
-    return httpx_client, base_url
+    return response.json()["config"]["defaults"]["forks"]
+
+
+async def update_cluster_name(httpx_client: AsyncClient, cluster: Cluster, new_name: str) -> None:
+    cluster_url = f"clusters/{cluster.id}/"
+    response = await httpx_client.patch(cluster_url, json={"name": new_name})
+    assert response.status_code == 200
+
+
+async def assert_cluster(cluster: Cluster, expected: dict, httpx_client: AsyncClient) -> None:
+    cluster_url = f"clusters/{cluster.id}/"
+    response = await httpx_client.get(cluster_url)
+    assert response.status_code == 200
+
+    response = response.json()
+    for attr, value in expected.items():
+        assert response[attr] == value
+
+    await cluster.delete()
+    response = await httpx_client.get(cluster_url)
+    assert response.status_code == 404
+
+
+def assert_clusters_collection(clusters: Collection[Cluster], expected_amount: int) -> None:
+    assert all(isinstance(cluster, Cluster) for cluster in clusters)
+    assert len({cluster.id for cluster in clusters}) == expected_amount
+    assert len({id(cluster) for cluster in clusters}) == expected_amount
 
 
 @pytest_asyncio.fixture()
@@ -60,42 +86,46 @@ async def simple_cluster(adcm_client: ADCMClient, simple_cluster_bundle: Bundle)
     return await adcm_client.clusters.create(bundle=simple_cluster_bundle, name="Simple cluster")
 
 
-async def _assert_cluster(cluster: Cluster, expected: dict, api_root: str, httpx_client: AsyncClient) -> None:
-    cluster_url = urljoin(api_root, f"clusters/{cluster.id}/")
-    response = await httpx_client.get(cluster_url)
-    assert response.status_code == 200
+async def test_cluster(
+    adcm_client: ADCMClient,
+    complex_cluster_bundle: Bundle,
+    many_complex_clusters: int,
+    simple_cluster_bundle: Bundle,
+    simple_cluster: Cluster,  # for filtering by bundle
+    httpx_client: AsyncClient,
+) -> None:
+    _ = simple_cluster
+    num_clusters = many_complex_clusters + 1  # + simple_cluster
 
-    response = response.json()
-    for attr, value in expected.items():
-        assert response[attr] == value
+    await _test_cluster_create_delete_api(
+        adcm_client=adcm_client, bundle=complex_cluster_bundle, httpx_client=httpx_client
+    )
 
-    await cluster.delete()
-    response = await httpx_client.get(cluster_url)
-    assert response.status_code == 404
+    await _test_clusters_node(
+        adcm_client=adcm_client,
+        complex_bundle=complex_cluster_bundle,
+        num_clusters=num_clusters,
+        simple_bundle=simple_cluster_bundle,
+    )
+
+    cluster = await adcm_client.clusters.get(name__eq="Very special cluster")
+    await _test_cluster_object_api(httpx_client=httpx_client, cluster=cluster, cluster_bundle=complex_cluster_bundle)
 
 
-async def _test_cluster_create_delete_api(adcm_client: ADCMClient, bundle: Bundle) -> None:
-    httpx_client, api_root = _get_httpx_client_base_url(adcm_client)
-
+async def _test_cluster_create_delete_api(adcm_client: ADCMClient, bundle: Bundle, httpx_client: AsyncClient) -> None:
     name = "Test-cluster"
     description = "des\ncription"
     cluster = await adcm_client.clusters.create(bundle=bundle, name=name, description=description)
 
     expected = {"id": cluster.id, "name": name, "description": description}
-    await _assert_cluster(cluster, expected, api_root, httpx_client)
+    await assert_cluster(cluster, expected, httpx_client)
 
     # without optional arguments
     name = "Another-test-cluster"
     cluster = await adcm_client.clusters.create(bundle=bundle, name=name)
 
     expected = {"id": cluster.id, "name": name, "description": ""}
-    await _assert_cluster(cluster, expected, api_root, httpx_client)
-
-
-def _assert_clusters_collection(clusters: Collection[Cluster], expected_amount: int) -> None:
-    assert all(isinstance(cluster, Cluster) for cluster in clusters)
-    assert len({cluster.id for cluster in clusters}) == expected_amount
-    assert len({id(cluster) for cluster in clusters}) == expected_amount
+    await assert_cluster(cluster, expected, httpx_client)
 
 
 async def _test_clusters_node(
@@ -123,20 +153,20 @@ async def _test_clusters_node(
 
     # all
     all_clusters = await adcm_client.clusters.all()
-    _assert_clusters_collection(clusters=all_clusters, expected_amount=num_clusters)
+    assert_clusters_collection(clusters=all_clusters, expected_amount=num_clusters)
 
     # list
     page_size = 50
     assert page_size < num_clusters, "check page_size or number of clusters"
 
     first_page_clusters = await adcm_client.clusters.list()
-    _assert_clusters_collection(clusters=first_page_clusters, expected_amount=page_size)
+    assert_clusters_collection(clusters=first_page_clusters, expected_amount=page_size)
 
     # iter
     iter_clusters = set()
     async for cluster in adcm_client.clusters.iter():
         iter_clusters.add(cluster)
-    _assert_clusters_collection(clusters=iter_clusters, expected_amount=num_clusters)
+    assert_clusters_collection(clusters=iter_clusters, expected_amount=num_clusters)
 
     # filter
     # complex_bundle: "Test-cluster-N" - 50; "Very special cluster" - 1;
@@ -172,23 +202,7 @@ async def _test_clusters_node(
         assert len(clusters) == expected, f"Filter: {filter_value}"
 
 
-async def _get_ansible_forks(adcm_client: ADCMClient, cluster: Cluster) -> int:
-    httpx_client, api_root = _get_httpx_client_base_url(adcm_client)
-    ansible_cfg_url = urljoin(api_root, f"clusters/{cluster.id}/ansible-config/")
-    response = await httpx_client.get(ansible_cfg_url)
-    assert response.status_code == 200
-
-    return response.json()["config"]["defaults"]["forks"]
-
-
-async def _update_cluster_name(adcm_client: ADCMClient, cluster: Cluster, new_name: str) -> None:
-    httpx_client, api_root = _get_httpx_client_base_url(adcm_client)
-    cluster_url = urljoin(api_root, f"clusters/{cluster.id}/")
-    response = await httpx_client.patch(cluster_url, json={"name": new_name})
-    assert response.status_code == 200
-
-
-async def _test_cluster_object_api(adcm_client: ADCMClient, cluster: Cluster, cluster_bundle: Bundle) -> None:
+async def _test_cluster_object_api(httpx_client: AsyncClient, cluster: Cluster, cluster_bundle: Bundle) -> None:
     assert isinstance(cluster.id, int)
     assert isinstance(cluster.name, str)
     assert isinstance(cluster.description, str)
@@ -206,35 +220,12 @@ async def _test_cluster_object_api(adcm_client: ADCMClient, cluster: Cluster, cl
     assert isinstance(cluster.config_history, ConfigHistoryNode)
     assert isinstance(await cluster.mapping, ClusterMapping)
 
-    initial_ansible_forks = await _get_ansible_forks(adcm_client, cluster)
+    initial_ansible_forks = await get_ansible_forks(httpx_client, cluster)
     await cluster.set_ansible_forks(value=initial_ansible_forks + 5)
-    assert await _get_ansible_forks(adcm_client, cluster) == initial_ansible_forks + 5
+    assert await get_ansible_forks(httpx_client, cluster) == initial_ansible_forks + 5
 
     new_name = "New cluster name"
-    await _update_cluster_name(adcm_client, cluster, new_name)
+    await update_cluster_name(httpx_client, cluster, new_name)
     assert cluster.name != new_name
     await cluster.refresh()
     assert cluster.name == new_name
-
-
-async def test_cluster_api(
-    adcm_client: ADCMClient,
-    complex_cluster_bundle: Bundle,
-    many_complex_clusters: int,
-    simple_cluster_bundle: Bundle,
-    simple_cluster: Cluster,  # for filtering by bundle
-) -> None:
-    _ = simple_cluster
-    num_clusters = many_complex_clusters + 1  # + simple_cluster
-
-    await _test_cluster_create_delete_api(adcm_client=adcm_client, bundle=complex_cluster_bundle)
-
-    await _test_clusters_node(
-        adcm_client=adcm_client,
-        complex_bundle=complex_cluster_bundle,
-        num_clusters=num_clusters,
-        simple_bundle=simple_cluster_bundle,
-    )
-
-    cluster = await adcm_client.clusters.get(name__eq="Very special cluster")
-    await _test_cluster_object_api(adcm_client=adcm_client, cluster=cluster, cluster_bundle=complex_cluster_bundle)
