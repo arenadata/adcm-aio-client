@@ -1,8 +1,10 @@
 from pathlib import Path
 from typing import AsyncGenerator, Generator
+from urllib.parse import urljoin
 import random
 import string
 
+from httpx import AsyncClient
 from testcontainers.core.network import Network
 import pytest
 import pytest_asyncio
@@ -52,3 +54,14 @@ async def adcm_client(adcm: ADCMContainer) -> AsyncGenerator[ADCMClient, None]:
     url = adcm.url
     async with ADCMSession(url=url, credentials=credentials, timeout=10, retry_interval=1, retry_attempts=1) as client:
         yield client
+
+
+@pytest_asyncio.fixture()
+async def httpx_client(adcm: ADCMContainer) -> AsyncGenerator[AsyncClient, None]:
+    client = AsyncClient(base_url=urljoin(adcm.url, "api/v2/"))
+    response = await client.post("login/", json={"username": "admin", "password": "admin"})
+    client.headers["X-CSRFToken"] = response.cookies["csrftoken"]
+
+    yield client
+
+    await client.aclose()
