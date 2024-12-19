@@ -10,6 +10,7 @@ from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
 from adcm_aio_client.core.mapping import ClusterMapping
+from adcm_aio_client.core.objects._imports import Imports
 from adcm_aio_client.core.objects.cm import Bundle, Cluster
 from tests.integration.bundle import pack_bundle
 from tests.integration.conftest import BUNDLES
@@ -219,6 +220,7 @@ async def _test_cluster_object_api(httpx_client: AsyncClient, cluster: Cluster, 
     assert isinstance(await cluster.config, ObjectConfig)
     assert isinstance(cluster.config_history, ConfigHistoryNode)
     assert isinstance(await cluster.mapping, ClusterMapping)
+    assert isinstance(await cluster.imports, Imports)
 
     initial_ansible_forks = await get_ansible_forks(httpx_client, cluster)
     await cluster.set_ansible_forks(value=initial_ansible_forks + 5)
