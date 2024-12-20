@@ -95,7 +95,6 @@ async def test_service_api(cluster_52: Cluster, httpx_client: AsyncClient) -> No
     )
 
 
-# TODO: add with/without a license
 async def _test_service_create_delete_api(name: str, cluster: Cluster, httpx_client: AsyncClient) -> None:
     target_service_filter = Filter(attr="name", op="eq", value=name)
 
