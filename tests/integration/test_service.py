@@ -10,10 +10,10 @@ import pytest_asyncio
 
 from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
-from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.core.errors import ConflictError, MultipleObjectsReturnedError, ObjectDoesNotExistError
 from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.objects._imports import Imports
-from adcm_aio_client.core.objects.cm import Cluster, Service
+from adcm_aio_client.core.objects.cm import Cluster, License, Service
 from tests.integration.bundle import pack_bundle
 from tests.integration.yaml import create_yaml
 
@@ -37,7 +37,7 @@ def prepare_bundle_data() -> list[dict]:
     }
 
     service_manual_add = copy(service)
-    service_manual_add.update({"name": "Manual add"})
+    service_manual_add.update({"name": "Manual add", "license": "./service_license.txt"})
 
     fifty_one_services = []
     for i in range(51):
@@ -68,10 +68,14 @@ async def cluster_52(adcm_client: ADCMClient, tmp_path: Path) -> Cluster:
     Cluster with 52 services, one not added
     """
 
-    config_yaml_path = tmp_path / "".join(random.sample(string.ascii_letters, k=6)).lower() / "config.yaml"
+    bundle_folder = tmp_path / "".join(random.sample(string.ascii_letters, k=6)).lower()
+    config_yaml_path = bundle_folder / "config.yaml"
     create_yaml(data=prepare_bundle_data(), path=config_yaml_path)
 
-    bundle_path = pack_bundle(from_dir=config_yaml_path.parent, to=tmp_path)
+    with (bundle_folder / "service_license.txt").open("wt") as service_license_file:
+        service_license_file.write("By using this test bundle, you agreeing to write tests well\n")
+
+    bundle_path = pack_bundle(from_dir=bundle_folder, to=tmp_path)
     bundle = await adcm_client.bundles.create(source=bundle_path)
 
     cluster = await adcm_client.clusters.create(bundle=bundle, name="Test cluster 52")
@@ -93,7 +97,12 @@ async def test_service_api(cluster_52: Cluster, httpx_client: AsyncClient) -> No
 
 # TODO: add with/without a license
 async def _test_service_create_delete_api(name: str, cluster: Cluster, httpx_client: AsyncClient) -> None:
-    service = await cluster.services.add(filter_=Filter(attr="name", op="eq", value=name))
+    target_service_filter = Filter(attr="name", op="eq", value=name)
+
+    with pytest.raises(ConflictError, match="LICENSE_ERROR"):
+        await cluster.services.add(filter_=target_service_filter)
+
+    service = await cluster.services.add(filter_=target_service_filter, accept_license=True)
     assert len(service) == 1
     service = service[0]
 
@@ -192,7 +201,7 @@ async def _test_service_object_api(service: Service, parent_cluster: Cluster) ->
     assert isinstance(service.display_name, str)
     assert isinstance(service.cluster, Cluster)
     assert service.cluster.id == parent_cluster.id
-    # assert isinstance(service.license, License)  # TODO: KeyError: 'license'
+    assert isinstance(await service.license, License)
     assert isinstance(await service.components.all(), list)
     assert isinstance(await service.get_status(), str)
     assert isinstance(await service.actions.all(), list)
