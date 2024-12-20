@@ -72,8 +72,7 @@ async def cluster_52(adcm_client: ADCMClient, tmp_path: Path) -> Cluster:
     config_yaml_path = bundle_folder / "config.yaml"
     create_yaml(data=prepare_bundle_data(), path=config_yaml_path)
 
-    with (bundle_folder / "service_license.txt").open("wt") as service_license_file:
-        service_license_file.write("By using this test bundle, you agreeing to write tests well\n")
+    (bundle_folder / "service_license.txt").write_text("By using this test bundle, you agreeing to write tests well\n")
 
     bundle_path = pack_bundle(from_dir=bundle_folder, to=tmp_path)
     bundle = await adcm_client.bundles.create(source=bundle_path)
