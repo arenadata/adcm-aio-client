@@ -9,7 +9,6 @@ from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.errors import ObjectDoesNotExistError
 from adcm_aio_client.core.objects.cm import Bundle
 from adcm_aio_client.core.requesters import BundleRetrieverInterface, DefaultRequester
-from adcm_aio_client.core.types import UrlPath
 from tests.integration.bundle import create_bundles_by_template, pack_bundle
 from tests.integration.conftest import BUNDLES
 
@@ -98,7 +97,7 @@ async def _test_bundle_properties(adcm_client: ADCMClient) -> None:
 async def _test_download_external_bundle_success() -> None:
     mock_requester = AsyncMock(spec=DefaultRequester)
     mock_retriever = AsyncMock(spec=BundleRetrieverInterface)
-    url = UrlPath("http://example.com/bundle.tar.gz")
+    url = "http://example.com/bundle.tar.gz"
 
     mock_retriever.download_external_bundle = AsyncMock(return_value=b"bundle content")
 

@@ -1,9 +1,9 @@
-import asyncio
 from collections import deque
 from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable, Literal, Self
+import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
