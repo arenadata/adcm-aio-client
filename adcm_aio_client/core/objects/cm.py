@@ -266,7 +266,7 @@ class Service(
 
     @async_cached_property
     async def license(self: Self) -> License:
-        prototype_data = (await self.requester.get(f"prototypes/{self._data["prototype"]["id"]}/")).as_dict()
+        prototype_data = (await self.requester.get("prototypes", self._data["prototype"]["id"])).as_dict()
         return License(self._requester, prototype_data)
 
 

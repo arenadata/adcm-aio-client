@@ -2,7 +2,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Self, Union
 
 from adcm_aio_client.core.actions import ActionsAccessor
-from adcm_aio_client.core.filters import COMMON_OPERATIONS, FilterBy, FilterByName, Filtering
+from adcm_aio_client.core.filters import FilterByName, Filtering
 from adcm_aio_client.core.host_groups._common import HostGroupNode, HostsInHostGroupNode
 from adcm_aio_client.core.objects._base import InteractiveChildObject
 from adcm_aio_client.core.objects._common import Deletable
@@ -34,7 +34,7 @@ class ActionHostGroup(InteractiveChildObject, Deletable):
 
 class ActionHostGroupNode(HostGroupNode[Union["Cluster", "Service", "Component"], ActionHostGroup]):
     class_type = ActionHostGroup
-    filtering = Filtering(FilterBy("id", COMMON_OPERATIONS, int), FilterByName)
+    filtering = Filtering(FilterByName)
 
 
 class HostsInActionHostGroupNode(HostsInHostGroupNode):
