@@ -53,10 +53,9 @@ class Action(InteractiveChildObject):
         from adcm_aio_client.core.objects.cm import Job
 
         # todo build data for config and mapping
-        data = {"isVerbose": self._verbose, "isBlocking": self._blocking}
+        data = {"isVerbose": self._verbose, "shouldBlockObject": self._blocking}
         response = await self._requester.post(*self.get_own_path(), "run", data=data)
-        job = Job(requester=self._requester, data=response.as_dict())
-        return job
+        return Job(requester=self._requester, data=response.as_dict())
 
     @async_cached_property
     async def _mapping_rule(self: Self) -> list[dict] | None:
@@ -84,7 +83,7 @@ class Action(InteractiveChildObject):
         return (await self._requester.get(*self.get_own_path())).as_dict()
 
 
-class ActionsAccessor(NonPaginatedChildAccessor):
+class ActionsAccessor[Parent: InteractiveObject](NonPaginatedChildAccessor[Parent, Action]):
     class_type = Action
     filtering = Filtering(FilterByName, FilterByDisplayName)
 

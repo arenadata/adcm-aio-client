@@ -81,8 +81,6 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
 
 
 class RootInteractiveObject(InteractiveObject):
-    PATH_PREFIX: str
-
     def get_own_path(self: Self) -> Endpoint:
         # change here
         return self._build_own_path(self.id)
@@ -105,6 +103,12 @@ class InteractiveChildObject[Parent: InteractiveObject](InteractiveObject):
 
     def get_own_path(self: Self) -> Endpoint:
         return *self._parent.get_own_path(), self.PATH_PREFIX, self.id
+
+    @classmethod
+    async def with_id(cls: type[Self], parent: Parent, object_id: int) -> Self:
+        object_path = (*parent.get_own_path(), cls.PATH_PREFIX, str(object_id))
+        response = await parent.requester.get(*object_path)
+        return cls(parent=parent, data=response.as_dict())
 
 
 class MaintenanceMode:

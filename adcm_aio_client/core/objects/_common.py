@@ -27,7 +27,6 @@ class WithActions(WithProtectedRequester, AwareOfOwnPath):
         return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
 
 
-# todo whole section lacking implementation (and maybe code move is required)
 class WithConfig(ConfigOwner):
     @cached_property
     async def config(self: Self) -> ObjectConfig:
