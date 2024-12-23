@@ -614,7 +614,7 @@ class JobsNode(PaginatedAccessor[Job]):
         elif isinstance(object_, HostProvider):
             object_type = "provider"
         elif isinstance(object_, ActionHostGroup):
-            object_type = "action-host-group"
+            object_type = "action_host_group"
         else:
             message = f"Failed to build filter: {object_.__class__.__name__} " "can't be an owner of Job"
             raise InvalidFilterError(message)

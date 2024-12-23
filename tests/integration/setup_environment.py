@@ -9,7 +9,7 @@ from testcontainers.core.waiting_utils import wait_container_is_ready, wait_for_
 from testcontainers.postgres import DbContainer, PostgresContainer
 
 postgres_image_name = "postgres:latest"
-adcm_image_name = "hub.adsw.io/adcm/adcm:develop"
+adcm_image_name = "hub.adsw.io/adcm/adcm:ADCM-6137"
 adcm_container_name = "test_adcm"
 postgres_name = "test_pg_db"
 

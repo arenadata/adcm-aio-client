@@ -49,10 +49,12 @@ def adcm(network: Network, postgres: ADCMPostgresContainer) -> Generator[ADCMCon
 
 
 @pytest_asyncio.fixture(scope="function")
-async def adcm_client(adcm: ADCMContainer) -> AsyncGenerator[ADCMClient, None]:
+async def adcm_client(request: pytest.FixtureRequest, adcm: ADCMContainer) -> AsyncGenerator[ADCMClient, None]:
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
     url = adcm.url
-    async with ADCMSession(url=url, credentials=credentials, timeout=10, retry_interval=1, retry_attempts=1) as client:
+    extra_kwargs = request.param or {}
+    kwargs: dict = {"timeout": 10, "retry_interval": 1, "retry_attempts": 1} | extra_kwargs
+    async with ADCMSession(url=url, credentials=credentials, **kwargs) as client:
         yield client
 
 

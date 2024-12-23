@@ -54,6 +54,8 @@ class Action(InteractiveChildObject):
     async def run(self: Self) -> Job:
         from adcm_aio_client.core.objects.cm import Job
 
+        await self._ensure_rich_data()
+
         data = {"isVerbose": self._verbose, "shouldBlockObject": self._blocking}
         if self._has_mapping:
             mapping = await self.mapping
