@@ -192,3 +192,64 @@
         - name: justhere
           type: integer
           required: false
+
+- type: service
+  name: with_host_actions
+  version: 2.3
+  components:
+    c1:
+      display_name: c1
+      config:
+        - name: very_important_flag
+          display_name: Set me
+          type: string
+          required: true
+          default: default
+
+      actions:
+        simple_action:
+          display_name: simple host action
+          type: job
+          script_type: ansible
+          script: ./actions.yaml
+          allow_to_terminate: true
+          host_action: true
+          params:
+            ansible_tags: ok
+          masking: {}
+
+        host_action_config:
+          display_name: acl_host_action
+          type: job
+          script_type: ansible
+          script: ./actions.yaml
+          host_action: true
+          config:
+            - name: new_important_flag
+              type: string
+          params:
+            ansible_tags: ok
+          masking: {}
+
+        host_action_change:
+          display_name: acl_host_action
+          type: job
+          script_type: ansible
+          script: ./actions.yaml
+          host_action: true
+          config:
+            - name: very_important_flag
+              type: string
+          hc_acl:
+            - service: with_host_actions
+              component: c1
+              action: add
+            - service: with_host_actions
+              component: c1
+              action: remove
+          params:
+            ansible_tags: ok
+          masking: {}
+
+    c2:
+      actions: *actions
