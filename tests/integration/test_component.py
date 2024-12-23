@@ -133,15 +133,15 @@ async def _test_component_node(service: Service, num_components: int) -> None:
     filters_data = {
         **name_filters_data,
         **display_name_filters_data,
-        ("status__eq", "up"): num_components,
-        ("status__eq", "down"): num_components,  # TODO: test passes, something is broken here
-        # ("status__in", ("down", "some status")): 0,
-        # ("status__in", ("up", "some status")): num_components,
-        # ("status__ne", "down"): num_components,
-        # ("status__ne", "up"): 0,
-        # ("status__exclude", ("excluded_status", "down")): num_components,
-        # ("status__exclude", ("excluded_status", "up")): 0,
-        # ("status__exclude", ("up", "down")): 0,
+        ("status__eq", "up"): 0,
+        ("status__eq", "down"): num_components,
+        ("status__in", ("down", "some status")): num_components,
+        ("status__in", ("up", "some status")): 0,
+        ("status__ne", "down"): 0,
+        ("status__ne", "up"): num_components,
+        ("status__exclude", ("excluded_status", "down")): 0,
+        ("status__exclude", ("excluded_status", "up")): num_components,
+        ("status__exclude", ("up", "down")): 0,
     }
     for filter_, expected in filters_data.items():
         filter_value = {filter_[0]: filter_[1]}
