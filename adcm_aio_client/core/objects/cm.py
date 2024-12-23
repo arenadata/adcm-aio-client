@@ -471,6 +471,10 @@ class Job(WithStatus, RootInteractiveObject):
     def name(self: Self) -> str:
         return str(self._data["name"])
 
+    @property
+    def display_name(self: Self) -> str:
+        return str(self._data["displayName"])
+
     @cached_property
     def start_time(self: Self) -> datetime | None:
         time = self._data["startTime"]

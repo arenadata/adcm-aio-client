@@ -1,5 +1,6 @@
 from datetime import datetime
 from itertools import chain
+from operator import attrgetter
 import asyncio
 
 import pytest
@@ -7,6 +8,7 @@ import pytest_asyncio
 
 from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.filters import Filter, FilterValue
+from adcm_aio_client.core.host_groups.action_group import ActionHostGroup
 from adcm_aio_client.core.objects._common import WithActions
 from adcm_aio_client.core.objects.cm import Bundle, Cluster, Component, Job
 from adcm_aio_client.core.types import WithID
@@ -91,7 +93,7 @@ async def test_jobs_api(adcm_client: ADCMClient) -> None:
 
 
 async def _test_basic_api(adcm_client: ADCMClient) -> None:
-    cluster, *_ = await adcm_client.clusters.list(query={"limit": 1, "offset": 3})
+    cluster = await adcm_client.clusters.get(name__eq="wow-4")
     service = await cluster.services.get(name__contains="action")
     component = await service.components.get(display_name__icontains="wESo")
 
@@ -103,7 +105,7 @@ async def _test_basic_api(adcm_client: ADCMClient) -> None:
     assert job.finish_time is None
     assert (await job.action).id == action.id
 
-    await job.wait(exit_condition=is_running, timeout=20, poll_interval=1)
+    await job.wait(exit_condition=is_running, timeout=30, poll_interval=1)
     assert job.start_time is None
     await job.refresh()
     assert isinstance(job.start_time, datetime)
@@ -125,7 +127,7 @@ async def _test_basic_api(adcm_client: ADCMClient) -> None:
 async def _test_job_object(adcm_client: ADCMClient) -> None:
     cluster, *_ = await adcm_client.clusters.list(query={"limit": 1, "offset": 4})
     service = await cluster.services.get()
-    component, *_ = await service.components.all()
+    component = await service.components.get(name__eq="c2")
     hostprovider, *_ = await adcm_client.hostproviders.list(query={"limit": 1, "offset": 2})
     host, *_ = await adcm_client.hosts.list(query={"limit": 1, "offset": 4})
 
@@ -144,4 +146,83 @@ async def _test_job_object(adcm_client: ADCMClient) -> None:
 async def _test_collection_fitlering(adcm_client: ADCMClient) -> None:
     # filters: status, name, display_name, action
     # special filter: object
-    ...
+    failed_jobs = 20
+
+    jobs = await adcm_client.jobs.list()
+    assert len(jobs) == 50
+
+    jobs = await adcm_client.jobs.all()
+    total_jobs = len(jobs)
+    assert total_jobs > 50
+
+    print("===========jobs================")
+    for job in jobs:
+        print(job.name, job.display_name, await job.get_status())
+
+    cases = (
+        # status
+        ("status__eq", "failed", failed_jobs),
+        ("status__ieq", "faiLed", failed_jobs),
+        ("status__ne", "success", failed_jobs),
+        ("status__ine", "succEss", failed_jobs),
+        ("status__in", ("failed", "success"), total_jobs),
+        ("status__iin", ("faIled", "sUcceSs"), total_jobs),
+        ("status__exclude", ("failed", "success"), 0),
+        ("status__iexclude", ("succesS",), failed_jobs),
+        # name
+        ("name__eq", "fail", failed_jobs),
+        ("name__ieq", "FaIl", failed_jobs),
+        ("name__ne", "fail", total_jobs - failed_jobs),
+        ("name__ine", "FaIl", total_jobs - failed_jobs),
+        ("name__in", ("success", "success_task"), total_jobs - failed_jobs),
+        ("name__iin", ("sUccEss", "success_Task"), total_jobs - failed_jobs),
+        ("name__exclude", ("success",), 4),
+        ("name__iexclude", ("success",), 4),
+        ("name__contains", "il", failed_jobs),
+        ("name__icontains", "I", total_jobs - 1),
+        # display_name
+        ("display_name__eq", "no Way", failed_jobs),
+        ("display_name__ieq", "No way", failed_jobs),
+        ("display_name__ne", "no Way", total_jobs - failed_jobs),
+        ("display_name__ine", "No way", total_jobs - failed_jobs),
+        ("display_name__in", ("I will survive", "Lots Of me"), total_jobs - failed_jobs),
+        ("display_name__iin", ("i will survive", "lots of me"), total_jobs - failed_jobs),
+        ("display_name__exclude", ("I will survive",), 4),
+        ("display_name__iexclude", ("i will survive",), 4),
+        ("display_name__contains", "W", failed_jobs),
+        ("display_name__icontains", "W", total_jobs - 1),
+    )
+
+    for inline_filter, value, expected_amount in cases:
+        filter_ = {inline_filter: value}
+        result = await adcm_client.jobs.filter(**filter_)  # type: ignore
+        actual_amount = len(result)
+        assert (
+            actual_amount == expected_amount
+        ), f"Incorrect amount for {filter_=}\nExpected: {expected_amount}\nActual: {actual_amount}"
+        unique_entries = set(map(attrgetter("id"), result))
+        assert len(unique_entries) == expected_amount
+
+    cluster = await adcm_client.clusters.get(name__eq="wow-4")
+    service = await cluster.services.get()
+    service_ahg = await service.action_host_groups.get()
+
+    fail_action = await service.actions.get(name__eq="fail")
+    success_action = await service.actions.get(name__eq="success")
+
+    jobs = [job async for job in adcm_client.jobs.iter(action__eq=fail_action)]
+    assert len(jobs) == 5
+    objects = []
+    for job in jobs:
+        objects.append(await job.object)
+    assert all(isinstance(o, ActionHostGroup) for o in objects)
+    assert any(o.id == service_ahg.id for o in objects)
+
+    job = await adcm_client.jobs.get_or_none(action__in=(fail_action, success_action), status__eq="notexist")
+    assert job is None
+
+    jobs = await adcm_client.jobs.filter(action__ne=success_action)
+    assert len(jobs) == failed_jobs + 1
+
+    jobs = await adcm_client.jobs.filter(action__exclude=(success_action,))
+    assert len(jobs) == failed_jobs + 1
