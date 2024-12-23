@@ -410,7 +410,7 @@ class Host(Deletable, WithActions, WithStatus, WithMaintenanceMode, RootInteract
 
 class HostsAccessor(PaginatedAccessor[Host]):
     class_type = Host
-    filtering = Filtering(FilterByName, FilterByStatus)
+    filtering = Filtering(FilterByName, FilterByStatus, FilterBy("hostprovider", COMMON_OPERATIONS, HostProvider))
 
 
 class HostsNode(HostsAccessor):

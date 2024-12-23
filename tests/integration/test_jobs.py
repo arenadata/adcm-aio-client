@@ -123,8 +123,6 @@ async def _test_basic_api(adcm_client: ADCMClient) -> None:
 
 
 async def _test_job_object(adcm_client: ADCMClient) -> None:
-    # filter by object
-    # detect object from Job
     cluster, *_ = await adcm_client.clusters.list(query={"limit": 1, "offset": 4})
     service = await cluster.services.get()
     component, *_ = await service.components.all()
