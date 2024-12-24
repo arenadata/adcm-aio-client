@@ -71,6 +71,7 @@ async def simple_hostprovider_bundle(adcm_client: ADCMClient, tmp_path: Path) ->
     bundle_path = pack_bundle(from_dir=BUNDLES / "simple_hostprovider", to=tmp_path)
     return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
 
+
 @pytest_asyncio.fixture()
 async def httpx_client(adcm: ADCMContainer) -> AsyncGenerator[AsyncClient, None]:
     client = AsyncClient(base_url=urljoin(adcm.url, "api/v2/"))
