@@ -6,6 +6,7 @@ import pytest_asyncio
 
 from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.filters import Filter
+from adcm_aio_client.core.config import Parameter
 from adcm_aio_client.core.objects.cm import Bundle, Cluster, Host
 from tests.integration.bundle import pack_bundle
 from tests.integration.conftest import BUNDLES
@@ -69,12 +70,28 @@ async def test_run_action_with_mapping_and_config(adcm_client: ADCMClient, clust
     #     print(action.name)
 
     host_action = await host_1.actions.get(name__eq="host_action_config")
-    new_config = {
-        "new_important_flag": "changed",
-    }
-    await host_action.config(new_config)
 
-    await host_action.run()
+    config = await component_1_s1.config
+    field = config["very_important_flag"].value
+    # print(f"field conf IS: {field}")
+
+
+
+    task_config = await host_action.config
+    print(f"task conf IS: {task_config}")
+
+
+    # task_config = await host_action.config["very_important_flag"]
+    # task_config.set("changed")
+
+
+    job = await host_action.run()
+    # new_config = {
+    #     "new_important_flag": "changed",
+    # }
+    # await host_action.config(new_config)
+    #
+    # await host_action.run()
 
     # assert mapping.all() == []
 

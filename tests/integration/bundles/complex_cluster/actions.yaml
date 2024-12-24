@@ -13,10 +13,3 @@
       fail:
         msg: "failed step"
       tags: [fail]
-
-    - name: "Change string"
-      adcm_config:
-        type: "component"
-        component_name: "milk"
-        key: "string"
-        value: "{{ job.config.new_string }}"
