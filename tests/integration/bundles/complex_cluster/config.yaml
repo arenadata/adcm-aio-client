@@ -2,6 +2,11 @@
   name: Some Cluster
   version: 1
 
+  config:
+    - name: string_field
+      type: string
+      default: "string value"
+
 - type: service
   name: example_1
   display_name: First Example

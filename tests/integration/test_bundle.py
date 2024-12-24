@@ -38,13 +38,13 @@ async def test_bundle(adcm_client: ADCMClient, load_bundles: list[Bundle], tmp_p
 
 async def _test_bundle_create_delete(adcm_client: ADCMClient, tmp_path: Path) -> None:
     bundle = await adcm_client.bundles.get(name__eq="cluster_with_license")
-    assert bundle.license.state == "unaccepted"
+    assert (await bundle.license).state == "unaccepted"
     await bundle.delete()
 
     bundle_path = pack_bundle(from_dir=BUNDLES / "cluster_with_license", to=tmp_path)
     bundle = await adcm_client.bundles.create(source=bundle_path, accept_license=True)
 
-    assert bundle.license.state == "accepted"
+    assert (await bundle.license).state == "accepted"
 
     await _test_download_external_bundle_success()
 
@@ -83,15 +83,15 @@ async def _test_bundle_accessors(adcm_client: ADCMClient) -> None:
 async def _test_bundle_properties(adcm_client: ADCMClient) -> None:
     bundle = await adcm_client.bundles.get(name__eq="cluster_with_license")
     assert bundle.name == "cluster_with_license"
-    assert bundle.license.state == "accepted"
-    assert "LICENSE AGREEMENT" in bundle.license.text
+    assert (await bundle.license).state == "accepted"
+    assert "LICENSE AGREEMENT" in (await bundle.license).text
     assert bundle.version == "2.0"
     assert bundle.signature_status == "absent"
     assert bundle.edition == "enterprise"
 
-    await bundle.license.accept()
+    await (await bundle.license).accept()
     await bundle.refresh()
-    assert bundle.license.state == "accepted"
+    assert (await bundle.license).state == "accepted"
 
 
 async def _test_download_external_bundle_success() -> None:
@@ -122,13 +122,13 @@ async def _test_pagination(adcm_client: ADCMClient, tmp_path: Path) -> None:
     assert len(bundles_list) == 50
 
     bundles_list = await adcm_client.bundles.list(query={"offset": 55})
-    assert len(bundles_list) == 5
+    assert len(bundles_list) == 6
 
-    bundles_list = await adcm_client.bundles.list(query={"offset": 60})
+    bundles_list = await adcm_client.bundles.list(query={"offset": 61})
     assert len(bundles_list) == 0
 
     bundles_list = await adcm_client.bundles.list(query={"limit": 10})
     assert len(bundles_list) == 10
 
-    assert len(await adcm_client.bundles.all()) == 60
-    assert len(await adcm_client.bundles.filter()) == 60
+    assert len(await adcm_client.bundles.all()) == 61
+    assert len(await adcm_client.bundles.filter()) == 61
