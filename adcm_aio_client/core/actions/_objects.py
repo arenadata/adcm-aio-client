@@ -17,13 +17,11 @@ if TYPE_CHECKING:
     from adcm_aio_client.core.objects.cm import Bundle, Cluster, Job
 
 
-class Action(InteractiveChildObject):
-    PATH_PREFIX = "actions"
+class _GenericAction(InteractiveChildObject):
 
     def __init__(self: Self, parent: InteractiveObject, data: dict[str, Any]) -> None:
         super().__init__(parent, data)
         self._verbose = False
-        self._blocking = True
 
     @property
     def verbose(self: Self) -> bool:
@@ -34,15 +32,6 @@ class Action(InteractiveChildObject):
         self._verbose = value
         return self._verbose
 
-    @property
-    def blocking(self: Self) -> bool:
-        return self._blocking
-
-    @blocking.setter
-    def blocking(self: Self, value: bool) -> bool:
-        self._blocking = value
-        return self._blocking
-
     @cached_property
     def name(self: Self) -> str:
         return self._data["name"]
@@ -51,21 +40,6 @@ class Action(InteractiveChildObject):
     def display_name(self: Self) -> str:
         return self._data["displayName"]
 
-    async def run(self: Self) -> Job:
-        from adcm_aio_client.core.objects.cm import Job
-
-        await self._ensure_rich_data()
-
-        data = {"isVerbose": self._verbose, "shouldBlockObject": self._blocking}
-        if self._has_mapping:
-            mapping = await self.mapping
-            data |= {"hostComponentMap": mapping._to_payload()}
-        if self._has_config:
-            config = await self.config
-            data |= {"configuration": config._to_payload()}
-
-        response = await self._requester.post(*self.get_own_path(), "run", data=data)
-        return Job(requester=self._requester, data=response.as_dict())
 
     @async_cached_property
     async def mapping(self: Self) -> ActionMapping:
@@ -130,6 +104,19 @@ class Action(InteractiveChildObject):
                 " Need to load all data"
             )
             raise KeyError(message) from e
+    async def _prepare_payload(self: Self) -> dict:
+        await self._ensure_rich_data()
+
+        data = {"isVerbose": self._verbose}
+        if self._has_mapping:
+            mapping = await self.mapping
+            data |= {"hostComponentMap": mapping._to_payload()}
+        if self._has_config:
+            config = await self.config
+            data |= {"configuration": config._to_payload()}
+
+        return data
+
 
     async def _ensure_rich_data(self: Self) -> None:
         if self._is_full_data_loaded:
@@ -137,23 +124,64 @@ class Action(InteractiveChildObject):
 
         self._data = await self._retrieve_data()
 
+class Action(_GenericAction):
+    PATH_PREFIX = "actions"
+
+    def __init__(self: Self, parent: InteractiveObject, data: dict[str, Any]) -> None:
+        super().__init__(parent, data)
+        self._blocking = True
+
+
+    @property
+    def blocking(self: Self) -> bool:
+        return self._blocking
+
+    @blocking.setter
+    def blocking(self: Self, value: bool) -> bool:
+        self._blocking = value
+        return self._blocking
+
+    async def run(self: Self) -> Job:
+        payload = await self._prepare_payload() | { "shouldBlockObject": self._blocking}
+
+        response = await self._requester.post(*self.get_own_path(), "run", data=payload)
+
+        from adcm_aio_client.core.objects.cm import Job
+
+        return Job(requester=self._requester, data=response.as_dict())
 
 class ActionsAccessor[Parent: InteractiveObject](NonPaginatedChildAccessor[Parent, Action]):
     class_type = Action
     filtering = Filtering(FilterByName, FilterByDisplayName)
 
 
-class Upgrade(Action):
+class Upgrade(_GenericAction):
     PATH_PREFIX = "upgrades"
 
     @property
-    def bundle(self: Self) -> Bundle:
+    async def bundle(self: Self) -> Bundle:
+        await self._ensure_rich_data()
+
+        bundle_id = self._data["bundle"]["id"]
+
         from adcm_aio_client.core.objects.cm import Bundle
 
-        return Bundle(requester=self._requester, data=self._data["bundle"])
+        return await Bundle.with_id(requester=self._requester, object_id=bundle_id)
+
+    async def run(self: Self) -> Job | None:
+        payload = await self._prepare_payload() 
+
+        response = await self._requester.post(*self.get_own_path(), "run", data=payload)
+
+        if response.get_status_code() == 204:
+            return None
+
+        from adcm_aio_client.core.objects.cm import Job
+        
+        return Job(requester=self._requester, data=response.as_dict())
 
 
-class UpgradeNode(NonPaginatedChildAccessor):
+class UpgradeNode[Parent: InteractiveObject](NonPaginatedChildAccessor[Parent, Upgrade]):
     class_type = Upgrade
     filtering = Filtering(FilterByName, FilterByDisplayName)
 
