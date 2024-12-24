@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 
 
 class _GenericAction(InteractiveChildObject):
-
     def __init__(self: Self, parent: InteractiveObject, data: dict[str, Any]) -> None:
         super().__init__(parent, data)
         self._verbose = False
@@ -39,7 +38,6 @@ class _GenericAction(InteractiveChildObject):
     @cached_property
     def display_name(self: Self) -> str:
         return self._data["displayName"]
-
 
     @async_cached_property
     async def mapping(self: Self) -> ActionMapping:
@@ -104,6 +102,7 @@ class _GenericAction(InteractiveChildObject):
                 " Need to load all data"
             )
             raise KeyError(message) from e
+
     async def _prepare_payload(self: Self) -> dict:
         await self._ensure_rich_data()
 
@@ -117,12 +116,12 @@ class _GenericAction(InteractiveChildObject):
 
         return data
 
-
     async def _ensure_rich_data(self: Self) -> None:
         if self._is_full_data_loaded:
             return
 
         self._data = await self._retrieve_data()
+
 
 class Action(_GenericAction):
     PATH_PREFIX = "actions"
@@ -130,7 +129,6 @@ class Action(_GenericAction):
     def __init__(self: Self, parent: InteractiveObject, data: dict[str, Any]) -> None:
         super().__init__(parent, data)
         self._blocking = True
-
 
     @property
     def blocking(self: Self) -> bool:
@@ -142,13 +140,14 @@ class Action(_GenericAction):
         return self._blocking
 
     async def run(self: Self) -> Job:
-        payload = await self._prepare_payload() | { "shouldBlockObject": self._blocking}
+        payload = await self._prepare_payload() | {"shouldBlockObject": self._blocking}
 
         response = await self._requester.post(*self.get_own_path(), "run", data=payload)
 
         from adcm_aio_client.core.objects.cm import Job
 
         return Job(requester=self._requester, data=response.as_dict())
+
 
 class ActionsAccessor[Parent: InteractiveObject](NonPaginatedChildAccessor[Parent, Action]):
     class_type = Action
@@ -169,7 +168,7 @@ class Upgrade(_GenericAction):
         return await Bundle.with_id(requester=self._requester, object_id=bundle_id)
 
     async def run(self: Self) -> Job | None:
-        payload = await self._prepare_payload() 
+        payload = await self._prepare_payload()
 
         response = await self._requester.post(*self.get_own_path(), "run", data=payload)
 
@@ -177,7 +176,7 @@ class Upgrade(_GenericAction):
             return None
 
         from adcm_aio_client.core.objects.cm import Job
-        
+
         return Job(requester=self._requester, data=response.as_dict())
 
 
