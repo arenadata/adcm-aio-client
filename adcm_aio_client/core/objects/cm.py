@@ -115,8 +115,8 @@ class Bundle(Deletable, RootInteractiveObject):
     def _type(self: Self) -> Literal["cluster", "provider"]:
         return self._data["mainPrototype"]["type"]
 
-    @property
-    def license(self: Self) -> License:
+    @async_cached_property
+    async def license(self: Self) -> License:
         return License(self._requester, self._data["mainPrototype"])
 
     @cached_property
@@ -147,8 +147,10 @@ class BundlesNode(PaginatedAccessor[Bundle]):
 
         bundle = Bundle(requester=self._requester, data=response.as_dict())
 
-        if accept_license and bundle.license.state == "unaccepted":
-            await bundle.license.accept()
+        if accept_license:
+            license_ = await bundle.license
+            if license_.state == "unaccepted":
+                await license_.accept()
 
         return bundle
 
@@ -262,9 +264,10 @@ class Service(
     def components(self: Self) -> "ComponentsNode":
         return ComponentsNode(parent=self, path=(*self.get_own_path(), "components"), requester=self._requester)
 
-    @property
-    def license(self: Self) -> License:
-        return License(self._requester, self._data)
+    @async_cached_property
+    async def license(self: Self) -> License:
+        prototype_data = (await self.requester.get("prototypes", self._data["prototype"]["id"])).as_dict()
+        return License(self._requester, prototype_data)
 
 
 class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
