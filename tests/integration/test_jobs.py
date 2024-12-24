@@ -1,6 +1,5 @@
 from datetime import datetime
 from itertools import chain
-import logging
 from operator import attrgetter
 import asyncio
 
@@ -73,8 +72,6 @@ async def prepare_environment(
         )
     )
 
-    logging.error("prepare for running actions")
-
     object_jobs = asyncio.gather(
         *(
             run_non_blocking(object_, name__eq="success")
@@ -84,15 +81,12 @@ async def prepare_environment(
 
     group_jobs = asyncio.gather(*(run_non_blocking(group, name__in=["fail"]) for group in host_groups))
 
-    logging.error("actions launched")
-
     return await object_jobs + await group_jobs
 
 
 @pytest.mark.usefixtures("prepare_environment")
 @pytest.mark.parametrize("adcm_client", [{"timeout": 60}], ids=["t60"], indirect=True)
 async def test_jobs_api(adcm_client: ADCMClient) -> None:
-    print("test started jobs api")
     await _test_basic_api(adcm_client)
     await _test_job_object(adcm_client)
     await _test_collection_fitlering(adcm_client)
