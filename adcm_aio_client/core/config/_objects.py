@@ -12,6 +12,7 @@ from adcm_aio_client.core.config.types import (
     ConfigDifference,
     ConfigRefreshStrategy,
     ConfigSchema,
+    GenericConfigData,
     LevelNames,
     LocalConfigs,
 )
@@ -238,12 +239,12 @@ class ActivatableParameterGroupHG(_Desyncable, _Activatable, ParameterGroup):
         return self
 
 
-class _ConfigWrapperCreator(_ConfigWrapper):
+class _ConfigWrapperCreator[T: GenericConfigData](_ConfigWrapper):
     @property
-    def config(self: Self) -> ConfigData:
+    def config(self: Self) -> T:
         return self._data
 
-    def change_data(self: Self, new_data: ConfigData) -> ConfigData:
+    def change_data(self: Self, new_data: T) -> T:
         self._data = new_data
         self._on_data_change()
         return self._data
@@ -266,9 +267,9 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
 
     _wrapper_class: type[T]
 
-    def __init__(self: Self, config: ConfigData, schema: ConfigSchema, parent: ConfigOwner) -> None:
+    def __init__(self: Self, config: GenericConfigData, schema: ConfigSchema, parent: ConfigOwner) -> None:
         self._schema = schema
-        self._initial_config: ConfigData = self._parse_json_fields_inplace_safe(config)
+        self._initial_config= self._parse_json_fields_inplace_safe(config)
         self._current_config = self._wrapper_class(data=deepcopy(self._initial_config), schema=self._schema, name=())
         self._parent = parent
 
@@ -312,15 +313,15 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
         return self._current_config.config
 
     # Private
-    def _parse_json_fields_inplace_safe(self: Self, config: ConfigData) -> ConfigData:
+    def _parse_json_fields_inplace_safe(self: Self, config: GenericConfigData) -> GenericConfigData:
         return self._apply_to_all_json_fields(func=json.loads, when=lambda value: isinstance(value, str), config=config)
 
     def _serialize_json_fields_inplace_safe(self: Self, config: ConfigData) -> ConfigData:
         return self._apply_to_all_json_fields(func=json.dumps, when=lambda value: value is not None, config=config)
 
     def _apply_to_all_json_fields(
-        self: Self, func: Callable, when: Callable[[Any], bool], config: ConfigData
-    ) -> ConfigData:
+        self: Self, func: Callable, when: Callable[[Any], bool], config: GenericConfigData
+    ) -> GenericConfigData:
         for parameter_name in self._schema.json_fields:
             input_value = config.get_value(parameter_name)
             if when(input_value):
@@ -350,6 +351,17 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
 
 
 class _SaveableConfig[T: _ConfigWrapperCreator](_GeneralConfig[T]):
+    def __init__(self: Self, config: ConfigData, schema: ConfigSchema, parent: ConfigOwner) -> None:
+        super().__init__(config=config, schema=schema, parent=parent)
+
+
+    @property
+    def id(self: Self) -> int:
+        return self._initial_config.id
+
+    @property
+    def description(self: Self) -> str:
+        return self._initial_config.description
     async def refresh(self: Self, strategy: ConfigRefreshStrategy = apply_local_changes) -> Self:
         remote_config = await retrieve_current_config(
             parent=self._parent, get_schema=partial(retrieve_schema, parent=self._parent)
