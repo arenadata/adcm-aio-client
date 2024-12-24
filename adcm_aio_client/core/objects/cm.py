@@ -8,7 +8,15 @@ import asyncio
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.actions._objects import Action
-from adcm_aio_client.core.errors import NotFoundError
+from adcm_aio_client.core.errors import (
+    ConflictError,
+    HostConflictError,
+    NotFoundError,
+    ObjectAlreadyExistsError,
+    ObjectUpdateError,
+    UnknownError,
+    WaitTimeoutError,
+)
 from adcm_aio_client.core.filters import (
     ALL_OPERATIONS,
     COMMON_OPERATIONS,
@@ -143,7 +151,12 @@ class BundlesNode(PaginatedAccessor[Bundle]):
         else:
             file = await self._bundle_retriever.download_external_bundle(source)
 
-        response = await self._requester.post_files("bundles", files={"file": file})
+        try:
+            response = await self._requester.post_files("bundles", files={"file": file})
+        except ConflictError as e:
+            if "Bundle already exists" in str(e):
+                raise ObjectAlreadyExistsError(*e.args) from None
+            raise
 
         bundle = Bundle(requester=self._requester, data=response.as_dict())
 
@@ -194,9 +207,12 @@ class Cluster(
     # object-specific methods
 
     async def set_ansible_forks(self: Self, value: int) -> Self:
-        await self._requester.post(
-            *self.get_own_path(), "ansible-config", data={"config": {"defaults": {"forks": value}}, "adcmMeta": {}}
-        )
+        try:
+            await self._requester.post(
+                *self.get_own_path(), "ansible-config", data={"config": {"defaults": {"forks": value}}, "adcmMeta": {}}
+            )
+        except UnknownError as e:
+            raise ObjectUpdateError(*e.args) from None
         return self
 
     # nodes and managers to access
@@ -222,9 +238,14 @@ class ClustersNode(PaginatedAccessor[Cluster]):
     filtering = Filtering(FilterByName, FilterByBundle, FilterByStatus)
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
-        response = await self._requester.post(
-            "clusters", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
-        )
+        try:
+            response = await self._requester.post(
+                "clusters", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
+            )
+        except ConflictError as e:
+            if "already exists" in str(e):
+                raise ObjectAlreadyExistsError(*e.args) from None
+            raise
 
         return Cluster(requester=self._requester, data=response.as_dict())
 
@@ -376,9 +397,15 @@ class HostProvidersNode(PaginatedAccessor[HostProvider]):
     filtering = Filtering(FilterByName, FilterByBundle)
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
-        response = await self._requester.post(
-            "hostproviders", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
-        )
+        try:
+            response = await self._requester.post(
+                "hostproviders",
+                data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description},
+            )
+        except ConflictError as e:
+            if "duplicate host provider" in str(e):
+                raise ObjectAlreadyExistsError(*e.args) from None
+            raise
 
         return HostProvider(requester=self._requester, data=response.as_dict())
 
@@ -418,7 +445,12 @@ class HostsNode(HostsAccessor):
         data = {"hostproviderId": hostprovider.id, "name": name, "description": description}
         if cluster:
             data["clusterId"] = cluster.id
-        await self._requester.post(*self._path, data=data)
+        try:
+            await self._requester.post(*self._path, data=data)
+        except ConflictError as e:
+            if "already exists" in str(e):
+                raise ObjectAlreadyExistsError(*e.args) from None
+            raise
 
 
 class HostsInClusterNode(HostsAccessor):
@@ -431,7 +463,12 @@ class HostsInClusterNode(HostsAccessor):
     async def add(self: Self, host: Host | Iterable[Host] | Filter) -> None:
         hosts = await self._get_hosts(host=host, filter_func=self._root_host_filter)
 
-        await self._requester.post(*self._path, data=[{"hostId": host.id} for host in hosts])
+        try:
+            await self._requester.post(*self._path, data=[{"hostId": host.id} for host in hosts])
+        except ConflictError as e:
+            if "already linked to another cluster" in str(e):
+                raise HostConflictError(*e.args) from None
+            raise
 
     async def remove(self: Self, host: Host | Iterable[Host] | Filter) -> None:
         hosts = await self._get_hosts(host=host, filter_func=self.filter)
@@ -509,7 +546,7 @@ class Job[Object: "InteractiveObject"](WithStatus, WithActions, RootInteractiveO
                 return self
             await asyncio.sleep(poll_interval)
 
-        raise TimeoutError
+        raise WaitTimeoutError
 
     async def terminate(self: Self) -> None:
         await self._requester.post(*self.get_own_path(), "terminate", data={})

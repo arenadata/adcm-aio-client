@@ -6,6 +6,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Any, Callable, Coroutine, Iterable, Self
 import asyncio
 
+from adcm_aio_client.core.errors import BadRequestError, ConflictError, InvalidMappingError
 from adcm_aio_client.core.filters import Filter, FilterByDisplayName, FilterByName, FilterByStatus, Filtering
 from adcm_aio_client.core.mapping.refresh import apply_local_changes, apply_remote_changes
 from adcm_aio_client.core.mapping.types import LocalMappings, MappingEntry, MappingPair, MappingRefreshStrategy
@@ -149,7 +150,24 @@ class ClusterMapping(ActionMapping):
     async def save(self: Self) -> Self:
         data = self._to_payload()
 
-        await self._requester.post(*self._cluster.get_own_path(), "mapping", data=data)
+        try:
+            await self._requester.post(*self._cluster.get_own_path(), "mapping", data=data)
+        except ConflictError as e:
+            # TODO: may be incomplete. Add tests for errors
+            conflict_msgs = {
+                "has unsatisfied constraint",
+                "No required service",
+                "hosts in maintenance mode",
+                "COMPONENT_CONSTRAINT_ERROR",
+            }
+            if any(msg in str(e) for msg in conflict_msgs):
+                raise InvalidMappingError(*e.args) from None
+            raise
+        except BadRequestError as e:
+            bad_request_msgs = {"Mapping entries duplicates found"}
+            if any((msg in str(e)) for msg in bad_request_msgs):
+                raise InvalidMappingError(*e.args) from None
+            raise
 
         self._initial = copy(self._current)
 

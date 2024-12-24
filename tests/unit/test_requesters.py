@@ -7,7 +7,7 @@ from httpx import AsyncClient
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.errors import ResponseDataConversionError, ResponseError
+from adcm_aio_client.core.errors import ResponseDataConversionError, UnknownError
 from adcm_aio_client.core.requesters import DefaultRequester, HTTPXRequesterResponse
 from adcm_aio_client.core.types import RetryPolicy
 
@@ -93,7 +93,7 @@ async def test_raising_client_error_for_status(
         partial(requester.patch, data={}),
         requester.delete,
     ):
-        with pytest.raises(ResponseError):
+        with pytest.raises(UnknownError):
             await method()
 
 

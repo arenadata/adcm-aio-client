@@ -5,7 +5,13 @@ from typing import TYPE_CHECKING, Any, Self
 
 from asyncstdlib import cached_property as async_cached_property
 
-from adcm_aio_client.core.errors import HostNotInClusterError, NoMappingRulesForActionError
+from adcm_aio_client.core.errors import (
+    ConflictError,
+    HostNotInClusterError,
+    NoMappingRulesForActionError,
+    ObjectBlockedError,
+)
+from adcm_aio_client.core.filters import FilterByName, Filtering
 from adcm_aio_client.core.mapping import ActionMapping
 from adcm_aio_client.core.objects._accessors import NonPaginatedChildAccessor
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
@@ -30,7 +36,14 @@ class Action(InteractiveChildObject):
         return self._data["displayName"]
 
     async def run(self: Self) -> dict:  # TODO: implement Task, return Task
-        return (await self._requester.post(*self.get_own_path(), "run", data={"isVerbose": self._verbose})).as_dict()
+        try:
+            return (
+                await self._requester.post(*self.get_own_path(), "run", data={"isVerbose": self._verbose})
+            ).as_dict()
+        except ConflictError as e:
+            if "has issue" in str(e):
+                raise ObjectBlockedError(*e.args) from None
+            raise
 
     @async_cached_property
     async def _mapping_rule(self: Self) -> list[dict] | None:
@@ -64,6 +77,7 @@ class Action(InteractiveChildObject):
 
 class ActionsAccessor(NonPaginatedChildAccessor):
     class_type = Action
+    filtering = Filtering(FilterByName)
 
 
 class Upgrade(Action):

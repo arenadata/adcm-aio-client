@@ -15,6 +15,10 @@ class ADCMClientError(Exception):
     pass
 
 
+class WaitTimeoutError(ADCMClientError):
+    pass
+
+
 # Session
 
 
@@ -23,10 +27,6 @@ class ClientInitError(ADCMClientError):
 
 
 # Version
-
-
-class VersionRetrievalError(ADCMClientError):
-    pass
 
 
 class NotSupportedVersionError(ADCMClientError):
@@ -44,7 +44,7 @@ class NoCredentialsError(RequesterError):
     pass
 
 
-class WrongCredentialsError(RequesterError):
+class AuthenticationError(RequesterError):
     pass
 
 
@@ -64,31 +64,31 @@ class ResponseDataConversionError(RequesterError):
     pass
 
 
-class ResponseError(RequesterError):
+class UnknownError(RequesterError):
     pass
 
 
-class BadRequestError(ResponseError):
+class BadRequestError(UnknownError):
     pass
 
 
-class UnauthorizedError(ResponseError):
+class UnauthorizedError(UnknownError):
     pass
 
 
-class ForbiddenError(ResponseError):
+class PermissionDeniedError(UnknownError):
     pass
 
 
-class NotFoundError(ResponseError):
+class NotFoundError(UnknownError):
     pass
 
 
-class ConflictError(ResponseError):
+class ConflictError(UnknownError):
     pass
 
 
-class ServerError(ResponseError):
+class ServerError(UnknownError):
     pass
 
 
@@ -104,6 +104,10 @@ class MultipleObjectsReturnedError(AccessorError):
 
 
 class ObjectDoesNotExistError(AccessorError):
+    pass
+
+
+class ObjectAlreadyExistsError(AccessorError):  # TODO: add tests
     pass
 
 
@@ -139,3 +143,26 @@ class FilterError(ADCMClientError): ...
 
 
 class InvalidFilterError(FilterError): ...
+
+
+# Operation-related
+
+
+class HostConflictError(ADCMClientError):
+    pass
+
+
+class ObjectBlockedError(ADCMClientError):
+    pass
+
+
+class InvalidMappingError(ADCMClientError):
+    pass
+
+
+class InvalidConfigError(ADCMClientError):
+    pass
+
+
+class ObjectUpdateError(ADCMClientError):
+    pass
