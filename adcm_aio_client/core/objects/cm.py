@@ -589,7 +589,7 @@ class JobsNode(PaginatedAccessor[Job]):
     async def get_or_none(self: Self, *, object: InteractiveObject | None = None, **filters: FilterValue) -> Job | None:  # noqa: A002
         object_filter = self._prepare_filter_by_object(object)
         all_filters = filters | object_filter
-        return await super().get(**all_filters)
+        return await super().get_or_none(**all_filters)
 
     async def filter(self: Self, *, object: InteractiveObject | None = None, **filters: FilterValue) -> list[Job]:  # noqa: A002
         object_filter = self._prepare_filter_by_object(object)

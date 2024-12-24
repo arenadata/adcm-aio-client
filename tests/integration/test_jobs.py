@@ -144,9 +144,8 @@ async def _test_job_object(adcm_client: ADCMClient) -> None:
 
 
 async def _test_collection_fitlering(adcm_client: ADCMClient) -> None:
-    # filters: status, name, display_name, action
-    # special filter: object
     failed_jobs = 20
+    services_amount = 5
 
     jobs = await adcm_client.jobs.list()
     assert len(jobs) == 50
@@ -154,10 +153,6 @@ async def _test_collection_fitlering(adcm_client: ADCMClient) -> None:
     jobs = await adcm_client.jobs.all()
     total_jobs = len(jobs)
     assert total_jobs > 50
-
-    print("===========jobs================")
-    for job in jobs:
-        print(job.name, job.display_name, await job.get_status())
 
     cases = (
         # status
@@ -176,10 +171,10 @@ async def _test_collection_fitlering(adcm_client: ADCMClient) -> None:
         ("name__ine", "FaIl", total_jobs - failed_jobs),
         ("name__in", ("success", "success_task"), total_jobs - failed_jobs),
         ("name__iin", ("sUccEss", "success_Task"), total_jobs - failed_jobs),
-        ("name__exclude", ("success",), 4),
-        ("name__iexclude", ("success",), 4),
+        ("name__exclude", ("success",), failed_jobs + 1),
+        ("name__iexclude", ("success",), failed_jobs + 1),
         ("name__contains", "il", failed_jobs),
-        ("name__icontains", "I", total_jobs - 1),
+        ("name__icontains", "I", failed_jobs),
         # display_name
         ("display_name__eq", "no Way", failed_jobs),
         ("display_name__ieq", "No way", failed_jobs),
@@ -187,8 +182,8 @@ async def _test_collection_fitlering(adcm_client: ADCMClient) -> None:
         ("display_name__ine", "No way", total_jobs - failed_jobs),
         ("display_name__in", ("I will survive", "Lots Of me"), total_jobs - failed_jobs),
         ("display_name__iin", ("i will survive", "lots of me"), total_jobs - failed_jobs),
-        ("display_name__exclude", ("I will survive",), 4),
-        ("display_name__iexclude", ("i will survive",), 4),
+        ("display_name__exclude", ("I will survive",), failed_jobs + 1),
+        ("display_name__iexclude", ("i will survive",), failed_jobs + 1),
         ("display_name__contains", "W", failed_jobs),
         ("display_name__icontains", "W", total_jobs - 1),
     )
@@ -222,7 +217,7 @@ async def _test_collection_fitlering(adcm_client: ADCMClient) -> None:
     assert job is None
 
     jobs = await adcm_client.jobs.filter(action__ne=success_action)
-    assert len(jobs) == failed_jobs + 1
+    assert len(jobs) == total_jobs - services_amount
 
     jobs = await adcm_client.jobs.filter(action__exclude=(success_action,))
-    assert len(jobs) == failed_jobs + 1
+    assert len(jobs) == total_jobs - services_amount
