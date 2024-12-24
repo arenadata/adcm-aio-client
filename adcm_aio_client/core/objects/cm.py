@@ -225,7 +225,12 @@ class ClustersNode(PaginatedAccessor[Cluster]):
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
         response = await self._requester.post(
-            "clusters", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
+            "clusters",
+            data={
+                "prototypeId": bundle._main_prototype_id,
+                "name": name,
+                "description": description,
+            },
         )
 
         return Cluster(requester=self._requester, data=response.as_dict())
@@ -379,7 +384,12 @@ class HostProvidersNode(PaginatedAccessor[HostProvider]):
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
         response = await self._requester.post(
-            "hostproviders", data={"prototypeId": bundle._main_prototype_id, "name": name, "description": description}
+            "hostproviders",
+            data={
+                "prototypeId": bundle._main_prototype_id,
+                "name": name,
+                "description": description,
+            },
         )
 
         return HostProvider(requester=self._requester, data=response.as_dict())

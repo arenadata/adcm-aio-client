@@ -120,14 +120,14 @@ class MaintenanceMode:
         self._path = path
 
     def __repr__(self: Self) -> str:
-        return self._maintenance_mode_status.value
+        return self._maintenance_mode_status
 
     def __str__(self: Self) -> str:
-        return self._maintenance_mode_status.value
+        return self._maintenance_mode_status
 
     @property
     def value(self: Self) -> str:
-        return self._maintenance_mode_status.value
+        return self._maintenance_mode_status
 
     async def on(self: Self) -> None:
         current_mm_status = await self._requester.post(
