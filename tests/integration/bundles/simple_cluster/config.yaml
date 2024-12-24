@@ -1,0 +1,3 @@
+- type: cluster
+  name: Simple Cluster
+  version: 2

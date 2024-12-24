@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Self
 from asyncstdlib import cached_property as async_cached_property
 
 from adcm_aio_client.core.errors import HostNotInClusterError, NoMappingRulesForActionError
+from adcm_aio_client.core.filters import FilterByDisplayName, FilterByName, Filtering
 from adcm_aio_client.core.mapping import ActionMapping
 from adcm_aio_client.core.objects._accessors import NonPaginatedChildAccessor
 from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
@@ -64,6 +65,7 @@ class Action(InteractiveChildObject):
 
 class ActionsAccessor(NonPaginatedChildAccessor):
     class_type = Action
+    filtering = Filtering(FilterByName, FilterByDisplayName)
 
 
 class Upgrade(Action):
@@ -85,6 +87,7 @@ class Upgrade(Action):
 
 class UpgradeNode(NonPaginatedChildAccessor):
     class_type = Upgrade
+    filtering = Filtering(FilterByName, FilterByDisplayName)
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:
