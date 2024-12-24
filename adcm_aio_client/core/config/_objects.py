@@ -7,6 +7,7 @@ import asyncio
 from adcm_aio_client.core.config._operations import find_config_difference
 from adcm_aio_client.core.config.refresh import apply_local_changes
 from adcm_aio_client.core.config.types import (
+    ActionConfigData,
     AnyParameterName,
     ConfigData,
     ConfigDifference,
@@ -32,7 +33,7 @@ class _ConfigWrapper:
     def __init__(
         self: Self,
         name: LevelNames,
-        data: ConfigData,
+        data: GenericConfigData,
         schema: ConfigSchema,
     ) -> None:
         self._name = name
@@ -250,10 +251,13 @@ class _ConfigWrapperCreator[T: GenericConfigData](_ConfigWrapper):
         return self._data
 
 
-class ObjectConfigWrapper(ParameterGroup, _ConfigWrapperCreator): ...
+class ActionConfigWrapper(ParameterGroup, _ConfigWrapperCreator[ActionConfigData]): ...
 
 
-class HostGroupConfigWrapper(ParameterGroupHG, _ConfigWrapperCreator): ...
+class ObjectConfigWrapper(ParameterGroup, _ConfigWrapperCreator[ConfigData]): ...
+
+
+class HostGroupConfigWrapper(ParameterGroupHG, _ConfigWrapperCreator[ConfigData]): ...
 
 
 type ConfigEntry = Parameter | ParameterGroup | ActivatableParameterGroup
@@ -262,26 +266,18 @@ type ConfigEntryHG = ParameterHG | ParameterGroupHG | ActivatableParameterGroupH
 # API Objects
 
 
-class _GeneralConfig[T: _ConfigWrapperCreator]:
+class _GeneralConfig[C: GenericConfigData, T: _ConfigWrapperCreator]:
     __slots__ = ("_schema", "_parent", "_initial_config", "_current_config", "_wrapper_class")
 
     _wrapper_class: type[T]
 
-    def __init__(self: Self, config: GenericConfigData, schema: ConfigSchema, parent: ConfigOwner) -> None:
+    def __init__(self: Self, config: C, schema: ConfigSchema, parent: ConfigOwner) -> None:
         self._schema = schema
-        self._initial_config= self._parse_json_fields_inplace_safe(config)
-        self._current_config = self._wrapper_class(data=deepcopy(self._initial_config), schema=self._schema, name=())
+        self._initial_config: C = self._parse_json_fields_inplace_safe(config)
+        self._current_config: T = self._wrapper_class(data=deepcopy(self._initial_config), schema=self._schema, name=())
         self._parent = parent
 
     # Public Interface (for End User)
-
-    @property
-    def id(self: Self) -> int:
-        return self._initial_config.id
-
-    @property
-    def description(self: Self) -> str:
-        return self._initial_config.description
 
     def reset(self: Self) -> Self:
         self._current_config.change_data(new_data=deepcopy(self._initial_config))
@@ -289,7 +285,9 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
 
     def difference(self: Self, other: Self, *, other_is_previous: bool = True) -> ConfigDifference:
         if self.schema != other.schema:
-            message = f"Schema of configuration {other.id} doesn't match schema of {self.id}"
+            self_repr = str(self)
+            other_repr = str(other)
+            message = f"Schema of configuration {other_repr} doesn't match schema of {self_repr}"
             raise ConfigComparisonError(message)
 
         if other_is_previous:
@@ -313,15 +311,13 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
         return self._current_config.config
 
     # Private
-    def _parse_json_fields_inplace_safe(self: Self, config: GenericConfigData) -> GenericConfigData:
+    def _parse_json_fields_inplace_safe(self: Self, config: C) -> C:
         return self._apply_to_all_json_fields(func=json.loads, when=lambda value: isinstance(value, str), config=config)
 
-    def _serialize_json_fields_inplace_safe(self: Self, config: ConfigData) -> ConfigData:
+    def _serialize_json_fields_inplace_safe(self: Self, config: C) -> C:
         return self._apply_to_all_json_fields(func=json.dumps, when=lambda value: value is not None, config=config)
 
-    def _apply_to_all_json_fields(
-        self: Self, func: Callable, when: Callable[[Any], bool], config: GenericConfigData
-    ) -> GenericConfigData:
+    def _apply_to_all_json_fields(self: Self, func: Callable, when: Callable[[Any], bool], config: C) -> C:
         for parameter_name in self._schema.json_fields:
             input_value = config.get_value(parameter_name)
             if when(input_value):
@@ -330,30 +326,10 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
 
         return config
 
-    async def _retrieve_current_config(self: Self) -> ConfigData:
-        configs_path = (*self._parent.get_own_path(), "configs")
 
-        history_response = await self._parent.requester.get(
-            *configs_path, query={"ordering": "-id", "limit": 5, "offset": 0}
-        )
-
-        current_config_entry = get_current_config(results=history_response.as_dict()["results"])
-        config_id = current_config_entry["id"]
-
-        if config_id == self.id:
-            return self._initial_config
-
-        config_response = await self._parent.requester.get(*configs_path, config_id)
-
-        config_data = ConfigData.from_v2_response(data_in_v2_format=config_response.as_dict())
-
-        return self._parse_json_fields_inplace_safe(config_data)
-
-
-class _SaveableConfig[T: _ConfigWrapperCreator](_GeneralConfig[T]):
+class _SaveableConfig[T: _ConfigWrapperCreator](_GeneralConfig[ConfigData, T]):
     def __init__(self: Self, config: ConfigData, schema: ConfigSchema, parent: ConfigOwner) -> None:
         super().__init__(config=config, schema=schema, parent=parent)
-
 
     @property
     def id(self: Self) -> int:
@@ -362,6 +338,7 @@ class _SaveableConfig[T: _ConfigWrapperCreator](_GeneralConfig[T]):
     @property
     def description(self: Self) -> str:
         return self._initial_config.description
+
     async def refresh(self: Self, strategy: ConfigRefreshStrategy = apply_local_changes) -> Self:
         remote_config = await retrieve_current_config(
             parent=self._parent, get_schema=partial(retrieve_schema, parent=self._parent)
@@ -398,9 +375,28 @@ class _SaveableConfig[T: _ConfigWrapperCreator](_GeneralConfig[T]):
 
         return self
 
+    async def _retrieve_current_config(self: Self) -> ConfigData:
+        configs_path = (*self._parent.get_own_path(), "configs")
 
-class ActionConfig(_GeneralConfig[ObjectConfigWrapper]):
-    _wrapper_class = ObjectConfigWrapper
+        history_response = await self._parent.requester.get(
+            *configs_path, query={"ordering": "-id", "limit": 5, "offset": 0}
+        )
+
+        current_config_entry = get_current_config(results=history_response.as_dict()["results"])
+        config_id = current_config_entry["id"]
+
+        if config_id == self.id:
+            return self._initial_config
+
+        config_response = await self._parent.requester.get(*configs_path, config_id)
+
+        config_data = ConfigData.from_v2_response(data_in_v2_format=config_response.as_dict())
+
+        return self._parse_json_fields_inplace_safe(config_data)
+
+
+class ActionConfig(_GeneralConfig[ActionConfigData, ActionConfigWrapper]):
+    _wrapper_class = ActionConfigWrapper
 
     @overload
     def __getitem__[ExpectedType: ConfigEntry](
