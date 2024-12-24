@@ -1,8 +1,10 @@
 from pathlib import Path
 from typing import AsyncGenerator, Generator
+from urllib.parse import urljoin
 import random
 import string
 
+from httpx import AsyncClient
 from testcontainers.core.network import Network
 import pytest
 import pytest_asyncio
@@ -68,3 +70,13 @@ async def complex_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bun
 async def simple_hostprovider_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
     bundle_path = pack_bundle(from_dir=BUNDLES / "simple_hostprovider", to=tmp_path)
     return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
+
+@pytest_asyncio.fixture()
+async def httpx_client(adcm: ADCMContainer) -> AsyncGenerator[AsyncClient, None]:
+    client = AsyncClient(base_url=urljoin(adcm.url, "api/v2/"))
+    response = await client.post("login/", json={"username": "admin", "password": "admin"})
+    client.headers["X-CSRFToken"] = response.cookies["csrftoken"]
+
+    yield client
+
+    await client.aclose()
