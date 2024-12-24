@@ -41,7 +41,7 @@ async def prepare_environment(
     adcm_client: ADCMClient,
     complex_cluster_bundle: Bundle,
     simple_hostprovider_bundle: Bundle,
-) -> list[Job]:
+) -> None:
     cluster_bundle = complex_cluster_bundle
     hostprovider_bundle = simple_hostprovider_bundle
 
@@ -72,16 +72,11 @@ async def prepare_environment(
         )
     )
 
-    object_jobs = asyncio.gather(
-        *(
-            run_non_blocking(object_, name__eq="success")
-            for object_ in chain(clusters, services, components, hosts, hostproviders)
-        )
-    )
+    for object_ in chain(clusters, services, components, hosts, hostproviders):
+        await run_non_blocking(object_, name__eq="success")
 
-    group_jobs = asyncio.gather(*(run_non_blocking(group, name__in=["fail"]) for group in host_groups))
-
-    return await object_jobs + await group_jobs
+    for group in host_groups:
+        await run_non_blocking(group, name__in=["fail"])
 
 
 @pytest.mark.usefixtures("prepare_environment")
@@ -146,6 +141,9 @@ async def _test_job_object(adcm_client: ADCMClient) -> None:
 async def _test_collection_fitlering(adcm_client: ADCMClient) -> None:
     failed_jobs = 20
     services_amount = 5
+
+    for job in await adcm_client.jobs.all():
+        await job.wait(timeout=60)
 
     jobs = await adcm_client.jobs.list()
     assert len(jobs) == 50
