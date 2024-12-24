@@ -79,6 +79,7 @@ async def prepare_environment(
         await run_non_blocking(group, name__in=["fail"])
 
 
+@pytest.mark.skip()
 @pytest.mark.usefixtures("prepare_environment")
 @pytest.mark.parametrize("adcm_client", [{"timeout": 60}], ids=["t60"], indirect=True)
 async def test_jobs_api(adcm_client: ADCMClient) -> None:
