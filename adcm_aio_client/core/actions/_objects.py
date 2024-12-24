@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Self
 from asyncstdlib import cached_property as async_cached_property
 
 from adcm_aio_client.core.config._objects import ActionConfig
-from adcm_aio_client.core.config.types import ActionConfigData
+from adcm_aio_client.core.config.types import ActionConfigData, ConfigSchema
 from adcm_aio_client.core.errors import HostNotInClusterError, NoConfigInActionError, NoMappingInActionError
 from adcm_aio_client.core.filters import FilterByDisplayName, FilterByName, Filtering
 from adcm_aio_client.core.mapping import ActionMapping
@@ -91,7 +91,7 @@ class Action(InteractiveChildObject):
 
         configuration = self._configuration
         data = ActionConfigData(values=configuration["config"], attributes=configuration["adcmMeta"])
-        schema = configuration["configSchema"]
+        schema = ConfigSchema(spec_as_jsonschema=configuration["configSchema"])
 
         return ActionConfig(schema=schema, config=data, parent=self)
 
