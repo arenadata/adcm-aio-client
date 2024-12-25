@@ -12,7 +12,7 @@ from adcm_aio_client.core.errors import (
     HostNotInClusterError,
     NoConfigInActionError,
     NoMappingInActionError,
-    ObjectBlockedError
+    ObjectBlockedError,
 )
 from adcm_aio_client.core.filters import FilterByDisplayName, FilterByName, Filtering
 from adcm_aio_client.core.mapping import ActionMapping
