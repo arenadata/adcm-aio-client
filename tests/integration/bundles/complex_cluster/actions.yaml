@@ -14,3 +14,8 @@
         msg: "failed step"
       tags: [fail]
 
+    - name: Change
+      fail:
+        msg: "Expected value is changed, actual value is {{ job.config.very_important_flag }}"
+      when: "{{ job.config.very_important_flag != 'changed' }}"
+      tags: [change]
