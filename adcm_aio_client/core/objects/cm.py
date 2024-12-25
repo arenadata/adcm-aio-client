@@ -2,13 +2,13 @@ from collections import deque
 from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Iterable, Literal, Self
+from typing import Any, AsyncGenerator, Awaitable, Callable, Iterable, Literal, Self
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.actions._objects import Action
-from adcm_aio_client.core.errors import NotFoundError
+from adcm_aio_client.core.errors import InvalidFilterError, NotFoundError
 from adcm_aio_client.core.filters import (
     ALL_OPERATIONS,
     COMMON_OPERATIONS,
@@ -18,8 +18,10 @@ from adcm_aio_client.core.filters import (
     FilterByName,
     FilterByStatus,
     Filtering,
+    FilterValue,
 )
 from adcm_aio_client.core.host_groups import WithActionHostGroups, WithConfigHostGroups
+from adcm_aio_client.core.host_groups.action_group import ActionHostGroup
 from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._accessors import (
     PaginatedAccessor,
@@ -421,7 +423,7 @@ class Host(Deletable, WithActions, WithStatus, WithMaintenanceMode, RootInteract
 
 class HostsAccessor(PaginatedAccessor[Host]):
     class_type = Host
-    filtering = Filtering(FilterByName, FilterByStatus)
+    filtering = Filtering(FilterByName, FilterByStatus, FilterBy("hostprovider", COMMON_OPERATIONS, HostProvider))
 
 
 class HostsNode(HostsAccessor):
@@ -471,11 +473,11 @@ class HostsInClusterNode(HostsAccessor):
         return tuple(hosts)
 
 
-def default_exit_condition(job: "Job") -> bool:
-    return job.get_status() in DEFAULT_JOB_TERMINAL_STATUSES
+async def default_exit_condition(job: "Job") -> bool:
+    return await job.get_status() in DEFAULT_JOB_TERMINAL_STATUSES
 
 
-class Job[Object: "InteractiveObject"](WithStatus, WithActions, RootInteractiveObject):
+class Job(WithStatus, RootInteractiveObject):
     PATH_PREFIX = "tasks"
 
     @property
@@ -483,46 +485,155 @@ class Job[Object: "InteractiveObject"](WithStatus, WithActions, RootInteractiveO
         return str(self._data["name"])
 
     @property
-    def start_time(self: Self) -> datetime:
-        return self._data["startTime"]
+    def display_name(self: Self) -> str:
+        return str(self._data["displayName"])
 
-    @property
-    def finish_time(self: Self) -> datetime:
-        return self._data["endTime"]
+    @cached_property
+    def start_time(self: Self) -> datetime | None:
+        time = self._data["startTime"]
+        if time is None:
+            return time
 
-    @property
-    def object(self: Self) -> Object:
-        obj_data = self._data["objects"][0]
-        obj_type = obj_data["type"]
+        return datetime.fromisoformat(time)
 
-        obj_dict = {
-            "host": Host,
-            "component": Component,
-            "provider": HostProvider,
-            "cluster": Cluster,
-            "service": Service,
-            "adcm": ADCM,
-        }
+    @cached_property
+    def finish_time(self: Self) -> datetime | None:
+        time = self._data["endTime"]
+        if time is None:
+            return time
 
-        return self._construct(what=obj_dict[obj_type], from_data=obj_data)
+        return datetime.fromisoformat(time)
 
-    @property
-    def action(self: Self) -> Action:
-        return self._construct(what=Action, from_data=self._data["action"])
+    @async_cached_property
+    async def object(self: Self) -> InteractiveObject:
+        objects_raw = self._parse_objects()
+        return await self._retrieve_target(objects_raw)
+
+    @async_cached_property
+    async def action(self: Self) -> Action:
+        target = await self.object
+        return Action(parent=target, data=self._data["action"])
 
     async def wait(
         self: Self,
         timeout: int | None = None,
         poll_interval: int = 10,
-        exit_condition: Callable[[Self], bool] = default_exit_condition,
+        exit_condition: Callable[[Self], Awaitable[bool]] = default_exit_condition,
     ) -> Self:
         timeout_condition = datetime.max if timeout is None else (datetime.now() + timedelta(seconds=timeout))  # noqa: DTZ005
+
         while datetime.now() < timeout_condition:  # noqa: DTZ005
-            if exit_condition(self):
+            if await exit_condition(self):
                 return self
+
             await asyncio.sleep(poll_interval)
 
-        raise TimeoutError
+        message = "Failed to meet exit condition for job"
+        if timeout:
+            message = f"{message} in {timeout} seconds with {poll_interval} second interval"
+
+        raise TimeoutError(message)
 
     async def terminate(self: Self) -> None:
         await self._requester.post(*self.get_own_path(), "terminate", data={})
+
+    def _parse_objects(self: Self) -> dict[str, int]:
+        return {entry["type"]: entry["id"] for entry in self._data["objects"]}
+
+    async def _retrieve_target(self: Self, objects: dict[str, int]) -> InteractiveObject:
+        match objects:
+            case {"action_host_group": id_}:
+                objects.pop("action_host_group")
+                owner = await self._retrieve_target(objects)
+                return await ActionHostGroup.with_id(parent=owner, object_id=id_)
+
+            case {"host": id_}:
+                return await Host.with_id(requester=self._requester, object_id=id_)
+
+            case {"component": id_}:
+                objects.pop("component")
+
+                owner = await self._retrieve_target(objects)
+                if not isinstance(owner, Service):
+                    message = f"Incorrect owner for component detected from job data: {owner}"
+                    raise TypeError(message)
+
+                return await Component.with_id(parent=owner, object_id=id_)
+
+            case {"service": id_}:
+                objects.pop("service")
+
+                owner = await self._retrieve_target(objects)
+                if not isinstance(owner, Cluster):
+                    message = f"Incorrect owner for service detected from job data: {owner}"
+                    raise TypeError(message)
+
+                return await Service.with_id(parent=owner, object_id=id_)
+
+            case {"cluster": id_}:
+                return await Cluster.with_id(requester=self._requester, object_id=id_)
+
+            case {"provider": id_}:
+                return await HostProvider.with_id(requester=self._requester, object_id=id_)
+            case _:
+                message = f"Failed to detect Job's owner based on {objects}"
+                raise RuntimeError(message)
+
+
+class JobsNode(PaginatedAccessor[Job]):
+    class_type = Job
+    filtering = Filtering(
+        FilterByName,
+        FilterByDisplayName,
+        FilterByStatus,
+        FilterBy("action", COMMON_OPERATIONS, Action),
+        # technical filters, don't use them directly
+        FilterBy("target_id", ("eq",), int),
+        FilterBy("target_type", ("eq",), str),
+    )
+
+    # override accessor methods to allow passing object
+
+    async def get(self: Self, *, object: InteractiveObject | None = None, **filters: FilterValue) -> Job:  # noqa: A002
+        object_filter = self._prepare_filter_by_object(object)
+        all_filters = filters | object_filter
+        return await super().get(**all_filters)
+
+    async def get_or_none(self: Self, *, object: InteractiveObject | None = None, **filters: FilterValue) -> Job | None:  # noqa: A002
+        object_filter = self._prepare_filter_by_object(object)
+        all_filters = filters | object_filter
+        return await super().get_or_none(**all_filters)
+
+    async def filter(self: Self, *, object: InteractiveObject | None = None, **filters: FilterValue) -> list[Job]:  # noqa: A002
+        object_filter = self._prepare_filter_by_object(object)
+        all_filters = filters | object_filter
+        return await super().filter(**all_filters)
+
+    async def iter(
+        self: Self,
+        *,
+        object: InteractiveObject | None = None,  # noqa: A002
+        **filters: FilterValue,
+    ) -> AsyncGenerator[Job, None]:
+        object_filter = self._prepare_filter_by_object(object)
+        all_filters = filters | object_filter
+        async for entry in super().iter(**all_filters):
+            yield entry
+
+    def _prepare_filter_by_object(self: Self, object_: InteractiveObject | None) -> dict:
+        if object_ is None:
+            return {}
+
+        object_id = object_.id
+
+        if isinstance(object_, (Cluster, Service, Component, Host)):
+            object_type = object_.__class__.__name__.lower()
+        elif isinstance(object_, HostProvider):
+            object_type = "provider"
+        elif isinstance(object_, ActionHostGroup):
+            object_type = "action_host_group"
+        else:
+            message = f"Failed to build filter: {object_.__class__.__name__} " "can't be an owner of Job"
+            raise InvalidFilterError(message)
+
+        return {"target_id__eq": object_id, "target_type__eq": object_type}

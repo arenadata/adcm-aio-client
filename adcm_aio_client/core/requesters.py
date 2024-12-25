@@ -110,10 +110,13 @@ def retry_request(request_func: RequestFunc) -> RequestFunc:
     @wraps(request_func)
     async def wrapper(self: "DefaultRequester", *args: Params.args, **kwargs: Params.kwargs) -> HTTPXRequesterResponse:
         retries = self._retries
+        last_error = None
+
         for attempt in range(retries.attempts):
             try:
                 response = await request_func(self, *args, **kwargs)
-            except (UnauthorizedError, httpx.NetworkError, httpx.TransportError):
+            except (UnauthorizedError, httpx.NetworkError, httpx.TransportError) as e:
+                last_error = e
                 if attempt >= retries.attempts - 1:
                     continue
 
@@ -125,7 +128,11 @@ def retry_request(request_func: RequestFunc) -> RequestFunc:
                 break
         else:
             message = f"Request failed in {retries.interval} attempts"
-            raise RetryRequestError(message)
+            if last_error is None:
+                raise RetryRequestError(message)
+
+            message = f"{message}. Last error: {last_error}"
+            raise RetryRequestError(message) from last_error
 
         return response
 

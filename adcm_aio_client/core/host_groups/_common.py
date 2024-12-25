@@ -10,7 +10,6 @@ from adcm_aio_client.core.objects._accessors import (
     PaginatedChildAccessor,
     filters_to_inline,
 )
-from adcm_aio_client.core.objects._base import InteractiveChildObject
 from adcm_aio_client.core.types import Endpoint, HostID, QueryParameters, Requester, RequesterResponse
 from adcm_aio_client.core.utils import safe_gather
 
@@ -99,7 +98,7 @@ class HostGroupNode[
 ](PaginatedChildAccessor[Parent, Child]):
     async def create(  # TODO: can create HG with subset of `hosts` if adding some of them leads to an error
         self: Self, name: str, description: str = "", hosts: list["Host"] | None = None
-    ) -> InteractiveChildObject:
+    ) -> Child:
         response = await self._requester.post(*self._path, data={"name": name, "description": description})
         host_group = self.class_type(parent=self._parent, data=response.as_dict())
 

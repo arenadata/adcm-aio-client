@@ -13,7 +13,7 @@
 from functools import cached_property
 from typing import Self
 
-from adcm_aio_client.core.objects.cm import ADCM, BundlesNode, ClustersNode, HostProvidersNode, HostsNode
+from adcm_aio_client.core.objects.cm import ADCM, BundlesNode, ClustersNode, HostProvidersNode, HostsNode, JobsNode
 from adcm_aio_client.core.requesters import BundleRetrieverInterface, Requester
 
 MIN_ADCM_VERSION = "2.5.0"
@@ -48,3 +48,7 @@ class ADCMClient:
         return BundlesNode(
             path=("bundles",), requester=self._requester, retriever=self._retrieve_bundle_from_remote_url
         )
+
+    @cached_property
+    def jobs(self: Self) -> JobsNode:
+        return JobsNode(path=("tasks",), requester=self._requester)

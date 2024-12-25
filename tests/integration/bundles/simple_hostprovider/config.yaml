@@ -2,6 +2,19 @@
   name: simple_provider
   version: 4
 
+  actions: &actions
+    success: &job
+      display_name: I will survive
+      type: job
+      script_type: ansible
+      script: ./actions.yaml
+      params:
+        ansible_tags: ok
+      masking: {}
+
+
 - type: host
   name: simple_host
   version: 2
+
+  actions: *actions
