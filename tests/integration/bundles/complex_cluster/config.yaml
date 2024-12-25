@@ -116,6 +116,11 @@
           name: second
           display_name: AnothEr
 
+  config:
+    - name: string_field
+      type: string
+      default: "string value"
+
 - type: service
   name: example_1
   display_name: First Example
