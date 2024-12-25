@@ -14,7 +14,7 @@ def pack_bundle(from_dir: Path, to: Path) -> Path:
 
     with TarFile(name=archive, mode="w") as tar:
         for entry in from_dir.iterdir():
-            tar.add(entry)
+            tar.add(entry, arcname=entry.name)
 
     return archive
 
