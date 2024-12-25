@@ -7,7 +7,13 @@ from asyncstdlib import cached_property as async_cached_property
 
 from adcm_aio_client.core.config._objects import ActionConfig
 from adcm_aio_client.core.config.types import ConfigData
-from adcm_aio_client.core.errors import HostNotInClusterError, NoConfigInActionError, NoMappingInActionError
+from adcm_aio_client.core.errors import (
+    ConflictError,
+    HostNotInClusterError,
+    NoConfigInActionError,
+    NoMappingInActionError,
+    ObjectBlockedError,
+)
 from adcm_aio_client.core.filters import FilterByDisplayName, FilterByName, Filtering
 from adcm_aio_client.core.mapping import ActionMapping
 from adcm_aio_client.core.objects._accessors import NonPaginatedChildAccessor
@@ -64,7 +70,13 @@ class Action(InteractiveChildObject):
             config = await self.config
             data |= {"configuration": config._to_payload()}
 
-        response = await self._requester.post(*self.get_own_path(), "run", data=data)
+        try:
+            response = await self._requester.post(*self.get_own_path(), "run", data=data)
+        except ConflictError as e:
+            if "has issue" in str(e):
+                raise ObjectBlockedError(*e.args) from None
+            raise
+
         return Job(requester=self._requester, data=response.as_dict())
 
     @async_cached_property

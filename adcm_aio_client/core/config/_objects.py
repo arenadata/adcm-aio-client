@@ -15,7 +15,13 @@ from adcm_aio_client.core.config.types import (
     LevelNames,
     LocalConfigs,
 )
-from adcm_aio_client.core.errors import ConfigComparisonError, ConfigNoParameterError, RequesterError
+from adcm_aio_client.core.errors import (
+    BadRequestError,
+    ConfigComparisonError,
+    ConfigNoParameterError,
+    InvalidConfigError,
+    RequesterError,
+)
 from adcm_aio_client.core.types import AwareOfOwnPath, WithRequesterProperty
 
 
@@ -373,11 +379,23 @@ class _SaveableConfig[T: _ConfigWrapperCreator](_GeneralConfig[T]):
 
         try:
             response = await self._parent.requester.post(*self._parent.get_own_path(), "configs", data=payload)
-        except RequesterError:
+        except RequesterError as e:
+            # config isn't saved, no data update is in play,
+            # returning "pre-saved" parsed values
+            self._parse_json_fields_inplace_safe(config_to_save)
+            if isinstance(e, BadRequestError):
+                raise InvalidConfigError(*e.args) from None
+            raise
+
+        try:
+            response = await self._parent.requester.post(*self._parent.get_own_path(), "configs", data=payload)
+        except RequesterError as e:
             # config isn't saved, no data update is in play,
             # returning "pre-saved" parsed values
             self._parse_json_fields_inplace_safe(config_to_save)
 
+            if isinstance(e, BadRequestError):
+                raise InvalidConfigError(*e.args) from None
             raise
         else:
             new_config = ConfigData.from_v2_response(data_in_v2_format=response.as_dict())

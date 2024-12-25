@@ -1,6 +1,7 @@
 from functools import partial
 from typing import TYPE_CHECKING, Any, Iterable, Self, Union
 
+from adcm_aio_client.core.errors import ConflictError, HostConflictError, ObjectAlreadyExistsError
 from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.objects._accessors import (
     DefaultQueryParams as AccessorFilter,
@@ -54,13 +55,17 @@ class HostsInHostGroupNode(PaginatedAccessor["Host"]):
 
     async def _add_hosts_to_group(self: Self, ids: Iterable[HostID]) -> None:
         add_by_id = partial(self._requester.post, *self._path)
-        add_coros = map(add_by_id, ({"hostId": id_} for id_ in ids))
-        error = await safe_gather(
-            coros=add_coros,
-            msg=f"Some hosts can't be added to {self.group_type} host group",
-        )
-        if error is not None:
-            raise error
+        try:
+            if error := await safe_gather(
+                coros=(add_by_id(data={"hostId": id_}) for id_ in ids),
+                msg=f"Some hosts can't be added to {self.group_type} host group",
+            ):
+                raise error
+        except* ConflictError as conflict_err_group:
+            host_conflict_msgs = {"already a member of this group", "already is a member of another group"}
+            if target_gr := conflict_err_group.subgroup(lambda e: any(msg in str(e) for msg in host_conflict_msgs)):
+                raise HostConflictError(*target_gr.exceptions[0].args) from None
+            raise
 
     async def _remove_hosts_from_group(self: Self, ids: Iterable[HostID]) -> None:
         delete_by_id = partial(self._requester.delete, *self._path)
@@ -99,7 +104,12 @@ class HostGroupNode[
     async def create(  # TODO: can create HG with subset of `hosts` if adding some of them leads to an error
         self: Self, name: str, description: str = "", hosts: list["Host"] | None = None
     ) -> Child:
-        response = await self._requester.post(*self._path, data={"name": name, "description": description})
+        try:
+            response = await self._requester.post(*self._path, data={"name": name, "description": description})
+        except ConflictError as e:
+            if "already exists" in str(e):
+                raise ObjectAlreadyExistsError(*e.args) from None
+            raise
         host_group = self.class_type(parent=self._parent, data=response.as_dict())
 
         if not hosts:
