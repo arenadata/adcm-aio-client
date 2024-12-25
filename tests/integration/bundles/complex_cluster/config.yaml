@@ -2,6 +2,85 @@
   name: Some Cluster
   version: 1
 
+  upgrade:
+    - &upgrade
+      name: Simple
+      display_name: "I am very simple, you know?"
+      versions:
+        min: 0.1
+        max: 0.9
+      states: 
+        available: any
+
+    - <<: *upgrade
+      name: action_config
+      display_name: "With action and config"
+      scripts: &upgrade_scripts
+        - name: pre
+          script_type: ansible
+          script: ./actions.yaml
+          params:
+            ansible_tags: ok
+        - name: switch
+          script_type: internal
+          script: bundle_switch
+        - name: post
+          script_type: ansible
+          script: ./actions.yaml
+          params:
+            ansible_tags: ok
+            
+      config: &upgrade_config
+        - name: string_field
+          type: string
+        - name: params
+          display_name: Some Params
+          type: group
+          subs:
+            - name: cant_find
+              type: string
+              default: "cantCme"
+              ui_options:
+                invisible: true
+#            - name: license
+#              description: "Edit license as you want :3"
+#              read_only: any
+#              type: file
+#              default: ./text.txt
+            - name: pass
+              type: password
+              required: no
+            - name: sag
+              display_name: Filter
+              type: structure
+              yspec: ./sag.yaml
+              default:
+                nested:
+                  attr: "nice"
+                  op: "eq"
+                  tech: "true"
+                quantity: 14443
+        - name: payload
+          display_name: Request Body
+          type: json
+          default:
+            - 1
+            - {"k": "v"}
+            - "plain"
+
+    - <<: *upgrade
+      name: action_config_mapping
+      display_name: With action, config and mapping
+      scripts: *upgrade_scripts
+      config: *upgrade_config
+      hc_acl:
+        - action: add
+          service: example_1
+          component: first
+        - action: remove
+          service: example_2
+          component: second
+
   actions: &actions
     success: &job
       display_name: I will survive
