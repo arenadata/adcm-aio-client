@@ -1,0 +1,16 @@
+- name: letsgo
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  tasks:
+    - name: Success
+      debug:
+        msg: "successful step"
+      tags: [ok]
+      
+    - name: Fail
+      fail:
+        msg: "failed step"
+      tags: [fail]
+
