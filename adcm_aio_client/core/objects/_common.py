@@ -24,10 +24,11 @@ class WithStatus(WithProtectedRequester, AwareOfOwnPath):
 class WithActions(WithProtectedRequester, AwareOfOwnPath):
     @cached_property
     def actions(self: Self) -> ActionsAccessor:
-        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
+        # `WithActions` can actually be InteractiveObject, but it isn't required
+        # based on usages, so for now it's just ignore
+        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)  # type: ignore[reportArgumentType]
 
 
-# todo whole section lacking implementation (and maybe code move is required)
 class WithConfig(ConfigOwner):
     @cached_property
     async def config(self: Self) -> ObjectConfig:

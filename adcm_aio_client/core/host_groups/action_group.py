@@ -1,17 +1,17 @@
 from functools import cached_property
 from typing import TYPE_CHECKING, Self, Union
 
-from adcm_aio_client.core.actions import ActionsAccessor
+from adcm_aio_client.core.filters import FilterByName, Filtering
 from adcm_aio_client.core.host_groups._common import HostGroupNode, HostsInHostGroupNode
 from adcm_aio_client.core.objects._base import InteractiveChildObject
-from adcm_aio_client.core.objects._common import Deletable
+from adcm_aio_client.core.objects._common import Deletable, WithActions
 from adcm_aio_client.core.types import AwareOfOwnPath, WithProtectedRequester
 
 if TYPE_CHECKING:
     from adcm_aio_client.core.objects.cm import Cluster, Component, Service
 
 
-class ActionHostGroup(InteractiveChildObject, Deletable):
+class ActionHostGroup(InteractiveChildObject, WithActions, Deletable):
     PATH_PREFIX = "action-host-groups"
 
     @property
@@ -26,13 +26,10 @@ class ActionHostGroup(InteractiveChildObject, Deletable):
     def hosts(self: Self) -> "HostsInActionHostGroupNode":
         return HostsInActionHostGroupNode(path=(*self.get_own_path(), "hosts"), requester=self._requester)
 
-    @cached_property
-    def actions(self: Self) -> ActionsAccessor:
-        return ActionsAccessor(parent=self, path=(*self.get_own_path(), "actions"), requester=self._requester)
-
 
 class ActionHostGroupNode(HostGroupNode[Union["Cluster", "Service", "Component"], ActionHostGroup]):
     class_type = ActionHostGroup
+    filtering = Filtering(FilterByName)
 
 
 class HostsInActionHostGroupNode(HostsInHostGroupNode):

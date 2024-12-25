@@ -24,7 +24,8 @@ MULTI_OPERATIONS = frozenset(("in", "iin", "exclude", "iexclude"))
 
 
 COMMON_OPERATIONS = frozenset(("eq", "ne", "in", "exclude"))
-ALL_OPERATIONS = frozenset(("contains", "icontains", *COMMON_OPERATIONS, *tuple(f"i{op}" for op in COMMON_OPERATIONS)))
+STATUS_OPERATIONS = frozenset((*COMMON_OPERATIONS, *tuple(f"i{op}" for op in COMMON_OPERATIONS)))
+ALL_OPERATIONS = frozenset(("contains", "icontains", *STATUS_OPERATIONS))
 
 type FilterSingleValue = str | int | InteractiveObject
 type FilterValue = FilterSingleValue | Iterable[FilterSingleValue]
@@ -158,4 +159,4 @@ class Filtering:
 
 FilterByName = FilterBy("name", ALL_OPERATIONS, str)
 FilterByDisplayName = FilterBy("display_name", ALL_OPERATIONS, str)
-FilterByStatus = FilterBy("status", COMMON_OPERATIONS, str)
+FilterByStatus = FilterBy("status", STATUS_OPERATIONS, str)

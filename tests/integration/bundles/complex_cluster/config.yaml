@@ -2,6 +2,46 @@
   name: Some Cluster
   version: 1
 
+  actions: &actions
+    success: &job
+      display_name: I will survive
+      type: job
+      script_type: ansible
+      script: ./actions.yaml
+      allow_to_terminate: true
+      allow_for_action_host_group: true
+      params:
+        ansible_tags: ok
+      masking: {}
+
+    fail:
+      <<: *job
+      display_name: no Way
+      params:
+        ansible_tags: fail
+
+    success_task:
+      display_name: Lots Of me
+      type: task
+      masking: {}
+      allow_to_terminate: true
+      allow_for_action_host_group: true
+      scripts:
+        - &success_job
+          name: first
+          script_type: ansible
+          script: ./actions.yaml
+          params:
+            ansible_tags: ok
+        - <<: *success_job
+          name: second
+          display_name: AnothEr
+
+  config:
+    - name: string_field
+      type: string
+      default: "string value"
+
 - type: service
   name: example_1
   display_name: First Example
@@ -26,6 +66,18 @@
   version: "4.23.456"
 
   components: *example_c
+
+- type: service
+  name: with_actions
+  version: 2.3
+  actions: *actions
+
+  components:
+    c1:
+      display_name: Awesome
+      actions: *actions
+    c2:
+      actions: *actions
 
 - type: service
   name: complex_config

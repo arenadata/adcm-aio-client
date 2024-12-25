@@ -307,27 +307,6 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
         full_diff = find_config_difference(previous=previous.data, current=current.data, schema=self._schema)
         return ConfigDifference.from_full_format(full_diff)
 
-    async def save(self: Self, description: str = "") -> Self:
-        config_to_save = self._current_config.config
-        self._serialize_json_fields_inplace_safe(config_to_save)
-        payload = {"description": description, "config": config_to_save.values, "adcmMeta": config_to_save.attributes}
-
-        try:
-            response = await self._parent.requester.post(*self._parent.get_own_path(), "configs", data=payload)
-        except RequesterError as e:
-            # config isn't saved, no data update is in play,
-            # returning "pre-saved" parsed values
-            self._parse_json_fields_inplace_safe(config_to_save)
-            if isinstance(e, BadRequestError):
-                raise InvalidConfigError(*e.args) from None
-            raise
-        else:
-            new_config = ConfigData.from_v2_response(data_in_v2_format=response.as_dict())
-            self._initial_config = self._parse_json_fields_inplace_safe(new_config)
-            self.reset()
-
-        return self
-
     # Public For Internal Use Only
 
     @property
@@ -376,7 +355,7 @@ class _GeneralConfig[T: _ConfigWrapperCreator]:
         return self._parse_json_fields_inplace_safe(config_data)
 
 
-class _RefreshableConfig[T: _ConfigWrapperCreator](_GeneralConfig[T]):
+class _SaveableConfig[T: _ConfigWrapperCreator](_GeneralConfig[T]):
     async def refresh(self: Self, strategy: ConfigRefreshStrategy = apply_local_changes) -> Self:
         remote_config = await retrieve_current_config(
             parent=self._parent, get_schema=partial(retrieve_schema, parent=self._parent)
@@ -390,6 +369,38 @@ class _RefreshableConfig[T: _ConfigWrapperCreator](_GeneralConfig[T]):
 
         self._initial_config = remote_config.data
         self._current_config.change_data(new_data=merged_config)
+
+        return self
+
+    async def save(self: Self, description: str = "") -> Self:
+        config_to_save = self._current_config.config
+        self._serialize_json_fields_inplace_safe(config_to_save)
+        payload = {"description": description, "config": config_to_save.values, "adcmMeta": config_to_save.attributes}
+
+        try:
+            response = await self._parent.requester.post(*self._parent.get_own_path(), "configs", data=payload)
+        except RequesterError as e:
+            # config isn't saved, no data update is in play,
+            # returning "pre-saved" parsed values
+            self._parse_json_fields_inplace_safe(config_to_save)
+            if isinstance(e, BadRequestError):
+                raise InvalidConfigError(*e.args) from None
+            raise
+
+        try:
+            response = await self._parent.requester.post(*self._parent.get_own_path(), "configs", data=payload)
+        except RequesterError as e:
+            # config isn't saved, no data update is in play,
+            # returning "pre-saved" parsed values
+            self._parse_json_fields_inplace_safe(config_to_save)
+
+            if isinstance(e, BadRequestError):
+                raise InvalidConfigError(*e.args) from None
+            raise
+        else:
+            new_config = ConfigData.from_v2_response(data_in_v2_format=response.as_dict())
+            self._initial_config = self._parse_json_fields_inplace_safe(new_config)
+            self.reset()
 
         return self
 
@@ -410,8 +421,14 @@ class ActionConfig(_GeneralConfig[ObjectConfigWrapper]):
     ) -> ConfigEntry:
         return self._current_config[item]
 
+    def _to_payload(self: Self) -> dict:
+        # don't want complexity of regular config with rollbacks on failure
+        config_to_save = deepcopy(self._current_config.config)
+        self._serialize_json_fields_inplace_safe(config_to_save)
+        return {"config": config_to_save.values, "adcmMeta": config_to_save.attributes}
 
-class ObjectConfig(_RefreshableConfig[ObjectConfigWrapper]):
+
+class ObjectConfig(_SaveableConfig[ObjectConfigWrapper]):
     _wrapper_class = ObjectConfigWrapper
 
     # todo fix typing copy-paste
@@ -429,7 +446,7 @@ class ObjectConfig(_RefreshableConfig[ObjectConfigWrapper]):
         return self._current_config[item]
 
 
-class HostGroupConfig(_RefreshableConfig[HostGroupConfigWrapper]):
+class HostGroupConfig(_SaveableConfig[HostGroupConfigWrapper]):
     _wrapper_class = HostGroupConfigWrapper
 
     @overload
