@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import NamedTuple
 import asyncio
 
+import yaml
 import pytest
 import pytest_asyncio
 
@@ -29,6 +30,31 @@ class Context(NamedTuple):
     hostprovider: HostProvider
 
 
+async def upload_hp_bundle_with_50_plus_upgrades(adcm_client: ADCMClient, workdir: Path) -> Bundle:
+    # based on simple_hostprovider
+    hp_def = {"type": "provider", "name": "simple_provider", "version": 6}
+    host_def = {"type": "host", "name": "simple_host", "version": 2}
+
+    upgrade_base = {"versions": {"min": 3, "max": 5}, "states": {"available": "any"}}
+    action_base = {"scripts": [{"name": "switch", "script_type": "internal", "script": "bundle_switch"}]}
+
+    simple_upgrades = [{"name": f"simple-{i}"} | upgrade_base for i in range(40)]
+    action_upgrades = [{"name": f"action-{i}"} | upgrade_base | action_base for i in range(20)]
+
+    bundle = [hp_def | {"upgrade": simple_upgrades + action_upgrades}, host_def]
+
+    bundle_dir = workdir / "hp_bundle_many_upgrades"
+    bundle_dir.mkdir(parents=True)
+
+    config_file = bundle_dir / "config.yaml"
+    with config_file.open(mode="w", encoding="utf-8") as f:
+        yaml.safe_dump(bundle, f)
+
+    bundle_path = pack_bundle(from_dir=bundle_dir, to=workdir)
+
+    return await adcm_client.bundles.create(source=bundle_path)
+
+
 @pytest_asyncio.fixture()
 async def previous_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
     bundle_path = pack_bundle(from_dir=BUNDLES / "complex_cluster_prev", to=tmp_path)
@@ -52,10 +78,11 @@ def context(
     )
 
 
-async def test_upgrade_api(context: Context) -> None:
+async def test_upgrade_api(context: Context, tmp_path: Path) -> None:
     await _test_simple_upgrade(context)
     await _test_upgrade_with_config(context)
     await _test_upgrade_with_mapping(context)
+    await _test_upgrade_filtering(context, tmp_path)
 
 
 async def _test_simple_upgrade(context: Context) -> None:
@@ -196,3 +223,29 @@ async def _test_upgrade_with_mapping(context: Context) -> None:
 
     await cluster_mapping.refresh(strategy=apply_remote_changes)
     assert len(cluster_mapping.all()) == 5
+
+
+async def _test_upgrade_filtering(context: Context, tmp_path: Path) -> None:
+    hostprovider = context.hostprovider
+    upgrades_simple = 40
+    upgrades_action = 20
+    upgrades_total = upgrades_simple + upgrades_action
+
+    assert await hostprovider.upgrades.all() == []
+
+    new_bundle = await upload_hp_bundle_with_50_plus_upgrades(adcm_client=context.client, workdir=tmp_path)
+
+    assert len(await hostprovider.upgrades.all()) == upgrades_total
+    assert len(await hostprovider.upgrades.list()) == upgrades_total  # no paging
+    assert len(await hostprovider.upgrades.filter(name__contains="simple")) == upgrades_simple
+    assert len(await hostprovider.upgrades.filter(name__exclude=["simple-1", "action-2"])) == upgrades_total - 2
+    assert (
+        len(await hostprovider.upgrades.filter(display_name__iexclude=["sIMpLe-1", "AcTion-2"])) == upgrades_total - 2
+    )
+    assert len(await hostprovider.upgrades.filter(name__ne="simple-1")) == upgrades_total - 1
+    assert len(await hostprovider.upgrades.filter(display_name__ine="sIMpLe-1")) == upgrades_total - 1
+    assert await hostprovider.upgrades.get_or_none(display_name__eq="action-4") is not None
+
+    async for upgrade in hostprovider.upgrades.iter(display_name__icontains="tIon"):
+        assert upgrade.display_name.startswith("action-")
+        assert (await upgrade.bundle).id == new_bundle.id
