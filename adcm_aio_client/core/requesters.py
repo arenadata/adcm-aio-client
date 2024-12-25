@@ -36,7 +36,15 @@ from adcm_aio_client.core.errors import (
     UnauthorizedError,
     WrongCredentialsError,
 )
-from adcm_aio_client.core.types import Credentials, PathPart, QueryParameters, Requester, RetryPolicy, URLStr
+from adcm_aio_client.core.types import (
+    Credentials,
+    PathPart,
+    QueryParameters,
+    Requester,
+    RequesterResponse,
+    RetryPolicy,
+    URLStr,
+)
 
 Json: TypeAlias = Any
 Params = ParamSpec("Params")
@@ -45,7 +53,7 @@ DoRequestFunc: TypeAlias = Callable[Params, Awaitable[httpx.Response]]
 
 
 @dataclass(slots=True)
-class HTTPXRequesterResponse:
+class HTTPXRequesterResponse(RequesterResponse):
     response: httpx.Response
     _json_data: Json | None = None
 
@@ -62,6 +70,9 @@ class HTTPXRequesterResponse:
             raise ResponseDataConversionError(message)
 
         return data
+
+    def get_status_code(self: Self) -> int:
+        return self.response.status_code
 
     def _get_json_data(self: Self) -> Json:
         if self._json_data is not None:

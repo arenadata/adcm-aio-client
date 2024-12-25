@@ -1,0 +1,57 @@
+- type: cluster
+  name: Some Cluster
+  version: 0.1
+
+  actions: &actions
+    success: &job
+      display_name: I will survive
+      type: job
+      script_type: ansible
+      script: ./actions.yaml
+      allow_to_terminate: true
+      allow_for_action_host_group: true
+      params:
+        ansible_tags: ok
+      masking: {}
+
+    fail:
+      <<: *job
+      display_name: no Way
+      params:
+        ansible_tags: fail
+
+
+- type: service
+  name: example_1
+  display_name: Old naMe
+  version: 0.9
+
+  config:
+    - name: root_int
+      display_name: Integer At Root
+      type: integer
+      default: 100
+
+  components: &example_c
+    first:
+      display_name: First Component
+    second:
+      display_name: Second Component
+
+- type: service
+  name: example_2
+  version: "3.23"
+
+  components: *example_c
+
+- type: service
+  name: with_actions
+  version: 2.0
+  actions: *actions
+
+  components:
+    c1:
+      display_name: Awesome
+      actions: *actions
+    c2:
+      actions: *actions

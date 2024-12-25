@@ -42,7 +42,7 @@ class WithConfig(ConfigOwner):
 class WithUpgrades(WithProtectedRequester, AwareOfOwnPath):
     @cached_property
     def upgrades(self: Self) -> UpgradeNode:
-        return UpgradeNode(parent=self, path=(*self.get_own_path(), "upgrades"), requester=self._requester)
+        return UpgradeNode(parent=self, path=(*self.get_own_path(), "upgrades"), requester=self._requester)  # type: ignore[reportTypeArgument]
 
 
 class WithMaintenanceMode(WithProtectedRequester, AwareOfOwnPath):

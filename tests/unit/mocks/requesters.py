@@ -26,6 +26,9 @@ class QueueResponse(RequesterResponse):
 
         return data
 
+    def get_status_code(self: Self) -> int:
+        return 200
+
 
 @dataclass()
 class QueueRequester(Requester):
