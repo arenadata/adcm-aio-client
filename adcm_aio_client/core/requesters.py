@@ -21,20 +21,20 @@ from urllib.parse import urljoin
 import httpx
 
 from adcm_aio_client.core.errors import (
+    AuthenticationError,
     BadRequestError,
     ConflictError,
-    ForbiddenError,
     LoginError,
     LogoutError,
     NoCredentialsError,
     NotFoundError,
     OperationError,
+    PermissionDeniedError,
     ResponseDataConversionError,
-    ResponseError,
     RetryRequestError,
     ServerError,
     UnauthorizedError,
-    WrongCredentialsError,
+    UnknownError,
 )
 from adcm_aio_client.core.types import Credentials, PathPart, QueryParameters, Requester, RetryPolicy, URLStr
 
@@ -81,7 +81,7 @@ class HTTPXRequesterResponse:
 STATUS_ERRORS_MAP = {
     400: BadRequestError,
     401: UnauthorizedError,
-    403: ForbiddenError,
+    403: PermissionDeniedError,
     404: NotFoundError,
     409: ConflictError,
     500: ServerError,
@@ -93,7 +93,7 @@ def convert_exceptions(func: DoRequestFunc) -> DoRequestFunc:
     async def wrapper(*arg: Params.args, **kwargs: Params.kwargs) -> httpx.Response:
         response = await func(*arg, **kwargs)
         if response.status_code >= 300:
-            error_cls = STATUS_ERRORS_MAP.get(response.status_code, ResponseError)
+            error_cls = STATUS_ERRORS_MAP.get(response.status_code, UnknownError)
             # not safe, because can be not json
             try:
                 message = response.json()
@@ -162,8 +162,8 @@ class DefaultRequester(Requester):
                 f"Login to ADCM at {self.client.base_url} has failed for "
                 f"user {credentials.username} most likely due to incorrect credentials"
             )
-            raise WrongCredentialsError(message) from e
-        except ResponseError as e:
+            raise AuthenticationError(message) from e
+        except UnknownError as e:
             message = f"Login to ADCM at {self.client.base_url} has failed for user {credentials.username}: {e}"
             raise LoginError(message) from e
 
@@ -179,7 +179,7 @@ class DefaultRequester(Requester):
         try:
             request_coro = self.client.post(url=logout_url, data={})
             await self._do_request(request_coro)
-        except ResponseError as e:
+        except UnknownError as e:
             message = f"Logout from ADCM at {self.client.base_url} has failed"
             raise LogoutError(message) from e
 

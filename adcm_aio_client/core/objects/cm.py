@@ -8,7 +8,7 @@ import asyncio
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client.core.actions._objects import Action
-from adcm_aio_client.core.errors import InvalidFilterError, NotFoundError
+from adcm_aio_client.core.errors import InvalidFilterError, NotFoundError, WaitTimeoutError
 from adcm_aio_client.core.filters import (
     ALL_OPERATIONS,
     COMMON_OPERATIONS,
@@ -532,7 +532,7 @@ class Job(WithStatus, RootInteractiveObject):
         if timeout:
             message = f"{message} in {timeout} seconds with {poll_interval} second interval"
 
-        raise TimeoutError(message)
+        raise WaitTimeoutError(message)
 
     async def terminate(self: Self) -> None:
         await self._requester.post(*self.get_own_path(), "terminate", data={})
