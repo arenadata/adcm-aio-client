@@ -429,11 +429,13 @@ class HostsAccessor(PaginatedAccessor[Host]):
 class HostsNode(HostsAccessor):
     async def create(
         self: Self, hostprovider: HostProvider, name: str, description: str = "", cluster: Cluster | None = None
-    ) -> None:
+    ) -> Host:
         data = {"hostproviderId": hostprovider.id, "name": name, "description": description}
         if cluster:
             data["clusterId"] = cluster.id
-        await self._requester.post(*self._path, data=data)
+
+        response = await self._requester.post(*self._path, data=data)
+        return Host(requester=self._requester, data=response.as_dict())
 
 
 class HostsInClusterNode(HostsAccessor):
