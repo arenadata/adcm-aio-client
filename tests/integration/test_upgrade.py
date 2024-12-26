@@ -12,7 +12,7 @@ from adcm_aio_client.core.errors import (
     ConfigNoParameterError,
     NoConfigInActionError,
     NoMappingInActionError,
-    ResponseError,
+    UnknownError,
 )
 from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.mapping.refresh import apply_remote_changes
@@ -211,7 +211,7 @@ async def _test_upgrade_with_mapping(context: Context) -> None:
     config["params", ParameterGroup]["pass", Parameter].set("notenough")
 
     # quite strange pick of response in here in ADCM, so generalized expected error
-    with pytest.raises(ResponseError, match=".*config key.*is required"):
+    with pytest.raises(UnknownError, match=".*config key.*is required"):
         await upgrade.run()
 
     config["string_field", Parameter].set("useless yet required")
