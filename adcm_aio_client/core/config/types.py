@@ -1,8 +1,9 @@
 from abc import ABC
 from collections import defaultdict
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from functools import reduce
-from typing import Any, Callable, Iterable, NamedTuple, Protocol, Self
+from typing import Any, NamedTuple, Protocol, Self
 
 # External Section
 # these functions are heavily inspired by configuration rework in ADCM (ADCM-6034)

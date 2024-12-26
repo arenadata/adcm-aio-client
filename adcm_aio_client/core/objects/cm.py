@@ -1,8 +1,9 @@
 from collections import deque
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import Any, AsyncGenerator, Awaitable, Callable, Iterable, Literal, Self
+from typing import Any, Literal, Self
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
@@ -628,7 +629,7 @@ class JobsNode(PaginatedAccessor[Job]):
 
         object_id = object_.id
 
-        if isinstance(object_, (Cluster, Service, Component, Host)):
+        if isinstance(object_, Cluster | Service | Component | Host):
             object_type = object_.__class__.__name__.lower()
         elif isinstance(object_, HostProvider):
             object_type = "provider"

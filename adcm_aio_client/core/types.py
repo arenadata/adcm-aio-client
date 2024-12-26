@@ -12,12 +12,12 @@
 
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Optional, Protocol, Self
+from typing import Protocol, Self
 
 # Init / Authorization
 
 type AuthToken = str
-type Cert = str | tuple[str, Optional[str], Optional[str]]
+type Cert = str | tuple[str, str | None, str | None]
 type Verify = str | bool
 
 

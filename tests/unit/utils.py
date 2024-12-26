@@ -1,4 +1,4 @@
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 
 async def n_entries_as_list[T](gen: AsyncGenerator[T, None], n: int) -> list[T]:

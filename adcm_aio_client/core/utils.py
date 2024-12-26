@@ -1,4 +1,4 @@
-from typing import Awaitable, Iterable
+from collections.abc import Awaitable, Iterable
 import asyncio
 
 from adcm_aio_client.core.types import RequesterResponse

@@ -1,6 +1,7 @@
+from collections.abc import Callable, Coroutine
 from copy import deepcopy
 from functools import partial
-from typing import Any, Callable, Coroutine, Protocol, Self, overload
+from typing import Any, Protocol, Self, overload
 import json
 import asyncio
 

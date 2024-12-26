@@ -11,11 +11,12 @@
 # limitations under the License.
 from abc import ABC, abstractmethod
 from asyncio import sleep
+from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import wraps
 from json.decoder import JSONDecodeError
-from typing import Any, Awaitable, Callable, Coroutine, ParamSpec, Self, TypeAlias
+from typing import Any, ParamSpec, Self, TypeAlias
 from urllib.parse import urljoin
 
 import httpx
@@ -46,10 +47,10 @@ from adcm_aio_client.core.types import (
     URLStr,
 )
 
-Json: TypeAlias = Any
+Json: TypeAlias = Any  # noqa: UP040
 Params = ParamSpec("Params")
-RequestFunc: TypeAlias = Callable[Params, Awaitable["HTTPXRequesterResponse"]]
-DoRequestFunc: TypeAlias = Callable[Params, Awaitable[httpx.Response]]
+RequestFunc: TypeAlias = Callable[Params, Awaitable["HTTPXRequesterResponse"]]  # noqa: UP040
+DoRequestFunc: TypeAlias = Callable[Params, Awaitable[httpx.Response]]  # noqa: UP040
 
 
 @dataclass(slots=True)
