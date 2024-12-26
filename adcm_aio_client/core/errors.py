@@ -15,6 +15,10 @@ class ADCMClientError(Exception):
     pass
 
 
+class WaitTimeoutError(ADCMClientError):
+    pass
+
+
 # Session
 
 
@@ -23,10 +27,6 @@ class ClientInitError(ADCMClientError):
 
 
 # Version
-
-
-class VersionRetrievalError(ADCMClientError):
-    pass
 
 
 class NotSupportedVersionError(ADCMClientError):
@@ -44,7 +44,7 @@ class NoCredentialsError(RequesterError):
     pass
 
 
-class WrongCredentialsError(RequesterError):
+class AuthenticationError(RequesterError):
     pass
 
 
@@ -64,33 +64,33 @@ class ResponseDataConversionError(RequesterError):
     pass
 
 
-class ResponseError(RequesterError):
+class UnknownError(RequesterError):
     pass
 
 
 # >=400
-class BadRequestError(ResponseError):
+class BadRequestError(UnknownError):
     pass
 
 
-class UnauthorizedError(ResponseError):
+class UnauthorizedError(UnknownError):
     pass
 
 
-class ForbiddenError(ResponseError):
+class PermissionDeniedError(UnknownError):
     pass
 
 
-class NotFoundError(ResponseError):
+class NotFoundError(UnknownError):
     pass
 
 
-class ConflictError(ResponseError):
+class ConflictError(UnknownError):
     pass
 
 
 # >=500
-class ServerError(ResponseError):
+class ServerError(UnknownError):
     pass
 
 
