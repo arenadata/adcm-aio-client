@@ -68,6 +68,7 @@ class UnknownError(RequesterError):
     pass
 
 
+# >=400
 class BadRequestError(UnknownError):
     pass
 
@@ -88,7 +89,16 @@ class ConflictError(UnknownError):
     pass
 
 
+# >=500
 class ServerError(UnknownError):
+    pass
+
+
+class BadGatewayError(ServerError):
+    pass
+
+
+class ServiceUnavailableError(ServerError):
     pass
 
 
