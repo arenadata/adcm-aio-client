@@ -13,22 +13,26 @@ from adcm_aio_client.core.objects.cm import Bundle, Cluster, Host, Job
 from tests.integration.bundle import pack_bundle
 from tests.integration.conftest import BUNDLES
 
+pytestmark = [pytest.mark.asyncio]
+
 type TwoHosts = tuple[Host, Host]
 
-
-pytestmark = [pytest.mark.asyncio]
 
 async def is_success(job: Job) -> bool:
     return await job.get_status() == "success"
 
+
 async def is_aborted(job: Job) -> bool:
     return await job.get_status() == "aborted"
+
 
 async def is_running(job: Job) -> bool:
     return await job.get_status() == "running"
 
+
 def build_name_mapping(*iterables: Iterable[MappingPair]) -> set[tuple[str, str, str]]:
     return {(c.service.name, c.name, h.name) for c, h in chain.from_iterable(iterables)}
+
 
 @pytest_asyncio.fixture()
 async def cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
@@ -80,12 +84,12 @@ async def test_run_action_with_mapping_and_config(adcm_client: ADCMClient, clust
 
     host_action = await host_1.actions.get(name__eq="host_action_config_hc_acl")
 
-    task_mapping = await host_action.mapping
-    await task_mapping.remove(component=component_1_s1, host=host_1)
-    await task_mapping.add(component=component_2_s1, host=host_1)
+    action_mapping = await host_action.mapping
+    await action_mapping.remove(component=component_1_s1, host=host_1)
+    await action_mapping.add(component=component_2_s1, host=host_1)
 
-    task_config = await host_action.config
-    task_config["very_important_flag"].set("changed")
+    action_config = await host_action.config
+    action_config["very_important_flag"].set("changed")
 
     job = await host_action.run()
     assert await job.get_status() in ("created", "running")
@@ -101,7 +105,7 @@ async def test_run_action_with_mapping_and_config(adcm_client: ADCMClient, clust
     assert actual_mapping == expected_mapping
 
 
-async def test_terminate_action_with_config(adcm_client: ADCMClient, cluster: Cluster, hosts: TwoHosts) -> None:
+async def test_terminate_action_with_config(cluster: Cluster, hosts: TwoHosts) -> None:
     mapping = await cluster.mapping
     await cluster.hosts.add(host=hosts)
     host_1, host_2 = await mapping.hosts.all()
@@ -119,12 +123,12 @@ async def test_terminate_action_with_config(adcm_client: ADCMClient, cluster: Cl
     host_1, host_2 = await mapping.hosts.all()
     host_action = await host_2.actions.get(name__eq="host_action_config_hc_acl")
 
-    task_mapping = await host_action.mapping
-    await task_mapping.remove(component=component_1_s1, host=host_2)
-    await task_mapping.remove(component=component_2_s1, host=host_2)
+    action_mapping = await host_action.mapping
+    await action_mapping.remove(component=component_1_s1, host=host_2)
+    await action_mapping.remove(component=component_2_s1, host=host_2)
 
-    task_config = await host_action.config
-    task_config["very_important_flag"].set("will be terminated")
+    action_config = await host_action.config
+    action_config["very_important_flag"].set("will be terminated")
 
     job = await host_action.run()
     await job.wait(exit_condition=is_running, timeout=10, poll_interval=1)
