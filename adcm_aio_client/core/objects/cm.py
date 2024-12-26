@@ -99,7 +99,7 @@ class Bundle(Deletable, RootInteractiveObject):
 
     @property
     def display_name(self: Self) -> str:
-        return str(self._data["display_name"])
+        return str(self._data["displayName"])
 
     @property
     def version(self: Self) -> str:

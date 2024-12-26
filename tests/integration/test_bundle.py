@@ -1,6 +1,6 @@
 from pathlib import Path
+from typing import NamedTuple
 from unittest.mock import AsyncMock
-import os
 
 import pytest
 import pytest_asyncio
@@ -15,73 +15,86 @@ from tests.integration.conftest import BUNDLES
 pytestmark = [pytest.mark.asyncio]
 
 
+class Context(NamedTuple):
+    client: ADCMClient
+    loaded_bundles: list[Bundle]
+    tempdir: Path
+
+
 @pytest_asyncio.fixture()
 async def load_bundles(adcm_client: ADCMClient, tmp_path: Path) -> list[Bundle]:
     created_bundles = []
     for folder_path in BUNDLES.iterdir():
         folder_path = BUNDLES / folder_path
         if folder_path.is_dir():
-            (tmp_path / folder_path.name).mkdir()
-            bundle_path = pack_bundle(from_dir=folder_path, to=(tmp_path / folder_path))
+            target_path = tmp_path / folder_path.name
+            target_path.mkdir()
+            bundle_path = pack_bundle(from_dir=folder_path, to=target_path)
             created_bundle = await adcm_client.bundles.create(source=bundle_path, accept_license=False)
             created_bundles.append(created_bundle)
 
     return created_bundles
 
 
-async def test_bundle(adcm_client: ADCMClient, load_bundles: list[Bundle], tmp_path: Path) -> None:  # noqa: ARG001
-    await _test_bundle_create_delete(adcm_client, tmp_path)
-    await _test_bundle_properties(adcm_client)
-    await _test_bundle_accessors(adcm_client)
-    await _test_pagination(adcm_client, tmp_path)
+@pytest.fixture()
+def context(adcm_client: ADCMClient, load_bundles: list[Bundle], tmp_path: Path) -> Context:
+    return Context(client=adcm_client, loaded_bundles=load_bundles, tempdir=tmp_path)
 
 
-async def _test_bundle_create_delete(adcm_client: ADCMClient, tmp_path: Path) -> None:
-    bundle = await adcm_client.bundles.get(name__eq="cluster_with_license")
+async def test_bundle(context: Context) -> None:
+    await _test_bundle_create_delete(context)
+    await _test_download_external_bundle_success()
+    await _test_bundle_properties(context)
+    await _test_bundle_accessors(context)
+    await _test_pagination(context)
+
+
+async def _test_bundle_create_delete(context: Context) -> None:
+    bundle = await context.client.bundles.get(name__eq="cluster_with_license")
     assert (await bundle.license).state == "unaccepted"
     await bundle.delete()
 
-    bundle_path = pack_bundle(from_dir=BUNDLES / "cluster_with_license", to=tmp_path)
-    bundle = await adcm_client.bundles.create(source=bundle_path, accept_license=True)
+    bundle_path = pack_bundle(from_dir=BUNDLES / "cluster_with_license", to=context.tempdir)
+    bundle = await context.client.bundles.create(source=bundle_path, accept_license=True)
 
     assert (await bundle.license).state == "accepted"
 
-    await _test_download_external_bundle_success()
 
+async def _test_bundle_accessors(context: Context) -> None:
+    bundles_amount = len(context.loaded_bundles)
 
-async def _test_bundle_accessors(adcm_client: ADCMClient) -> None:
-    bundle = await adcm_client.bundles.get(name__eq="cluster_with_license")
+    bundle = await context.client.bundles.get(name__eq="cluster_with_license")
     assert isinstance(bundle, Bundle)
     assert bundle.name == "cluster_with_license"
 
     with pytest.raises(ObjectDoesNotExistError):
-        await adcm_client.bundles.get(name__eq="fake_bundle")
+        await context.client.bundles.get(name__eq="fake_bundle")
 
-    assert not await adcm_client.bundles.get_or_none(name__eq="fake_bundle")
-    assert isinstance(await adcm_client.bundles.get_or_none(name__contains="cluster_with"), Bundle)
+    assert not await context.client.bundles.get_or_none(name__eq="fake_bundle")
+    assert isinstance(await context.client.bundles.get_or_none(name__contains="cluster_with"), Bundle)
 
-    bundles_list = await adcm_client.bundles.list()
-    bundles_all = await adcm_client.bundles.all()
+    bundles_list = await context.client.bundles.list()
+    bundles_all = await context.client.bundles.all()
     assert isinstance(bundles_list, list)
-    assert len(bundles_all) == len(bundles_list) == len(os.listdir(BUNDLES))
+    assert len(bundles_all) == len(bundles_list) == bundles_amount
 
-    bundles_list = await adcm_client.bundles.list(query={"limit": 2, "offset": 1})
+    bundles_list = await context.client.bundles.list(query={"limit": 2, "offset": 1})
     assert isinstance(bundles_list, list)
     assert len(bundles_list) == 2
 
-    bundles_list = await adcm_client.bundles.list(query={"offset": len(os.listdir(BUNDLES)) + 1})
+    bundles_list = await context.client.bundles.list(query={"offset": bundles_amount + 1})
     assert isinstance(bundles_list, list)
     assert len(bundles_list) == 0
 
-    async for b in adcm_client.bundles.iter(name__icontains="cluster"):
+    async for b in context.client.bundles.iter(name__icontains="cluster"):
         assert isinstance(b, Bundle)
         assert "cluster" in b.name.lower()
 
-    assert len(await adcm_client.bundles.filter(name__icontains="cluster")) < len(os.listdir(BUNDLES))
+    assert len(await context.client.bundles.filter(name__icontains="cluster")) < bundles_amount
 
 
-async def _test_bundle_properties(adcm_client: ADCMClient) -> None:
-    bundle = await adcm_client.bundles.get(name__eq="cluster_with_license")
+async def _test_bundle_properties(context: Context) -> None:
+    bundle = await context.client.bundles.get(name__eq="cluster_with_license")
     assert bundle.name == "cluster_with_license"
     assert (await bundle.license).state == "accepted"
     assert "LICENSE AGREEMENT" in (await bundle.license).text
@@ -108,27 +121,32 @@ async def _test_download_external_bundle_success() -> None:
     mock_retriever.download_external_bundle.assert_awaited_once_with(url)
 
 
-async def _test_pagination(adcm_client: ADCMClient, tmp_path: Path) -> None:
+async def _test_pagination(context: Context) -> None:
+    adcm_client = context.client
+    extra_bundles = 55
+    total_bundles = len(context.loaded_bundles) + extra_bundles
+
     await create_bundles_by_template(
         adcm_client,
-        tmp_path,
+        context.tempdir,
         BUNDLES / "simple_hostprovider",
         target_name="name",
         field_to_modify="simple_provider",
         new_value="new_value",
-        number_of_bundles=55,
+        number_of_bundles=extra_bundles,
     )
+
     bundles_list = await adcm_client.bundles.list()
     assert len(bundles_list) == 50
 
-    bundles_list = await adcm_client.bundles.list(query={"offset": 55})
-    assert len(bundles_list) == 6
+    bundles_list = await adcm_client.bundles.list(query={"offset": extra_bundles})
+    assert len(bundles_list) == len(context.loaded_bundles)
 
-    bundles_list = await adcm_client.bundles.list(query={"offset": 61})
+    bundles_list = await adcm_client.bundles.list(query={"offset": total_bundles})
     assert len(bundles_list) == 0
 
     bundles_list = await adcm_client.bundles.list(query={"limit": 10})
     assert len(bundles_list) == 10
 
-    assert len(await adcm_client.bundles.all()) == 61
-    assert len(await adcm_client.bundles.filter()) == 61
+    assert len(await adcm_client.bundles.all()) == total_bundles
+    assert len(await adcm_client.bundles.filter()) == total_bundles
