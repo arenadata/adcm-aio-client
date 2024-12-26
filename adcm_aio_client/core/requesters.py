@@ -21,8 +21,8 @@ from urllib.parse import urljoin
 import httpx
 
 from adcm_aio_client.core.errors import (
-    BadGatewayError,
     AuthenticationError,
+    BadGatewayError,
     BadRequestError,
     ConflictError,
     LoginError,
