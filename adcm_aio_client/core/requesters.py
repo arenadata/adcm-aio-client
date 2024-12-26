@@ -21,6 +21,7 @@ from urllib.parse import urljoin
 import httpx
 
 from adcm_aio_client.core.errors import (
+    BadGatewayError,
     BadRequestError,
     ConflictError,
     ForbiddenError,
@@ -33,6 +34,7 @@ from adcm_aio_client.core.errors import (
     ResponseError,
     RetryRequestError,
     ServerError,
+    ServiceUnavailableError,
     UnauthorizedError,
     WrongCredentialsError,
 )
@@ -96,6 +98,8 @@ STATUS_ERRORS_MAP = {
     404: NotFoundError,
     409: ConflictError,
     500: ServerError,
+    502: BadGatewayError,
+    503: ServiceUnavailableError,
 }
 
 
@@ -126,7 +130,13 @@ def retry_request(request_func: RequestFunc) -> RequestFunc:
         for attempt in range(retries.attempts):
             try:
                 response = await request_func(self, *args, **kwargs)
-            except (UnauthorizedError, httpx.NetworkError, httpx.TransportError) as e:
+            except (
+                UnauthorizedError,
+                BadGatewayError,
+                ServiceUnavailableError,
+                httpx.NetworkError,
+                httpx.TransportError,
+            ) as e:
                 last_error = e
                 if attempt >= retries.attempts - 1:
                     continue

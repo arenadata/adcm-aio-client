@@ -68,6 +68,7 @@ class ResponseError(RequesterError):
     pass
 
 
+# >=400
 class BadRequestError(ResponseError):
     pass
 
@@ -88,7 +89,16 @@ class ConflictError(ResponseError):
     pass
 
 
+# >=500
 class ServerError(ResponseError):
+    pass
+
+
+class BadGatewayError(ServerError):
+    pass
+
+
+class ServiceUnavailableError(ServerError):
     pass
 
 
