@@ -7,6 +7,7 @@ import pytest
 import pytest_asyncio
 
 from adcm_aio_client.core.client import ADCMClient
+from adcm_aio_client.core.config import Parameter
 from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.mapping.types import MappingPair
 from adcm_aio_client.core.objects.cm import Bundle, Cluster, Host, Job
@@ -89,7 +90,7 @@ async def test_run_action_with_mapping_and_config(adcm_client: ADCMClient, clust
     await action_mapping.add(component=component_2_s1, host=host_1)
 
     action_config = await host_action.config
-    action_config["very_important_flag"].set("changed")
+    action_config["very_important_flag", Parameter].set("changed")
 
     job = await host_action.run()
     assert await job.get_status() in ("created", "running")
@@ -128,7 +129,7 @@ async def test_terminate_action_with_config(cluster: Cluster, hosts: TwoHosts) -
     await action_mapping.remove(component=component_2_s1, host=host_2)
 
     action_config = await host_action.config
-    action_config["very_important_flag"].set("will be terminated")
+    action_config["very_important_flag", Parameter].set("will be terminated")
 
     job = await host_action.run()
     await job.wait(exit_condition=is_running, timeout=10, poll_interval=1)
