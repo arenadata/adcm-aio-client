@@ -133,8 +133,9 @@ def retry_request(request_func: RequestFunc) -> RequestFunc:
 
                 await sleep(retries.interval)
 
-                with suppress(httpx.NetworkError, httpx.TransportError):
-                    await self.login(self._ensure_credentials())
+                if isinstance(e, UnauthorizedError):
+                    with suppress(httpx.NetworkError, httpx.TransportError):
+                        await self.login(self._ensure_credentials())
             else:
                 break
         else:
