@@ -276,3 +276,41 @@
         - name: justhere
           type: integer
           required: false
+
+- type: service
+  name: with_host_actions
+  version: 2.3
+  components:
+    c1:
+      display_name: c1
+      config:
+        - name: very_important_flag
+          display_name: Set me
+          type: string
+          required: true
+          default: default
+
+      actions: &component_actions
+        host_action_config_hc_acl:
+          display_name: acl_host_action
+          type: job
+          script_type: ansible
+          script: ./actions.yaml
+          host_action: true
+          allow_to_terminate: true
+          config:
+            - name: very_important_flag
+              type: string
+          hc_acl:
+            - service: with_host_actions
+              component: c2
+              action: add
+            - service: with_host_actions
+              component: c1
+              action: remove
+          params:
+            ansible_tags: change
+          masking: {}
+
+    c2:
+      actions: *component_actions
