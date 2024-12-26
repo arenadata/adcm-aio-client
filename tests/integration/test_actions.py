@@ -1,7 +1,7 @@
-import asyncio
 from collections.abc import Iterable
 from itertools import chain
 from pathlib import Path
+import asyncio
 
 import pytest
 import pytest_asyncio
