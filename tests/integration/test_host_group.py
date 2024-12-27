@@ -1,4 +1,5 @@
 from pathlib import Path
+import asyncio
 
 import pytest
 import pytest_asyncio
@@ -7,6 +8,7 @@ from adcm_aio_client.core.actions._objects import ActionsAccessor
 from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.config import ObjectConfig
 from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.host_groups._common import HostsInHostGroupNode
 from adcm_aio_client.core.host_groups.action_group import (
     ActionHostGroup,
@@ -46,6 +48,9 @@ async def hostprovider(adcm_client: ADCMClient, hostprovider_bundle: Bundle) -> 
     return await adcm_client.hostproviders.create(
         bundle=hostprovider_bundle, name="Hostprovider name", description="Hostprovider description"
     )
+
+
+# test_host_groups
 
 
 async def test_host_groups(adcm_client: ADCMClient, cluster: Cluster, hostprovider: HostProvider) -> None:
@@ -144,3 +149,86 @@ async def _test_pagination_action_host_group(host_group_node: ActionHostGroupNod
 
     assert len(await host_group_node.all()) == 54
     assert len(await host_group_node.filter()) == 54
+
+
+# test_change_hosts_by_filter
+
+
+async def test_change_hosts_by_filter(adcm_client: ADCMClient, cluster: Cluster, hostprovider: HostProvider) -> None:
+    h1, h2, h3 = await asyncio.gather(*(adcm_client.hosts.create(hostprovider, f"host-{i}") for i in range(3)))
+    await cluster.hosts.add((h1, h2))
+    service, *_ = await cluster.services.add(Filter(attr="name", op="eq", value="example_1"))
+    component, *_ = await service.components.all()
+    mapping = await cluster.mapping
+    await mapping.add(component, h1)
+    await mapping.save()
+
+    # hostprovider
+    group = await hostprovider.config_host_groups.create(name="chg")
+    assert len(await group.hosts.all()) == 0
+    await group.hosts.add(Filter(attr="name", op="eq", value=h3.name))
+    assert len(await group.hosts.all()) == 1
+    await group.hosts.add(Filter(attr="name", op="contains", value="host"))
+    assert len(await group.hosts.all()) == 3
+    await group.hosts.remove(Filter(attr="name", op="in", value=(h1.name, h2.name)))
+    assert len(await group.hosts.all()) == 1
+
+    await group.hosts.set(Filter(attr="name", op="in", value=(h1.name, h2.name)))
+    assert {h.name for h in await group.hosts.all()} == {h1.name, h2.name}
+
+    # cluster
+    group = await cluster.config_host_groups.create(name="chg")
+    assert len(await group.hosts.all()) == 0
+    await group.hosts.add(Filter(attr="name", op="eq", value=h3.name))
+    assert len(await group.hosts.all()) == 0  # not available
+    await group.hosts.add(Filter(attr="name", op="contains", value="host"))
+    assert len(await group.hosts.all()) == 2
+    await group.hosts.remove(Filter(attr="name", op="in", value=(h1.name,)))
+    assert len(await group.hosts.all()) == 1
+
+    group = await cluster.action_host_groups.create(name="ahg")
+    assert len(await group.hosts.all()) == 0
+    await group.hosts.add(Filter(attr="name", op="eq", value=h3.name))
+    assert len(await group.hosts.all()) == 0  # not available
+    await group.hosts.add(Filter(attr="name", op="contains", value="host"))
+    assert len(await group.hosts.all()) == 2
+    await group.hosts.remove(Filter(attr="name", op="in", value=(h1.name,)))
+    assert len(await group.hosts.all()) == 1
+
+    # service
+    group = await service.config_host_groups.create(name="chg")
+    assert len(await group.hosts.all()) == 0
+    await group.hosts.add(Filter(attr="name", op="eq", value=h2.name))
+    assert len(await group.hosts.all()) == 0  # not available
+    await group.hosts.add(Filter(attr="name", op="contains", value="host"))
+    assert len(await group.hosts.all()) == 1
+    await group.hosts.remove(Filter(attr="name", op="in", value=(h1.name,)))
+    assert len(await group.hosts.all()) == 0
+
+    group = await service.action_host_groups.create(name="ahg")
+    assert len(await group.hosts.all()) == 0
+    await group.hosts.add(Filter(attr="name", op="eq", value=h2.name))
+    assert len(await group.hosts.all()) == 0  # not available
+    await group.hosts.add(Filter(attr="name", op="contains", value="host"))
+    assert len(await group.hosts.all()) == 1
+    await group.hosts.remove(Filter(attr="name", op="in", value=(h1.name,)))
+    assert len(await group.hosts.all()) == 0
+
+    # component
+    group = await component.config_host_groups.create(name="chg")
+    assert len(await group.hosts.all()) == 0
+    await group.hosts.add(Filter(attr="name", op="eq", value=h2.name))
+    assert len(await group.hosts.all()) == 0  # not available
+    await group.hosts.add(Filter(attr="name", op="contains", value="host"))
+    assert len(await group.hosts.all()) == 1
+    await group.hosts.remove(Filter(attr="name", op="in", value=(h1.name,)))
+    assert len(await group.hosts.all()) == 0
+
+    group = await component.action_host_groups.create(name="ahg")
+    assert len(await group.hosts.all()) == 0
+    await group.hosts.add(Filter(attr="name", op="eq", value=h2.name))
+    assert len(await group.hosts.all()) == 0  # not available
+    await group.hosts.add(Filter(attr="name", op="contains", value="host"))
+    assert len(await group.hosts.all()) == 1
+    await group.hosts.remove(Filter(attr="name", op="in", value=(h1.name,)))
+    assert len(await group.hosts.all()) == 0
