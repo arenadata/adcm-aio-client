@@ -95,7 +95,7 @@ async def _test_host_group_properties(host_group_node: ActionHostGroupNode | Con
         assert isinstance(host_group.hosts, HostsInActionHostGroupNode)
         assert isinstance(host_group.actions, ActionsAccessor)
         actions = await host_group.actions.all()
-        assert len(actions) == 0
+        assert len(actions) == 6
 
 
 async def _test_host_group_accessors(host_group_node: ActionHostGroupNode | ConfigHostGroupNode) -> None:
