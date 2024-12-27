@@ -11,8 +11,9 @@
 # limitations under the License.
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from contextlib import suppress
-from typing import Any, AsyncGenerator, Self
+from typing import Any, Self
 
 from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
 from adcm_aio_client.core.filters import Filter, Filtering, FilterValue

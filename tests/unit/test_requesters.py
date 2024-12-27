@@ -1,6 +1,7 @@
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, AsyncGenerator, Self
+from typing import Any, Self
 import json
 
 from httpx import AsyncClient
