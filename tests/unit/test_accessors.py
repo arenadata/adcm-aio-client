@@ -1,4 +1,5 @@
-from typing import Any, AsyncGenerator, Callable, Self
+from collections.abc import AsyncGenerator, Callable
+from typing import Any, Self
 
 import pytest
 

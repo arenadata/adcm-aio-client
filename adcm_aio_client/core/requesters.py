@@ -11,17 +11,19 @@
 # limitations under the License.
 from abc import ABC, abstractmethod
 from asyncio import sleep
+from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import wraps
 from json.decoder import JSONDecodeError
-from typing import Any, Awaitable, Callable, Coroutine, ParamSpec, Self, TypeAlias
+from typing import Any, ParamSpec, Self, TypeAlias
 from urllib.parse import urljoin
 
 import httpx
 
 from adcm_aio_client.core.errors import (
     AuthenticationError,
+    BadGatewayError,
     BadRequestError,
     ConflictError,
     LoginError,
@@ -33,6 +35,7 @@ from adcm_aio_client.core.errors import (
     ResponseDataConversionError,
     RetryRequestError,
     ServerError,
+    ServiceUnavailableError,
     UnauthorizedError,
     UnknownError,
 )
@@ -46,10 +49,10 @@ from adcm_aio_client.core.types import (
     URLStr,
 )
 
-Json: TypeAlias = Any
+Json: TypeAlias = Any  # noqa: UP040
 Params = ParamSpec("Params")
-RequestFunc: TypeAlias = Callable[Params, Awaitable["HTTPXRequesterResponse"]]
-DoRequestFunc: TypeAlias = Callable[Params, Awaitable[httpx.Response]]
+RequestFunc: TypeAlias = Callable[Params, Awaitable["HTTPXRequesterResponse"]]  # noqa: UP040
+DoRequestFunc: TypeAlias = Callable[Params, Awaitable[httpx.Response]]  # noqa: UP040
 
 
 @dataclass(slots=True)
@@ -96,6 +99,8 @@ STATUS_ERRORS_MAP = {
     404: NotFoundError,
     409: ConflictError,
     500: ServerError,
+    502: BadGatewayError,
+    503: ServiceUnavailableError,
 }
 
 
@@ -126,15 +131,22 @@ def retry_request(request_func: RequestFunc) -> RequestFunc:
         for attempt in range(retries.attempts):
             try:
                 response = await request_func(self, *args, **kwargs)
-            except (UnauthorizedError, httpx.NetworkError, httpx.TransportError) as e:
+            except (
+                UnauthorizedError,
+                BadGatewayError,
+                ServiceUnavailableError,
+                httpx.NetworkError,
+                httpx.TransportError,
+            ) as e:
                 last_error = e
                 if attempt >= retries.attempts - 1:
                     continue
 
                 await sleep(retries.interval)
 
-                with suppress(httpx.NetworkError, httpx.TransportError):
-                    await self.login(self._ensure_credentials())
+                if isinstance(e, UnauthorizedError):
+                    with suppress(httpx.NetworkError, httpx.TransportError):
+                        await self.login(self._ensure_credentials())
             else:
                 break
         else:

@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Collection, Iterable, Self, Union
+from collections.abc import Collection, Iterable
+from typing import TYPE_CHECKING, Self, Union
 
 from adcm_aio_client.core.types import Endpoint, Requester
 

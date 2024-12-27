@@ -1,5 +1,5 @@
+from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
-from typing import AsyncGenerator, Generator
 from urllib.parse import urljoin
 import random
 import string
@@ -75,6 +75,12 @@ async def previous_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bu
 @pytest_asyncio.fixture()
 async def simple_hostprovider_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
     bundle_path = pack_bundle(from_dir=BUNDLES / "simple_hostprovider", to=tmp_path)
+    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
+
+
+@pytest_asyncio.fixture()
+async def complex_hostprovider_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
+    bundle_path = pack_bundle(from_dir=BUNDLES / "complex_provider", to=tmp_path)
     return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
 
 

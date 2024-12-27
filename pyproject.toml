@@ -39,6 +39,7 @@ timeout = 300
 
 [tool.ruff]
 line-length = 120
+target-version = "py312"
 
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
