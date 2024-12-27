@@ -1,5 +1,5 @@
+from collections.abc import Collection
 from pathlib import Path
-from typing import Collection
 import asyncio
 
 from httpx import AsyncClient

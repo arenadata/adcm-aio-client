@@ -186,12 +186,15 @@ class UpgradeNode[Parent: InteractiveObject](NonPaginatedChildAccessor[Parent, U
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:
-    from adcm_aio_client.core.objects.cm import Cluster, Component, Host, Service
+    from adcm_aio_client.core.objects.cm import ActionHostGroup, Cluster, Component, Host, Service
+
+    if isinstance(owner, ActionHostGroup):
+        return await detect_cluster(owner._parent)
 
     if isinstance(owner, Cluster):
         return owner
 
-    if isinstance(owner, (Service, Component)):
+    if isinstance(owner, Service | Component):
         return owner.cluster
 
     if isinstance(owner, Host):

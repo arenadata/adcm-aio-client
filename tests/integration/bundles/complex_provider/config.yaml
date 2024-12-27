@@ -31,12 +31,48 @@
             integer_key: '10'
             string_key: string
   actions:
-    provider_action:
+    provider_action: &job
       type: job
       script: ./playbook.yaml
       script_type: ansible
       states:
         available: any
+
+    with_config: &with_config
+      <<: *job
+      display_name: "Configurable one"
+      config: 
+        - name: string_field
+          type: string
+        - name: params
+          display_name: Some Params
+          type: group
+          subs:
+            - name: cant_find
+              type: string
+              default: "cantCme"
+              ui_options:
+                invisible: true
+            - name: pass
+              type: password
+              required: no
+            - name: sag
+              display_name: Filter
+              type: structure
+              yspec: ./sag.yaml
+              default:
+                nested:
+                  attr: "nice"
+                  op: "eq"
+                  tech: "true"
+                quantity: 14443
+        - name: payload
+          display_name: Request Body
+          type: json
+          default:
+            - 1
+            - {"k": "v"}
+            - "plain"
 
 - type: host
   name: host
@@ -87,3 +123,5 @@
       script_type: ansible
       states:
         available: any
+
+    with_config: *with_config
