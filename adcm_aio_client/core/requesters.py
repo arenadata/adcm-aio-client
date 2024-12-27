@@ -23,6 +23,7 @@ import httpx
 
 from adcm_aio_client.core.errors import (
     AuthenticationError,
+    BadGatewayError,
     BadRequestError,
     ConflictError,
     LoginError,
@@ -34,6 +35,7 @@ from adcm_aio_client.core.errors import (
     ResponseDataConversionError,
     RetryRequestError,
     ServerError,
+    ServiceUnavailableError,
     UnauthorizedError,
     UnknownError,
 )
@@ -97,6 +99,8 @@ STATUS_ERRORS_MAP = {
     404: NotFoundError,
     409: ConflictError,
     500: ServerError,
+    502: BadGatewayError,
+    503: ServiceUnavailableError,
 }
 
 
@@ -127,15 +131,22 @@ def retry_request(request_func: RequestFunc) -> RequestFunc:
         for attempt in range(retries.attempts):
             try:
                 response = await request_func(self, *args, **kwargs)
-            except (UnauthorizedError, httpx.NetworkError, httpx.TransportError) as e:
+            except (
+                UnauthorizedError,
+                BadGatewayError,
+                ServiceUnavailableError,
+                httpx.NetworkError,
+                httpx.TransportError,
+            ) as e:
                 last_error = e
                 if attempt >= retries.attempts - 1:
                     continue
 
                 await sleep(retries.interval)
 
-                with suppress(httpx.NetworkError, httpx.TransportError):
-                    await self.login(self._ensure_credentials())
+                if isinstance(e, UnauthorizedError):
+                    with suppress(httpx.NetworkError, httpx.TransportError):
+                        await self.login(self._ensure_credentials())
             else:
                 break
         else:
