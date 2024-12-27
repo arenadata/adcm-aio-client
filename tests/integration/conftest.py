@@ -67,6 +67,12 @@ async def complex_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bun
 
 
 @pytest_asyncio.fixture()
+async def previous_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
+    bundle_path = pack_bundle(from_dir=BUNDLES / "complex_cluster_prev", to=tmp_path)
+    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
+
+
+@pytest_asyncio.fixture()
 async def simple_hostprovider_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
     bundle_path = pack_bundle(from_dir=BUNDLES / "simple_hostprovider", to=tmp_path)
     return await adcm_client.bundles.create(source=bundle_path, accept_license=True)

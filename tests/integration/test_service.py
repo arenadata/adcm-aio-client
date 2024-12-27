@@ -36,14 +36,20 @@ def prepare_bundle_data() -> list[dict]:
         "config": config,
     }
 
+    component = {"config": config}
+
     service_manual_add = copy(service)
     service_manual_add.update({"name": "Manual add", "license": "./service_license.txt"})
 
-    fifty_one_services = []
-    for i in range(51):
+    fifty_services = []
+    for i in range(50):
         service = copy(service)
         service.update({"name": f"Generated service {i + 1}"})
-        fifty_one_services.append(service)
+        fifty_services.append(service)
+
+    service_with_component = copy(service)
+    service_with_component["name"] = "Service with component"
+    service_with_component["components"] = {"component_1": component}
 
     return [
         {
@@ -51,8 +57,9 @@ def prepare_bundle_data() -> list[dict]:
             "name": "Generated cluster",
             "version": 1,
         },
-        *fifty_one_services,
+        *fifty_services,
         service_manual_add,
+        service_with_component,
     ]
 
 
@@ -89,9 +96,14 @@ async def test_service_api(cluster_52: Cluster, httpx_client: AsyncClient) -> No
 
     await _test_service_create_delete_api(name="Manual add", cluster=cluster, httpx_client=httpx_client)
     await _test_services_node(cluster=cluster, num_services=num_services)
-    await _test_service_object_api(
-        service=await cluster.services.get(name__eq="Generated service 1"), parent_cluster=cluster
-    )
+
+    service = await cluster.services.get(name__eq="Service with component")
+    service_from_component = (await service.components.get(name__eq="component_1")).service
+
+    service_data = await _test_service_object_api(service=service, parent_cluster=cluster)
+    from_component_data = await _test_service_object_api(service=service_from_component, parent_cluster=cluster)
+
+    assert service_data == from_component_data
 
 
 async def _test_service_create_delete_api(name: str, cluster: Cluster, httpx_client: AsyncClient) -> None:
@@ -160,15 +172,15 @@ async def _test_services_node(cluster: Cluster, num_services: int) -> None:
     name_filters_data = {
         ("name__eq", "Generated service 8"): 1,
         ("name__ieq", "GeNeRaTeD SeRvIcE 18"): 1,
-        ("name__ne", "Generated service 51"): num_services - 1,
-        ("name__ine", "GENERATED service 51"): num_services - 1,
-        ("name__in", ("Generated service 51", "Generated service 50", "GENERATED SERVICE 49", "Not a service")): 2,
-        ("name__iin", ("Generated service 51", "Generated service 50", "GENERATED SERVICE 49", "Not a service")): 3,
+        ("name__ne", "Generated service 50"): num_services - 1,
+        ("name__ine", "GENERATED service 50"): num_services - 1,
+        ("name__in", ("Generated service 50", "Generated service 49", "GENERATED SERVICE 48", "Not a service")): 2,
+        ("name__iin", ("Generated service 50", "Generated service 49", "GENERATED SERVICE 48", "Not a service")): 3,
         ("name__exclude", ("Generated service 1", "Generated service 2", "Not a service")): num_services - 2,
-        ("name__iexclude", ("GENERATED SERVICE 51", "Not a service")): num_services - 1,
+        ("name__iexclude", ("GENERATED SERVICE 50", "Not a service")): num_services - 1,
         ("name__contains", "38"): 1,
-        ("name__contains", "Generated"): num_services,
-        ("name__icontains", "TeD sErV"): num_services,
+        ("name__contains", "Service"): 1,
+        ("name__icontains", "TeD sErV"): num_services - 1,
     }
     display_name_filters_data = {  # display_names are the same as names
         (f"display_{filter_[0]}", filter_[1]): expected for filter_, expected in name_filters_data.items()
@@ -193,12 +205,13 @@ async def _test_services_node(cluster: Cluster, num_services: int) -> None:
         assert len(services) == expected, f"Filter: {filter_value}"
 
 
-async def _test_service_object_api(service: Service, parent_cluster: Cluster) -> None:
-    assert isinstance(service.id, int)
-    assert isinstance(service.name, str)
-    assert isinstance(service.display_name, str)
-    assert isinstance(service.cluster, Cluster)
-    assert service.cluster.id == parent_cluster.id
+async def _test_service_object_api(service: Service, parent_cluster: Cluster) -> tuple:
+    assert isinstance(service_id := service.id, int)
+    assert isinstance(name := service.name, str)
+    assert isinstance(display_name := service.display_name, str)
+    assert isinstance(_cluster := service.cluster, Cluster)
+    cluster_id = _cluster.id
+    assert cluster_id == parent_cluster.id
     assert isinstance(await service.license, License)
     assert isinstance(await service.components.all(), list)
     assert isinstance(await service.get_status(), str)
@@ -208,3 +221,5 @@ async def _test_service_object_api(service: Service, parent_cluster: Cluster) ->
     assert isinstance(await service.imports, Imports)
     assert isinstance(await service.config_host_groups.all(), list)
     assert isinstance(await service.action_host_groups.all(), list)
+
+    return service_id, name, display_name, cluster_id
