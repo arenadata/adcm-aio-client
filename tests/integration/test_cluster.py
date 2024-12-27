@@ -1,8 +1,8 @@
 from collections.abc import Collection
 from pathlib import Path
-import asyncio
 import random
 import string
+import asyncio
 
 from httpx import AsyncClient
 import pytest
