@@ -1,6 +1,5 @@
-from collections.abc import Iterable
+from collections.abc import AsyncGenerator, Iterable
 from functools import partial
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Iterable, Self, Union
 from typing import TYPE_CHECKING, Any, Self, Union
 
 from adcm_aio_client.core.filters import Filter, FilterValue
