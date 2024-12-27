@@ -1,13 +1,13 @@
-from collections.abc import Iterable
+from collections.abc import AsyncGenerator, Iterable
 from functools import partial
 from typing import TYPE_CHECKING, Any, Self, Union
 
-from adcm_aio_client.core.filters import Filter
+from adcm_aio_client.core.filters import Filter, FilterValue
 from adcm_aio_client.core.objects._accessors import (
     DefaultQueryParams as AccessorFilter,
 )
 from adcm_aio_client.core.objects._accessors import (
-    PaginatedAccessor,
+    NonPaginatedAccessor,
     PaginatedChildAccessor,
     filters_to_inline,
 )
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from adcm_aio_client.core.objects.cm import Cluster, Component, Host, HostProvider, Service
 
 
-class HostsInHostGroupNode(PaginatedAccessor["Host"]):
+class HostsInHostGroupNode(NonPaginatedAccessor["Host"]):
     group_type: str
 
     def __new__(cls: type[Self], path: Endpoint, requester: Requester, accessor_filter: AccessorFilter = None) -> Self:
@@ -55,7 +55,7 @@ class HostsInHostGroupNode(PaginatedAccessor["Host"]):
 
     async def _add_hosts_to_group(self: Self, ids: Iterable[HostID]) -> None:
         add_by_id = partial(self._requester.post, *self._path)
-        add_coros = map(add_by_id, ({"hostId": id_} for id_ in ids))
+        add_coros = (add_by_id(data={"hostId": id_}) for id_ in ids)
         error = await safe_gather(
             coros=add_coros,
             msg=f"Some hosts can't be added to {self.group_type} host group",
@@ -87,10 +87,21 @@ class HostsInHostGroupNode(PaginatedAccessor["Host"]):
         """HostGroup/hosts response have too little information to construct Host"""
 
         data = (await super()._request_endpoint(query, filters)).as_list()
-        ids = ",".join(str(host["id"]) for host in data)
-        query = {"id__in": ids} if ids else {"id__in": "-1"}  # non-existent id to fetch 0 hosts
+        ids = {host["id"] for host in data}
+        limit = len(ids)
+        ids = ",".join(str(id_) for id_ in ids)
+        query = {"id__in": ids, "limit": limit} if ids else {"id__in": "-1"}  # non-existent id to fetch 0 hosts
 
         return await self._requester.get("hosts", query=query)
+
+    async def iter(self: Self, **filters: FilterValue) -> AsyncGenerator["Host", Any]:
+        response = await self._request_endpoint(query={}, filters=filters)
+        results = response.as_dict()["results"]
+        for record in results:
+            yield self._create_object(record)
+
+    def _extract_results_from_response(self: Self, response: RequesterResponse) -> list[dict]:
+        return response.as_dict()["results"]
 
 
 class HostGroupNode[
