@@ -15,7 +15,7 @@ from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.objects._imports import Imports
 from adcm_aio_client.core.objects.cm import Cluster, License, Service
 from tests.integration.bundle import pack_bundle
-from tests.integration.yaml import create_yaml
+from tests.integration.yaml_ext import create_yaml
 
 pytestmark = [pytest.mark.asyncio]
 

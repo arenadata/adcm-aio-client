@@ -1,0 +1,121 @@
+---
+- type: cluster
+  name: cluster_export
+  version: &version '1.0'
+  config:
+    - name: string
+      type: string
+      required: false
+      default: string
+  export:
+    - string
+
+- name: service_export_0
+  type: service
+  version: *version
+  config:
+    - name: text
+      type: text
+      required: false
+      default: text
+  export:
+    - text
+
+- name: service_export_1
+  type: service
+  version: *version
+  config:
+    - name: text
+      type: text
+      required: false
+      default: text
+  export:
+    - text
+
+- name: service_export_2
+  type: service
+  version: *version
+  config:
+    - name: text
+      type: text
+      required: false
+      default: text
+  export:
+    - text
+
+- name: service_export_3
+  type: service
+  version: *version
+  config:
+    - name: text
+      type: text
+      required: false
+      default: text
+  export:
+    - text
+
+- name: service_export_4
+  type: service
+  version: *version
+  config:
+    - name: text
+      type: text
+      required: false
+      default: text
+  export:
+    - text
+
+- name: service_export_5
+  type: service
+  version: *version
+  config:
+    - name: text
+      type: text
+      required: false
+      default: text
+  export:
+    - text
+
+- name: service_export_6
+  type: service
+  version: *version
+  config:
+    - name: text
+      type: text
+      required: false
+      default: text
+  export:
+    - text
+
+- name: service_export_7
+  type: service
+  version: *version
+  config:
+    - name: text
+      type: text
+      required: false
+      default: text
+  export:
+    - text
+
+- name: service_export_8
+  type: service
+  version: *version
+  config:
+    - name: text
+      type: text
+      required: false
+      default: text
+  export:
+    - text
+
+- name: service_export_9
+  type: service
+  version: *version
+  config:
+    - name: text
+      type: text
+      required: false
+      default: text
+  export:
+    - text
