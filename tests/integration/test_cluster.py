@@ -1,5 +1,7 @@
 from collections.abc import Collection
 from pathlib import Path
+import random
+import string
 import asyncio
 
 from httpx import AsyncClient
@@ -9,9 +11,10 @@ import pytest_asyncio
 from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._imports import Imports
-from adcm_aio_client.core.objects.cm import Bundle, Cluster
+from adcm_aio_client.core.objects.cm import Bundle, Cluster, Host
 from tests.integration.bundle import pack_bundle
 from tests.integration.conftest import BUNDLES
 
@@ -62,16 +65,20 @@ async def complex_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bun
 async def many_complex_clusters(adcm_client: ADCMClient, complex_cluster_bundle: Bundle) -> int:
     """
     Creates 51 clusters (2 pages, if response's page size is 50)
-    with name pattern `Test-cluster-N` and one `Very special cluster`
+    with name pattern `Test-cluster-N` and one `Very special cluster` with a service
     """
 
+    special_name = "Very special cluster"
     num_similar_clusters = 50
     coros = (
         adcm_client.clusters.create(bundle=complex_cluster_bundle, name=f"Test-cluster-{i + 1}")
         for i in range(num_similar_clusters)
     )
-    special_cluster_coro = adcm_client.clusters.create(bundle=complex_cluster_bundle, name="Very special cluster")
+    special_cluster_coro = adcm_client.clusters.create(bundle=complex_cluster_bundle, name=special_name)
     await asyncio.gather(*coros, special_cluster_coro)
+
+    special_cluster = await adcm_client.clusters.get(name__eq=special_name)
+    await special_cluster.services.add(Filter(attr="name", op="eq", value="example_1"))
 
     return num_similar_clusters + 1
 
@@ -87,12 +94,21 @@ async def simple_cluster(adcm_client: ADCMClient, simple_cluster_bundle: Bundle)
     return await adcm_client.clusters.create(bundle=simple_cluster_bundle, name="Simple cluster")
 
 
+@pytest_asyncio.fixture()
+async def host(adcm_client: ADCMClient, simple_hostprovider_bundle: Bundle) -> Host:
+    provider = await adcm_client.hostproviders.create(bundle=simple_hostprovider_bundle, name="Test provider")
+    name = "Test-host"
+    await adcm_client.hosts.create(hostprovider=provider, name=name)
+    return await adcm_client.hosts.get(name__eq=name)
+
+
 async def test_cluster(
     adcm_client: ADCMClient,
     complex_cluster_bundle: Bundle,
     many_complex_clusters: int,
     simple_cluster_bundle: Bundle,
     simple_cluster: Cluster,  # for filtering by bundle
+    host: Host,
     httpx_client: AsyncClient,
 ) -> None:
     _ = simple_cluster
@@ -110,7 +126,29 @@ async def test_cluster(
     )
 
     cluster = await adcm_client.clusters.get(name__eq="Very special cluster")
-    await _test_cluster_object_api(httpx_client=httpx_client, cluster=cluster, cluster_bundle=complex_cluster_bundle)
+    service = await cluster.services.get(name__eq="example_1")
+    component = await service.components.get(name__eq="first")
+    await cluster.hosts.add(host=host)
+    await host.refresh()
+
+    cluster_data = await _test_cluster_object_api(
+        httpx_client=httpx_client, cluster=cluster, cluster_bundle=complex_cluster_bundle
+    )
+    cluster_from_host = await host.cluster
+    assert cluster_from_host is not None
+    from_host_data = await _test_cluster_object_api(
+        httpx_client=httpx_client, cluster=cluster_from_host, cluster_bundle=complex_cluster_bundle
+    )
+    cluster_from_service = service.cluster
+    from_service_data = await _test_cluster_object_api(
+        httpx_client=httpx_client, cluster=cluster_from_service, cluster_bundle=complex_cluster_bundle
+    )
+    cluster_from_component = component.cluster
+    from_component_data = await _test_cluster_object_api(
+        httpx_client=httpx_client, cluster=cluster_from_component, cluster_bundle=complex_cluster_bundle
+    )
+
+    assert cluster_data == from_host_data == from_service_data == from_component_data
 
 
 async def _test_cluster_create_delete_api(adcm_client: ADCMClient, bundle: Bundle, httpx_client: AsyncClient) -> None:
@@ -203,16 +241,16 @@ async def _test_clusters_node(
         assert len(clusters) == expected, f"Filter: {filter_value}"
 
 
-async def _test_cluster_object_api(httpx_client: AsyncClient, cluster: Cluster, cluster_bundle: Bundle) -> None:
-    assert isinstance(cluster.id, int)
+async def _test_cluster_object_api(httpx_client: AsyncClient, cluster: Cluster, cluster_bundle: Bundle) -> tuple:
+    assert isinstance(cluster_id := cluster.id, int)
     assert isinstance(cluster.name, str)
-    assert isinstance(cluster.description, str)
+    assert isinstance(description := cluster.description, str)
 
     bundle = await cluster.bundle
     assert isinstance(bundle, Bundle)
-    assert bundle.id == cluster_bundle.id
+    assert (bundle_id := bundle.id) == cluster_bundle.id
 
-    assert isinstance(await cluster.get_status(), str)
+    assert isinstance(status := await cluster.get_status(), str)
     assert isinstance(await cluster.actions.all(), list)
     assert isinstance(await cluster.upgrades.all(), list)
     assert isinstance(await cluster.config_host_groups.all(), list)
@@ -226,8 +264,10 @@ async def _test_cluster_object_api(httpx_client: AsyncClient, cluster: Cluster, 
     await cluster.set_ansible_forks(value=initial_ansible_forks + 5)
     assert await get_ansible_forks(httpx_client, cluster) == initial_ansible_forks + 5
 
-    new_name = "New cluster name"
+    new_name = "".join(random.sample(string.ascii_letters, k=6))
     await update_cluster_name(httpx_client, cluster, new_name)
     assert cluster.name != new_name
     await cluster.refresh()
     assert cluster.name == new_name
+
+    return cluster_id, bundle_id, description, status

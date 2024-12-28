@@ -21,6 +21,14 @@ class Context(NamedTuple):
     tempdir: Path
 
 
+class Expected(NamedTuple):
+    name: str
+    version: str
+    license_state: str
+    signature_status: str
+    edition: str
+
+
 @pytest_asyncio.fixture()
 async def load_bundles(adcm_client: ADCMClient, tmp_path: Path) -> list[Bundle]:
     created_bundles = []
@@ -44,9 +52,39 @@ def context(adcm_client: ADCMClient, load_bundles: list[Bundle], tmp_path: Path)
 async def test_bundle(context: Context) -> None:
     await _test_bundle_create_delete(context)
     await _test_download_external_bundle_success()
-    await _test_bundle_properties(context)
+    expected = Expected(
+        name="cluster_with_license",
+        version="2.0",
+        license_state="accepted",
+        signature_status="absent",
+        edition="enterprise",
+    )
+    bundle = await context.client.bundles.get(name__eq=expected.name)
+    await _test_bundle_properties(bundle, expected)
     await _test_bundle_accessors(context)
     await _test_pagination(context)
+
+
+async def test_bundle_objects(
+    adcm_client: ADCMClient, previous_cluster_bundle: Bundle, complex_cluster_bundle: Bundle
+) -> None:
+    """Testing similarity, accessibility of attributes of bundle objects got from different sources"""
+
+    cluster = await adcm_client.clusters.create(bundle=previous_cluster_bundle, name="Upgradable cluster")
+    cluster_from_new_bundle = await adcm_client.clusters.create(bundle=complex_cluster_bundle, name="New cluster")
+    upgrade = await cluster.upgrades.get(name__eq="Simple")
+
+    expected = Expected(
+        name="Some Cluster", version="1", license_state="absent", signature_status="absent", edition="community"
+    )
+    bundle = complex_cluster_bundle
+    await _test_bundle_properties(bundle, expected)
+    bundle_from_upgrade = await upgrade.bundle
+    await _test_bundle_properties(bundle_from_upgrade, expected)
+    bundle_from_new_cluster = await cluster_from_new_bundle.bundle
+    await _test_bundle_properties(bundle_from_new_cluster, expected)
+
+    assert bundle.id == bundle_from_upgrade.id == bundle_from_new_cluster.id
 
 
 async def _test_bundle_create_delete(context: Context) -> None:
@@ -93,18 +131,19 @@ async def _test_bundle_accessors(context: Context) -> None:
     assert len(await context.client.bundles.filter(name__icontains="cluster")) < bundles_amount
 
 
-async def _test_bundle_properties(context: Context) -> None:
-    bundle = await context.client.bundles.get(name__eq="cluster_with_license")
-    assert bundle.name == "cluster_with_license"
-    assert (await bundle.license).state == "accepted"
-    assert "LICENSE AGREEMENT" in (await bundle.license).text
-    assert bundle.version == "2.0"
-    assert bundle.signature_status == "absent"
-    assert bundle.edition == "enterprise"
+async def _test_bundle_properties(bundle: Bundle, expected: Expected) -> None:
+    assert bundle.name == expected.name
+    assert (await bundle.license).state == expected.license_state
+    if expected.license_state != "absent":
+        assert "LICENSE AGREEMENT" in (await bundle.license).text
+    assert bundle.version == expected.version
+    assert bundle.signature_status == expected.signature_status
+    assert bundle.edition == expected.edition
 
-    await (await bundle.license).accept()
-    await bundle.refresh()
-    assert (await bundle.license).state == "accepted"
+    if expected.license_state != "absent":
+        await (await bundle.license).accept()
+        await bundle.refresh()
+        assert (await bundle.license).state == expected.license_state
 
 
 async def _test_download_external_bundle_success() -> None:
