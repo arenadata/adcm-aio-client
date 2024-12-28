@@ -18,7 +18,6 @@ from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.mapping.refresh import apply_remote_changes
 from adcm_aio_client.core.objects.cm import Bundle, HostProvider, Job
 from tests.integration.bundle import pack_bundle
-from tests.integration.conftest import BUNDLES
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -53,12 +52,6 @@ async def upload_hp_bundle_with_50_plus_upgrades(adcm_client: ADCMClient, workdi
     bundle_path = pack_bundle(from_dir=bundle_dir, to=workdir)
 
     return await adcm_client.bundles.create(source=bundle_path)
-
-
-@pytest_asyncio.fixture()
-async def previous_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
-    bundle_path = pack_bundle(from_dir=BUNDLES / "complex_cluster_prev", to=tmp_path)
-    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
 
 
 @pytest_asyncio.fixture()

@@ -30,7 +30,7 @@ class WithActions(WithProtectedRequester, AwareOfOwnPath):
 
 
 class WithConfig(ConfigOwner):
-    @cached_property
+    @async_cached_property
     async def config(self: Self) -> ObjectConfig:
         return await self.config_history.current()
 
