@@ -1,12 +1,16 @@
+from collections.abc import AsyncGenerator, Iterable
 from functools import partial
-from typing import TYPE_CHECKING, Any, Iterable, Self, Union
+from itertools import chain
+from typing import TYPE_CHECKING, Any, Self, Union
+import asyncio
+import builtins
 
-from adcm_aio_client.core.filters import Filter
+from adcm_aio_client.core.filters import Filter, FilterValue
 from adcm_aio_client.core.objects._accessors import (
     DefaultQueryParams as AccessorFilter,
 )
 from adcm_aio_client.core.objects._accessors import (
-    PaginatedAccessor,
+    NonPaginatedAccessor,
     PaginatedChildAccessor,
     filters_to_inline,
 )
@@ -19,7 +23,7 @@ if TYPE_CHECKING:
     from adcm_aio_client.core.objects.cm import Cluster, Component, Host, HostProvider, Service
 
 
-class HostsInHostGroupNode(PaginatedAccessor["Host"]):
+class HostsInHostGroupNode(NonPaginatedAccessor["Host"]):
     group_type: str
 
     def __new__(cls: type[Self], path: Endpoint, requester: Requester, accessor_filter: AccessorFilter = None) -> Self:
@@ -33,28 +37,42 @@ class HostsInHostGroupNode(PaginatedAccessor["Host"]):
         return super().__new__(cls)
 
     async def add(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> None:
-        hosts = await self._get_hosts_from_args(host=host)
-        await self._add_hosts_to_group(h.id for h in hosts)
+        host_ids = await self._retrieve_host_ids(host=host, sources=(self._candidates_ep,))
+        await self._add_hosts_to_group(host_ids)
 
     async def remove(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> None:
-        hosts = await self._get_hosts_from_args(host=host)
-        await self._remove_hosts_from_group(h.id for h in hosts)
+        host_ids = await self._retrieve_host_ids(host=host, sources=(self._path,))
+        await self._remove_hosts_from_group(host_ids)
 
     async def set(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> None:
-        hosts = await self._get_hosts_from_args(host=host)
-        in_group_ids = {host["id"] for host in (await super()._request_endpoint(query={})).as_list()}
+        hosts_to_set = await self._retrieve_host_ids(host=host, sources=(self._candidates_ep, self._path))
 
-        to_remove_ids = {host_id for host_id in in_group_ids if host_id not in (host.id for host in hosts)}
-        to_add_ids = {host.id for host in hosts if host.id not in in_group_ids}
+        response = await super()._request_endpoint(query={})
+        hosts_in_group: set[HostID] = {host["id"] for host in response.as_list()}
+
+        to_remove_ids = hosts_in_group - hosts_to_set
+        to_add_ids = hosts_to_set - hosts_in_group
 
         if to_remove_ids:
             await self._remove_hosts_from_group(ids=to_remove_ids)
+
         if to_add_ids:
             await self._add_hosts_to_group(ids=to_add_ids)
 
+    async def iter(self: Self, **filters: FilterValue) -> AsyncGenerator["Host", Any]:
+        response = await self._request_endpoint(query={}, filters=filters)
+        results = response.as_dict()["results"]
+        for record in results:
+            yield self._create_object(record)
+
+    @property
+    def _candidates_ep(self: Self) -> Endpoint:
+        parent_path = self._path[:-1]
+        return *parent_path, "host-candidates"
+
     async def _add_hosts_to_group(self: Self, ids: Iterable[HostID]) -> None:
         add_by_id = partial(self._requester.post, *self._path)
-        add_coros = map(add_by_id, ({"hostId": id_} for id_ in ids))
+        add_coros = (add_by_id(data={"hostId": id_}) for id_ in ids)
         error = await safe_gather(
             coros=add_coros,
             msg=f"Some hosts can't be added to {self.group_type} host group",
@@ -73,23 +91,42 @@ class HostsInHostGroupNode(PaginatedAccessor["Host"]):
         if error is not None:
             raise error
 
-    async def _get_hosts_from_args(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> list["Host"]:
-        if isinstance(host, Filter):
-            inline_filters = filters_to_inline(host)
-            return await self.filter(**inline_filters)
+    async def _retrieve_host_ids(
+        self: Self, host: Union["Host", Iterable["Host"], Filter], sources: Iterable[Endpoint]
+    ) -> builtins.set[HostID]:
+        from adcm_aio_client.core.objects.cm import Host
 
-        return list(host) if isinstance(host, Iterable) else [host]
+        if isinstance(host, Host):
+            return {host.id}
+
+        if isinstance(host, Iterable):
+            return {h.id for h in host}
+
+        inline_filters = filters_to_inline(host)
+        query = self.filtering.inline_filters_to_query(inline_filters)
+        get_filtered_hosts = partial(self._requester.get, query=query)
+        responses = await asyncio.gather(*(get_filtered_hosts(*source) for source in sources))
+        data_from_responses = chain(*(response.as_list() for response in responses))
+        return {entry["id"] for entry in data_from_responses}
 
     async def _request_endpoint(
         self: Self, query: QueryParameters, filters: dict[str, Any] | None = None
     ) -> RequesterResponse:
         """HostGroup/hosts response have too little information to construct Host"""
 
-        data = (await super()._request_endpoint(query, filters)).as_list()
-        ids = ",".join(str(host["id"]) for host in data)
-        query = {"id__in": ids} if ids else {"id__in": "-1"}  # non-existent id to fetch 0 hosts
+        response = await super()._request_endpoint(query, filters)
+        hosts_in_group: tuple[HostID, ...] = tuple(host["id"] for host in response.as_list())
+
+        if hosts_in_group:
+            query = {"limit": len(hosts_in_group), "id__in": ",".join(map(str, hosts_in_group))}
+        else:
+            # if there's no entries, pass non-existing id for empty full-blown response
+            query = {"id__in": "-1"}
 
         return await self._requester.get("hosts", query=query)
+
+    def _extract_results_from_response(self: Self, response: RequesterResponse) -> list[dict]:
+        return response.as_dict()["results"]
 
 
 class HostGroupNode[

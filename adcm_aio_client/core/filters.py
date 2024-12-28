@@ -11,8 +11,9 @@
 # limitations under the License.
 
 from collections import deque
+from collections.abc import Generator, Iterable
 from dataclasses import dataclass
-from typing import Generator, Iterable, Self
+from typing import Self
 
 from adcm_aio_client.core.errors import InvalidFilterError
 from adcm_aio_client.core.objects._base import InteractiveObject
@@ -114,7 +115,7 @@ class Filtering:
         return f"{first}{''.join(map(str.capitalize, rest))}"
 
     def _simplify_value(self: Self, value: FilterValue) -> SimplifiedValue:
-        if isinstance(value, (str, int)):
+        if isinstance(value, str | int):
             return value
 
         if isinstance(value, InteractiveObject):
@@ -123,7 +124,7 @@ class Filtering:
         simplified_collection = deque()
 
         for entry in value:
-            if isinstance(entry, (str, int)):
+            if isinstance(entry, str | int):
                 simplified_collection.append(entry)
             elif isinstance(entry, InteractiveObject):
                 simplified_collection.append(entry.id)

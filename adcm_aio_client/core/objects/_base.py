@@ -27,7 +27,7 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
         for name in dir(cls):
             # None is for declared, but unset values
             attr = getattr(cls, name, None)
-            if isinstance(attr, (cached_property, CachedProperty)):
+            if isinstance(attr, cached_property | CachedProperty):
                 cls._delete_on_refresh.append(name)
 
     def __init__(self: Self, requester: Requester, data: dict[str, Any]) -> None:

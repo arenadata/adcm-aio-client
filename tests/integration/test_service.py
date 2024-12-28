@@ -1,6 +1,6 @@
+from collections.abc import Collection
 from copy import copy
 from pathlib import Path
-from typing import Collection
 import random
 import string
 
