@@ -1,0 +1,101 @@
+- type: cluster
+  name: cluster_import
+  version: 1.0
+  import:
+    cluster_export_0:
+      versions:
+        min: 1.0
+        max: 2.0
+    cluster_export_1:
+      versions:
+        min: 1.0
+        max: 2.0
+    cluster_export_2:
+      versions:
+        min: 1.0
+        max: 2.0
+    cluster_export_3:
+      versions:
+        min: 1.0
+        max: 2.0
+    cluster_export_4:
+      versions:
+        min: 1.0
+        max: 2.0
+    cluster_export_5:
+      versions:
+        min: 1.0
+        max: 2.0
+    cluster_export_6:
+      versions:
+        min: 1.0
+        max: 2.0
+    cluster_export_7:
+      versions:
+        min: 1.0
+        max: 2.0
+    cluster_export_8:
+      versions:
+        min: 1.0
+        max: 2.0
+    cluster_export_9:
+      versions:
+        min: 1.0
+        max: 2.0
+    cluster_export_10:
+      versions:
+        min: 1.0
+        max: 2.0
+
+- type: service
+  name: service_import_0
+  version: 1.0
+  import:
+    cluster_export_0:
+      versions:
+        min: 1.0
+        max: 2.0
+    service_export_0:
+      versions:
+        min: 1.0
+        max: 2.0
+    service_export_1:
+      versions:
+        min: 1.0
+        max: 2.0
+    service_export_2:
+      versions:
+        min: 1.0
+        max: 2.0
+    service_export_3:
+      versions:
+        min: 1.0
+        max: 2.0
+    service_export_4:
+      versions:
+        min: 1.0
+        max: 2.0
+    service_export_5:
+      versions:
+        min: 1.0
+        max: 2.0
+    service_export_6:
+      versions:
+        min: 1.0
+        max: 2.0
+    service_export_7:
+      versions:
+        min: 1.0
+        max: 2.0
+    service_export_8:
+      versions:
+        min: 1.0
+        max: 2.0
+    service_export_9:
+      versions:
+        min: 1.0
+        max: 2.0
+  config:
+    - name: string
+      type: string
+      default: string
