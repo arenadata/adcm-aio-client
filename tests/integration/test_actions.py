@@ -1,6 +1,5 @@
 from collections.abc import Iterable
 from itertools import chain
-from pathlib import Path
 import asyncio
 
 import pytest
@@ -11,8 +10,6 @@ from adcm_aio_client.core.config import Parameter
 from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.mapping.types import MappingPair
 from adcm_aio_client.core.objects.cm import Bundle, Cluster, Host, Job
-from tests.integration.bundle import pack_bundle
-from tests.integration.conftest import BUNDLES
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -36,27 +33,15 @@ def build_name_mapping(*iterables: Iterable[MappingPair]) -> set[tuple[str, str,
 
 
 @pytest_asyncio.fixture()
-async def cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
-    bundle_path = pack_bundle(from_dir=BUNDLES / "complex_cluster", to=tmp_path)
-    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
-
-
-@pytest_asyncio.fixture()
-async def hostprovider_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
-    bundle_path = pack_bundle(from_dir=BUNDLES / "simple_hostprovider", to=tmp_path)
-    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
-
-
-@pytest_asyncio.fixture()
-async def cluster(adcm_client: ADCMClient, cluster_bundle: Bundle) -> Cluster:
-    cluster = await adcm_client.clusters.create(bundle=cluster_bundle, name="Awesome Cluster")
+async def cluster(adcm_client: ADCMClient, complex_cluster_bundle: Bundle) -> Cluster:
+    cluster = await adcm_client.clusters.create(bundle=complex_cluster_bundle, name="Awesome Cluster")
     await cluster.services.add(filter_=Filter(attr="name", op="eq", value="with_host_actions"))
     return cluster
 
 
 @pytest_asyncio.fixture()
-async def hosts(adcm_client: ADCMClient, hostprovider_bundle: Bundle) -> TwoHosts:
-    hp = await adcm_client.hostproviders.create(bundle=hostprovider_bundle, name="Awesome HostProvider")
+async def hosts(adcm_client: ADCMClient, simple_hostprovider_bundle: Bundle) -> TwoHosts:
+    hp = await adcm_client.hostproviders.create(bundle=simple_hostprovider_bundle, name="Awesome HostProvider")
     coros = (adcm_client.hosts.create(hostprovider=hp, name=f"host-{i+1}") for i in range(2))
     await asyncio.gather(*coros)
     hosts = await adcm_client.hosts.all()
