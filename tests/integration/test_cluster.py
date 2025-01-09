@@ -1,5 +1,4 @@
 from collections.abc import Collection
-from pathlib import Path
 import random
 import string
 import asyncio
@@ -15,8 +14,6 @@ from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.mapping import ClusterMapping
 from adcm_aio_client.core.objects._imports import Imports
 from adcm_aio_client.core.objects.cm import Bundle, Cluster, Host
-from tests.integration.bundle import pack_bundle
-from tests.integration.conftest import BUNDLES
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -56,12 +53,6 @@ def assert_clusters_collection(clusters: Collection[Cluster], expected_amount: i
 
 
 @pytest_asyncio.fixture()
-async def complex_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
-    bundle_path = pack_bundle(from_dir=BUNDLES / "complex_cluster", to=tmp_path)
-    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
-
-
-@pytest_asyncio.fixture()
 async def many_complex_clusters(adcm_client: ADCMClient, complex_cluster_bundle: Bundle) -> int:
     """
     Creates 51 clusters (2 pages, if response's page size is 50)
@@ -81,12 +72,6 @@ async def many_complex_clusters(adcm_client: ADCMClient, complex_cluster_bundle:
     await special_cluster.services.add(Filter(attr="name", op="eq", value="example_1"))
 
     return num_similar_clusters + 1
-
-
-@pytest_asyncio.fixture()
-async def simple_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
-    bundle_path = pack_bundle(from_dir=BUNDLES / "simple_cluster", to=tmp_path)
-    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
 
 
 @pytest_asyncio.fixture()

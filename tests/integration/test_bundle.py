@@ -66,11 +66,11 @@ async def test_bundle(context: Context) -> None:
 
 
 async def test_bundle_objects(
-    adcm_client: ADCMClient, previous_cluster_bundle: Bundle, complex_cluster_bundle: Bundle
+    adcm_client: ADCMClient, previous_complex_cluster_bundle: Bundle, complex_cluster_bundle: Bundle
 ) -> None:
     """Testing similarity, accessibility of attributes of bundle objects got from different sources"""
 
-    cluster = await adcm_client.clusters.create(bundle=previous_cluster_bundle, name="Upgradable cluster")
+    cluster = await adcm_client.clusters.create(bundle=previous_complex_cluster_bundle, name="Upgradable cluster")
     cluster_from_new_bundle = await adcm_client.clusters.create(bundle=complex_cluster_bundle, name="New cluster")
     upgrade = await cluster.upgrades.get(name__eq="Simple")
 
