@@ -30,6 +30,7 @@ BUNDLES = Path(__file__).parent / "bundles"
 # Infrastructure
 ################
 
+
 @pytest.fixture(scope="session")
 def network() -> Generator[Network, None, None]:
     with Network() as network:
@@ -83,6 +84,7 @@ async def httpx_client(adcm: ADCMContainer) -> AsyncGenerator[AsyncClient, None]
 #########
 # Bundles
 #########
+
 
 @pytest_asyncio.fixture()
 async def simple_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:

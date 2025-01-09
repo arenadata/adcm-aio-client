@@ -61,7 +61,10 @@ async def hostprovider(adcm_client: ADCMClient, simple_hostprovider_bundle: Bund
 
 @pytest.fixture()
 def context(
-    adcm_client: ADCMClient, previous_complex_cluster_bundle: Bundle, complex_cluster_bundle: Bundle, hostprovider: HostProvider
+    adcm_client: ADCMClient,
+    previous_complex_cluster_bundle: Bundle,
+    complex_cluster_bundle: Bundle,
+    hostprovider: HostProvider,
 ) -> Context:
     return Context(
         client=adcm_client,
