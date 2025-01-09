@@ -1,10 +1,14 @@
+from collections.abc import Iterable
+from functools import reduce
 from pathlib import Path
+from typing import Any
 
 import pytest
 import pytest_asyncio
 
 from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.config import ActivatableParameterGroup, Parameter, ParameterGroup
+from adcm_aio_client.core.config._objects import ActivatableParameterGroupHG, HostGroupConfig, ObjectConfig, ParameterHG
 from adcm_aio_client.core.config.refresh import apply_local_changes, apply_remote_changes
 from adcm_aio_client.core.errors import ConfigNoParameterError
 from adcm_aio_client.core.filters import Filter
@@ -13,6 +17,13 @@ from tests.integration.bundle import pack_bundle
 from tests.integration.conftest import BUNDLES
 
 pytestmark = [pytest.mark.asyncio]
+
+
+def get_field_value(*names: str, configs: Iterable[ObjectConfig | HostGroupConfig]) -> tuple[Any, ...]:
+    return tuple(
+        reduce(lambda x, y: x[y], names, config).value  # type: ignore
+        for config in configs
+    )
 
 
 @pytest_asyncio.fixture()
@@ -209,3 +220,60 @@ async def test_config(cluster: Cluster) -> None:
     assert len(diff._attributes) == 0
     # field values changed from earliest to latest
     assert len(diff._values) == 6
+
+
+async def test_host_group_config(cluster: Cluster) -> None:
+    service = await get_service_with_config(cluster)
+    group_1 = await service.config_host_groups.create("group-1")
+    group_2 = await service.config_host_groups.create("group-2")
+
+    main_config = await service.config
+    config_1 = await group_1.config
+    config_2 = await group_2.config
+    assert isinstance(main_config, ObjectConfig)
+    assert isinstance(config_1, HostGroupConfig)
+    configs = (main_config, config_1, config_2)
+
+    assert len({c.id for c in configs}) == 3
+
+    person_default = {"name": "Joe", "age": "24", "sex": "m"}
+
+    values = get_field_value("Set me", configs=configs)
+    assert set(values) == {None}
+    values = get_field_value("A lot of text", "sag", "quantity", configs=configs)
+    assert set(values) == {None}
+    values = get_field_value("from_doc", "person", configs=configs)
+    assert all(v == person_default for v in values)
+
+    req_val_1, req_val_2 = 12, 44
+    person_val_1 = {"name": "Boss", "age": "unknown"}
+    person_val_2 = {"name": "Moss", "awesome": "yes"}
+
+    main_config["Set me", Parameter].set(req_val_1)
+    main_config["from_doc"]["person"].set(person_val_1)  # type: ignore
+    main_config["Optional", ActivatableParameterGroup].activate()
+    # todo fix working with structures here
+    # sag = main_config["A lot of text"]["sag"]  # type: ignore
+    # sag["quantity"].set(4)# type: ignore
+    # sag["nested"]["attr"].set(  "foo") # type: ignore
+    # sag["nested"]["op"].set(  "bar") # type: ignore
+
+    config_1["Set me", ParameterHG].set(req_val_2)
+    config_1["from_doc"]["person"].set(person_val_2)  # type: ignore
+    config_1["Optional", ActivatableParameterGroupHG].desync()
+
+    config_2["from_doc"]["person"].set(person_val_2)  # type: ignore
+    config_2["Optional", ActivatableParameterGroupHG].desync()
+
+    await main_config.save()
+    await config_1.refresh(strategy=apply_local_changes)
+    await config_2.refresh(strategy=apply_remote_changes)
+
+    # todo same fix with structure
+    # values = get_field_value("A lot of text", "sag", "quantity", configs=configs)
+    # assert set(values) == {4}
+    values = get_field_value("Set me", configs=configs)
+    assert values == (req_val_1, req_val_2, req_val_1)
+    main_val, c1_val, c2_val = get_field_value("from_doc", "person", configs=configs)
+    assert main_val == c2_val == person_val_1
+    assert c1_val == person_val_2

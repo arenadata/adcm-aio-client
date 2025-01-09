@@ -5,7 +5,7 @@ from asyncstdlib.functools import cached_property as async_cached_property  # no
 
 from adcm_aio_client.core.actions import ActionsAccessor, UpgradeNode
 from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
-from adcm_aio_client.core.config._objects import ConfigOwner
+from adcm_aio_client.core.config._objects import ConfigOwner, HostGroupConfig
 from adcm_aio_client.core.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
 from adcm_aio_client.core.objects._imports import Imports
 
@@ -35,8 +35,18 @@ class WithConfig(ConfigOwner):
         return await self.config_history.current()
 
     @cached_property
-    def config_history(self: Self) -> ConfigHistoryNode:
-        return ConfigHistoryNode(parent=self)
+    def config_history(self: Self) -> ConfigHistoryNode[ObjectConfig]:
+        return ConfigHistoryNode(parent=self, as_type=ObjectConfig)
+
+
+class WithConfigOfHostGroup(ConfigOwner):
+    @async_cached_property
+    async def config(self: Self) -> HostGroupConfig:
+        return await self.config_history.current()
+
+    @cached_property
+    def config_history(self: Self) -> ConfigHistoryNode[HostGroupConfig]:
+        return ConfigHistoryNode(parent=self, as_type=HostGroupConfig)
 
 
 class WithUpgrades(WithProtectedRequester, AwareOfOwnPath):
