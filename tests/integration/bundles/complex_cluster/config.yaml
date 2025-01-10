@@ -292,6 +292,13 @@
         - name: justhere
           type: integer
           required: false
+    - name: more
+      type: group
+      subs:
+        - name: strange
+          type: json
+          default: []
+
 
 - type: service
   name: with_host_actions

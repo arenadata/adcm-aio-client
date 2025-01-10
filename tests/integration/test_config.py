@@ -267,21 +267,27 @@ async def test_host_group_config(cluster: Cluster) -> None:
     req_val_1, req_val_2 = 12, 44
     person_val_1 = {"name": "Boss", "age": "unknown"}
     person_val_2 = {"name": "Moss", "awesome": "yes"}
+    strange_val_1 = {"custom": [1, 2, 3]}
+    strange_val_2 = [1, {"something": "else"}]
+    strange_val_3 = ["something", "strange", 43, {"happenning": "here"}]
 
     main_config["Set me", Parameter].set(req_val_1)
     main_config["from_doc"]["person"].set(person_val_1)  # type: ignore
+    main_config["more"]["strange"].set(strange_val_1)  # type: ignore
     main_config["Optional", ActivatableParameterGroup].activate()
     # todo fix working with structures here
-    # sag = main_config["A lot of text"]["sag"]  # type: ignore
-    # sag["quantity"].set(4)# type: ignore
-    # sag["nested"]["attr"].set(  "foo") # type: ignore
-    # sag["nested"]["op"].set(  "bar") # type: ignore
+    # sag = main_config["A lot of text"]["sag"]
+    # sag["quantity"].set(4)
+    # sag["nested"]["attr"].set(  "foo")
+    # sag["nested"]["op"].set(  "bar")
 
     config_1["Set me", ParameterHG].set(req_val_2)
     config_1["from_doc"]["person"].set(person_val_2)  # type: ignore
+    config_1["more"]["strange"].set(strange_val_2)  # type: ignore
     config_1["Optional", ActivatableParameterGroupHG].desync()
 
     config_2["from_doc"]["person"].set(person_val_2)  # type: ignore
+    config_2["more"]["strange"].set(strange_val_3)  # type: ignore
     config_2["Optional", ActivatableParameterGroupHG].desync()
 
     await main_config.save()
@@ -293,10 +299,11 @@ async def test_host_group_config(cluster: Cluster) -> None:
     # assert set(values) == {4}
     values = get_field_value("Set me", configs=configs)
     assert values == (req_val_1, req_val_2, req_val_1)
+    values = get_field_value("more", "strange", configs=configs)
+    assert values == (strange_val_1, strange_val_2, strange_val_1)
     main_val, c1_val, c2_val = get_field_value("from_doc", "person", configs=configs)
     assert main_val == c2_val == person_val_1
     assert c1_val == person_val_2
-    # todo ???
     # since attributes are compared as a whole, desync is considered a change
     # => priority of local change
     assert not config_1.data.attributes["/agroup"]["isActive"]
@@ -304,3 +311,17 @@ async def test_host_group_config(cluster: Cluster) -> None:
     # the opposite situation when we "desynced", but changes overriten
     assert config_2.data.attributes["/agroup"]["isActive"]
     assert config_2.data.attributes["/agroup"]["isSynchronized"]
+
+    await config_1.save()
+    await config_2.save()
+
+    param: ParameterHG = config_1["more"]["strange"]  # type: ignore
+    assert param.value == strange_val_2
+    param.sync()
+    assert param.value == strange_val_2
+    await config_1.save()
+    # param most likely will have strange data,
+    # so it's correct to re-read it
+    param: ParameterHG = config_1["more"]["strange"]  # type: ignore
+    # bit of ADCM logic: sync parameter shipped from object's config
+    assert param.value == strange_val_1
