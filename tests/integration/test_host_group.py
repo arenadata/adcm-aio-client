@@ -5,7 +5,7 @@ import pytest_asyncio
 
 from adcm_aio_client.core.actions._objects import ActionsAccessor
 from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.config import ObjectConfig
+from adcm_aio_client.core.config._objects import HostGroupConfig
 from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
 from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.host_groups._common import HostsInHostGroupNode
@@ -80,7 +80,7 @@ async def _test_host_group_properties(host_group_node: ActionHostGroupNode | Con
 
     if isinstance(host_group_node, ConfigHostGroupNode):
         assert isinstance(host_group, ConfigHostGroup)
-        assert isinstance(await host_group.config, ObjectConfig)
+        assert isinstance(await host_group.config, HostGroupConfig)
         assert isinstance(host_group.hosts, HostsInHostGroupNode)
     else:
         assert isinstance(host_group, ActionHostGroup)

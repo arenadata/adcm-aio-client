@@ -142,7 +142,7 @@
   display_name: First Example
   version: 1.0
 
-  config:
+  config: &simple_config
     - name: root_int
       display_name: Integer At Root
       type: integer
@@ -151,10 +151,13 @@
   components: &example_c
     first:
       display_name: First Component
+      config: *simple_config
     second:
       display_name: Second Component
+      config: *simple_config
     third_one:
       display_name: This Is Different
+      config: *simple_config
 
 - type: service
   name: example_2
@@ -292,6 +295,13 @@
         - name: justhere
           type: integer
           required: false
+    - name: more
+      type: group
+      subs:
+        - name: strange
+          type: json
+          default: []
+
 
 - type: service
   name: with_host_actions

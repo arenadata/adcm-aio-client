@@ -4,14 +4,14 @@ from typing import TYPE_CHECKING, Self, Union
 from adcm_aio_client.core.filters import FilterByName, Filtering
 from adcm_aio_client.core.host_groups._common import HostGroupNode, HostsInHostGroupNode
 from adcm_aio_client.core.objects._base import InteractiveChildObject
-from adcm_aio_client.core.objects._common import Deletable, WithConfig
+from adcm_aio_client.core.objects._common import Deletable, WithConfigOfHostGroup
 from adcm_aio_client.core.types import AwareOfOwnPath, WithProtectedRequester
 
 if TYPE_CHECKING:
     from adcm_aio_client.core.objects.cm import Cluster, Component, Service
 
 
-class ConfigHostGroup(InteractiveChildObject, Deletable, WithConfig):
+class ConfigHostGroup(InteractiveChildObject, Deletable, WithConfigOfHostGroup):
     PATH_PREFIX = "config-groups"
 
     @property
