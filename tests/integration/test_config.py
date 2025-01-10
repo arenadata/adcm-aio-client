@@ -14,8 +14,6 @@ from adcm_aio_client.core.config.refresh import apply_local_changes, apply_remot
 from adcm_aio_client.core.errors import ConfigNoParameterError
 from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.objects.cm import Bundle, Cluster, Service
-from tests.integration.bundle import pack_bundle
-from tests.integration.conftest import BUNDLES
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -28,14 +26,8 @@ def get_field_value(*names: str, configs: Iterable[ObjectConfig | HostGroupConfi
 
 
 @pytest_asyncio.fixture()
-async def cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
-    bundle_path = pack_bundle(from_dir=BUNDLES / "complex_cluster", to=tmp_path)
-    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
-
-
-@pytest_asyncio.fixture()
-async def cluster(adcm_client: ADCMClient, cluster_bundle: Bundle) -> Cluster:
-    cluster = await adcm_client.clusters.create(bundle=cluster_bundle, name="Awesome Cluster")
+async def cluster(adcm_client: ADCMClient, complex_cluster_bundle: Bundle) -> Cluster:
+    cluster = await adcm_client.clusters.create(bundle=complex_cluster_bundle, name="Awesome Cluster")
     await cluster.services.add(filter_=Filter(attr="name", op="eq", value="complex_config"))
     return cluster
 
