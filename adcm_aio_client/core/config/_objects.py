@@ -147,12 +147,14 @@ class Parameter[T](_ConfigWrapper):
 
 
 class _Desyncable(_ConfigWrapper):
+    _SYNC_ATTR = "isSynchronized"
+
     def sync(self: Self) -> Self:
-        self._data.set_attribute(parameter=self._name, attribute="isSynced", value=True)
+        self._data.set_attribute(parameter=self._name, attribute=self._SYNC_ATTR, value=True)
         return self
 
     def desync(self: Self) -> Self:
-        self._data.set_attribute(parameter=self._name, attribute="isSynced", value=False)
+        self._data.set_attribute(parameter=self._name, attribute=self._SYNC_ATTR, value=False)
         return self
 
 
@@ -342,7 +344,7 @@ class _SaveableConfig[T: _ConfigWrapperCreator](_GeneralConfig[ConfigData, T]):
 
     async def refresh(self: Self, strategy: ConfigRefreshStrategy = apply_local_changes) -> Self:
         remote_config = await retrieve_current_config(
-            parent=self._parent, get_schema=partial(retrieve_schema, parent=self._parent)
+            parent=self._parent, get_schema=partial(retrieve_schema, parent=self._parent), as_type=self.__class__
         )
         if self.schema != remote_config.schema:
             message = "Can't refresh configuration after upgrade: schema is different for local and remote configs"
@@ -454,15 +456,18 @@ class HostGroupConfig(_SaveableConfig[HostGroupConfigWrapper]):
         return self._current_config[item]
 
 
-class ConfigHistoryNode:
-    def __init__(self: Self, parent: ConfigOwner) -> None:
+class ConfigHistoryNode[T: _SaveableConfig]:
+    def __init__(self: Self, parent: ConfigOwner, as_type: type[T]) -> None:
         self._schema: ConfigSchema | None = None
         self._parent = parent
+        self._config_type = as_type
 
-    async def current(self: Self) -> ObjectConfig:
-        return await retrieve_current_config(parent=self._parent, get_schema=self._ensure_schema)
+    async def current(self: Self) -> T:
+        return await retrieve_current_config(
+            parent=self._parent, get_schema=self._ensure_schema, as_type=self._config_type
+        )
 
-    async def __getitem__(self: Self, position: int) -> ObjectConfig:
+    async def __getitem__(self: Self, position: int) -> T:
         # since we don't have date in here, we sort by id
         ordering = "id"
         offset = position
@@ -474,7 +479,11 @@ class ConfigHistoryNode:
         query = {"limit": 1, "offset": offset, "ordering": ordering}
 
         return await retrieve_config(
-            parent=self._parent, get_schema=self._ensure_schema, query=query, choose_suitable_config=get_first_result
+            parent=self._parent,
+            get_schema=self._ensure_schema,
+            query=query,
+            choose_suitable_config=get_first_result,
+            as_type=self._config_type,
         )
 
     async def _ensure_schema(self: Self) -> ConfigSchema:
@@ -494,21 +503,24 @@ async def retrieve_schema(parent: ConfigOwner) -> ConfigSchema:
     return ConfigSchema(spec_as_jsonschema=response.as_dict())
 
 
-async def retrieve_current_config(parent: ConfigOwner, get_schema: GetSchemaFunc) -> ObjectConfig:
+async def retrieve_current_config[T: _GeneralConfig](
+    parent: ConfigOwner, get_schema: GetSchemaFunc, as_type: type[T]
+) -> T:
     # we are relying that current configuration will be
     # one of last created
     query = {"ordering": "-id", "limit": 10, "offset": 0}
     return await retrieve_config(
-        parent=parent, get_schema=get_schema, query=query, choose_suitable_config=get_current_config
+        parent=parent, get_schema=get_schema, query=query, choose_suitable_config=get_current_config, as_type=as_type
     )
 
 
-async def retrieve_config(
+async def retrieve_config[T: _GeneralConfig](
     parent: ConfigOwner,
     get_schema: GetSchemaFunc,
     query: dict,
     choose_suitable_config: Callable[[list[dict]], dict],
-) -> ObjectConfig:
+    as_type: type[T],
+) -> T:
     schema_task = asyncio.create_task(get_schema())
 
     path = (*parent.get_own_path(), "configs")
@@ -521,7 +533,7 @@ async def retrieve_config(
 
     schema = await schema_task
 
-    return ObjectConfig(config=config_data, schema=schema, parent=parent)
+    return as_type(config=config_data, schema=schema, parent=parent)
 
 
 def get_first_result(results: list[dict]) -> dict:

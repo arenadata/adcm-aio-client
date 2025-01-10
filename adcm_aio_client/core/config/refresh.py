@@ -15,7 +15,7 @@ def apply_local_changes(local: LocalConfigs, remote: ConfigData, schema: ConfigS
         remote.set_value(parameter=parameter_name, value=value_change.current)
 
     for parameter_name, attribute_change in local_diff.attributes.items():
-        if not isinstance(attribute_change, dict):
+        if not isinstance(attribute_change.current, dict):
             message = f"Can't apply attribute changes of type {type(attribute_change)}, expected dict-like"
             raise TypeError(message)
 
@@ -51,7 +51,7 @@ def apply_remote_changes(local: LocalConfigs, remote: ConfigData, schema: Config
 
     for parameter_name in changed_in_both:
         attribute_change = remote_diff.attributes[parameter_name]
-        if not isinstance(attribute_change, dict):
+        if not isinstance(attribute_change.current, dict):
             message = f"Can't apply attribute changes of type {type(attribute_change)}, expected dict-like"
             raise TypeError(message)
 
@@ -60,7 +60,7 @@ def apply_remote_changes(local: LocalConfigs, remote: ConfigData, schema: Config
 
     for parameter_name in changed_locally_only:
         attribute_change = local_diff.attributes[parameter_name]
-        if not isinstance(attribute_change, dict):
+        if not isinstance(attribute_change.current, dict):
             message = f"Can't apply attribute changes of type {type(attribute_change)}, expected dict-like"
             raise TypeError(message)
 

@@ -1,14 +1,27 @@
+from collections.abc import Iterable
+from functools import reduce
+from typing import Any
+import asyncio
+
 import pytest
 import pytest_asyncio
 
 from adcm_aio_client.core.client import ADCMClient
 from adcm_aio_client.core.config import ActivatableParameterGroup, Parameter, ParameterGroup
+from adcm_aio_client.core.config._objects import ActivatableParameterGroupHG, HostGroupConfig, ObjectConfig, ParameterHG
 from adcm_aio_client.core.config.refresh import apply_local_changes, apply_remote_changes
 from adcm_aio_client.core.errors import ConfigNoParameterError
 from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.objects.cm import Bundle, Cluster, Service
 
 pytestmark = [pytest.mark.asyncio]
+
+
+def get_field_value(*names: str, configs: Iterable[ObjectConfig | HostGroupConfig]) -> tuple[Any, ...]:
+    return tuple(
+        reduce(lambda x, y: x[y], names, config).value  # type: ignore
+        for config in configs
+    )
 
 
 @pytest_asyncio.fixture()
@@ -20,6 +33,24 @@ async def cluster(adcm_client: ADCMClient, complex_cluster_bundle: Bundle) -> Cl
 
 async def get_service_with_config(cluster: Cluster) -> Service:
     return await cluster.services.get(name__eq="complex_config")
+
+
+async def test_config_history(cluster: Cluster) -> None:
+    config = await cluster.config
+    for i in range(50):
+        await config.save(description=f"config-{i}")
+
+    first_to_last = await asyncio.gather(*(cluster.config_history[i] for i in range(51)))
+    last_to_first = await asyncio.gather(*(cluster.config_history[-(i + 1)] for i in range(51)))
+
+    assert len(first_to_last) == len(last_to_first) == 51
+    assert first_to_last[-1].id == config.id
+    assert last_to_first[0].id == config.id
+
+    first_to_last_ids = [c.id for c in first_to_last]
+    last_to_first_ids = [c.id for c in last_to_first]
+
+    assert first_to_last_ids == list(reversed(last_to_first_ids))
 
 
 async def test_invisible_fields(cluster: Cluster) -> None:
@@ -199,3 +230,89 @@ async def test_config(cluster: Cluster) -> None:
     assert len(diff._attributes) == 0
     # field values changed from earliest to latest
     assert len(diff._values) == 6
+
+
+async def test_host_group_config(cluster: Cluster) -> None:
+    service = await get_service_with_config(cluster)
+    group_1 = await service.config_host_groups.create("group-1")
+    group_2 = await service.config_host_groups.create("group-2")
+
+    main_config = await service.config
+    config_1 = await group_1.config
+    config_2 = await group_2.config
+    assert isinstance(main_config, ObjectConfig)
+    assert isinstance(config_1, HostGroupConfig)
+    configs = (main_config, config_1, config_2)
+
+    assert len({c.id for c in configs}) == 3
+
+    person_default = {"name": "Joe", "age": "24", "sex": "m"}
+
+    values = get_field_value("Set me", configs=configs)
+    assert set(values) == {None}
+    values = get_field_value("A lot of text", "sag", "quantity", configs=configs)
+    assert set(values) == {None}
+    values = get_field_value("from_doc", "person", configs=configs)
+    assert all(v == person_default for v in values)
+
+    req_val_1, req_val_2 = 12, 44
+    person_val_1 = {"name": "Boss", "age": "unknown"}
+    person_val_2 = {"name": "Moss", "awesome": "yes"}
+    strange_val_1 = {"custom": [1, 2, 3]}
+    strange_val_2 = [1, {"something": "else"}]
+    strange_val_3 = ["something", "strange", 43, {"happenning": "here"}]
+
+    main_config["Set me", Parameter].set(req_val_1)
+    main_config["from_doc"]["person"].set(person_val_1)  # type: ignore
+    main_config["more"]["strange"].set(strange_val_1)  # type: ignore
+    main_config["Optional", ActivatableParameterGroup].activate()
+    # todo fix working with structures here
+    # sag = main_config["A lot of text"]["sag"]
+    # sag["quantity"].set(4)
+    # sag["nested"]["attr"].set(  "foo")
+    # sag["nested"]["op"].set(  "bar")
+
+    config_1["Set me", ParameterHG].set(req_val_2)
+    config_1["from_doc"]["person"].set(person_val_2)  # type: ignore
+    config_1["more"]["strange"].set(strange_val_2)  # type: ignore
+    config_1["Optional", ActivatableParameterGroupHG].desync()
+
+    config_2["from_doc"]["person"].set(person_val_2)  # type: ignore
+    config_2["more"]["strange"].set(strange_val_3)  # type: ignore
+    config_2["Optional", ActivatableParameterGroupHG].desync()
+
+    await main_config.save()
+    await config_1.refresh(strategy=apply_local_changes)
+    await config_2.refresh(strategy=apply_remote_changes)
+
+    # todo same fix with structure
+    # values = get_field_value("A lot of text", "sag", "quantity", configs=configs)
+    # assert set(values) == {4}
+    values = get_field_value("Set me", configs=configs)
+    assert values == (req_val_1, req_val_2, req_val_1)
+    values = get_field_value("more", "strange", configs=configs)
+    assert values == (strange_val_1, strange_val_2, strange_val_1)
+    main_val, c1_val, c2_val = get_field_value("from_doc", "person", configs=configs)
+    assert main_val == c2_val == person_val_1
+    assert c1_val == person_val_2
+    # since attributes are compared as a whole, desync is considered a change
+    # => priority of local change
+    assert not config_1.data.attributes["/agroup"]["isActive"]
+    assert not config_1.data.attributes["/agroup"]["isSynchronized"]
+    # the opposite situation when we "desynced", but changes overriten
+    assert config_2.data.attributes["/agroup"]["isActive"]
+    assert config_2.data.attributes["/agroup"]["isSynchronized"]
+
+    await config_1.save()
+    await config_2.save()
+
+    param: ParameterHG = config_1["more"]["strange"]  # type: ignore
+    assert param.value == strange_val_2
+    param.sync()
+    assert param.value == strange_val_2
+    await config_1.save()
+    # param most likely will have strange data,
+    # so it's correct to re-read it
+    param: ParameterHG = config_1["more"]["strange"]  # type: ignore
+    # bit of ADCM logic: sync parameter shipped from object's config
+    assert param.value == strange_val_1
