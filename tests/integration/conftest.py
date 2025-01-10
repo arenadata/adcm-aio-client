@@ -26,6 +26,11 @@ from tests.integration.setup_environment import (
 BUNDLES = Path(__file__).parent / "bundles"
 
 
+################
+# Infrastructure
+################
+
+
 @pytest.fixture(scope="session")
 def network() -> Generator[Network, None, None]:
     with Network() as network:
@@ -50,6 +55,11 @@ def adcm(network: Network, postgres: ADCMPostgresContainer) -> Generator[ADCMCon
     postgres.execute_statement(f"DROP DATABASE {db.name}")
 
 
+#########
+# Clients
+#########
+
+
 @pytest_asyncio.fixture(scope="function")
 async def adcm_client(request: pytest.FixtureRequest, adcm: ADCMContainer) -> AsyncGenerator[ADCMClient, None]:
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
@@ -61,13 +71,35 @@ async def adcm_client(request: pytest.FixtureRequest, adcm: ADCMContainer) -> As
 
 
 @pytest_asyncio.fixture()
+async def httpx_client(adcm: ADCMContainer) -> AsyncGenerator[AsyncClient, None]:
+    client = AsyncClient(base_url=urljoin(adcm.url, "api/v2/"))
+    response = await client.post("login/", json={"username": "admin", "password": "admin"})
+    client.headers["X-CSRFToken"] = response.cookies["csrftoken"]
+
+    yield client
+
+    await client.aclose()
+
+
+#########
+# Bundles
+#########
+
+
+@pytest_asyncio.fixture()
+async def simple_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
+    bundle_path = pack_bundle(from_dir=BUNDLES / "simple_cluster", to=tmp_path)
+    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
+
+
+@pytest_asyncio.fixture()
 async def complex_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
     bundle_path = pack_bundle(from_dir=BUNDLES / "complex_cluster", to=tmp_path)
     return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
 
 
 @pytest_asyncio.fixture()
-async def previous_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
+async def previous_complex_cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
     bundle_path = pack_bundle(from_dir=BUNDLES / "complex_cluster_prev", to=tmp_path)
     return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
 
@@ -82,14 +114,3 @@ async def simple_hostprovider_bundle(adcm_client: ADCMClient, tmp_path: Path) ->
 async def complex_hostprovider_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
     bundle_path = pack_bundle(from_dir=BUNDLES / "complex_provider", to=tmp_path)
     return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
-
-
-@pytest_asyncio.fixture()
-async def httpx_client(adcm: ADCMContainer) -> AsyncGenerator[AsyncClient, None]:
-    client = AsyncClient(base_url=urljoin(adcm.url, "api/v2/"))
-    response = await client.post("login/", json={"username": "admin", "password": "admin"})
-    client.headers["X-CSRFToken"] = response.cookies["csrftoken"]
-
-    yield client
-
-    await client.aclose()

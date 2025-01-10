@@ -1,7 +1,4 @@
-from pathlib import Path
-
 import pytest
-import pytest_asyncio
 
 from adcm_aio_client.core.actions import ActionsAccessor, UpgradeNode
 from adcm_aio_client.core.client import ADCMClient
@@ -11,27 +8,19 @@ from adcm_aio_client.core.config import (
 )
 from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
 from adcm_aio_client.core.objects.cm import Bundle, HostProvider
-from tests.integration.bundle import pack_bundle
-from tests.integration.conftest import BUNDLES
 
 pytestmark = [pytest.mark.asyncio]
 
 
-@pytest_asyncio.fixture()
-async def hostprovider_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
-    bundle_path = pack_bundle(from_dir=BUNDLES / "complex_provider", to=tmp_path)
-    return await adcm_client.bundles.create(source=bundle_path)
+async def test_hostprovider(adcm_client: ADCMClient, complex_hostprovider_bundle: Bundle) -> None:
+    await _test_hostprovider_properties(adcm_client, complex_hostprovider_bundle)
+    await _test_hostprovider_accessors(adcm_client, complex_hostprovider_bundle)
+    await _test_pagination(adcm_client, complex_hostprovider_bundle)
 
 
-async def test_hostprovider(adcm_client: ADCMClient, hostprovider_bundle: Bundle) -> None:
-    await _test_hostprovider_properties(adcm_client, hostprovider_bundle)
-    await _test_hostprovider_accessors(adcm_client, hostprovider_bundle)
-    await _test_pagination(adcm_client, hostprovider_bundle)
-
-
-async def _test_hostprovider_properties(adcm_client: ADCMClient, hostprovider_bundle: Bundle) -> None:
+async def _test_hostprovider_properties(adcm_client: ADCMClient, complex_hostprovider_bundle: Bundle) -> None:
     hostprovider = await adcm_client.hostproviders.create(
-        bundle=hostprovider_bundle, name="Hostprovider name", description="Hostprovider description"
+        bundle=complex_hostprovider_bundle, name="Hostprovider name", description="Hostprovider description"
     )
     assert hostprovider.display_name == "complex_provider"
     assert hostprovider.name == "Hostprovider name"
@@ -44,10 +33,10 @@ async def _test_hostprovider_properties(adcm_client: ADCMClient, hostprovider_bu
     assert len(hosts) == 0
 
 
-async def _test_hostprovider_accessors(adcm_client: ADCMClient, hostprovider_bundle: Bundle) -> None:
+async def _test_hostprovider_accessors(adcm_client: ADCMClient, complex_hostprovider_bundle: Bundle) -> None:
     for new_host_provider in ["hostprovider-1", "hostprovider-2", "hostprovider-3"]:
         await adcm_client.hostproviders.create(
-            bundle=hostprovider_bundle, name=new_host_provider, description=new_host_provider
+            bundle=complex_hostprovider_bundle, name=new_host_provider, description=new_host_provider
         )
 
     hostprovider = await adcm_client.hostproviders.get(name__eq="hostprovider-1")
@@ -77,7 +66,7 @@ async def _test_hostprovider_accessors(adcm_client: ADCMClient, hostprovider_bun
         assert isinstance(hp, HostProvider)
         assert "hostprovider" in hp.name.lower()
 
-    assert len(await adcm_client.hostproviders.filter(bundle__eq=hostprovider_bundle)) == 4
+    assert len(await adcm_client.hostproviders.filter(bundle__eq=complex_hostprovider_bundle)) == 4
 
     await hostprovider.delete()
 

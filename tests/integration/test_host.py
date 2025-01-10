@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import NamedTuple
 
 import pytest
@@ -18,8 +17,6 @@ from adcm_aio_client.core.objects.cm import (
     HostsInClusterNode,
     HostsNode,
 )
-from tests.integration.bundle import pack_bundle
-from tests.integration.conftest import BUNDLES
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -34,12 +31,6 @@ class Expected(NamedTuple):
 
 
 @pytest_asyncio.fixture()
-async def cluster_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
-    bundle_path = pack_bundle(from_dir=BUNDLES / "complex_cluster", to=tmp_path)
-    return await adcm_client.bundles.create(source=bundle_path)
-
-
-@pytest_asyncio.fixture()
 async def cluster(adcm_client: ADCMClient, complex_cluster_bundle: Bundle) -> Cluster:
     return await adcm_client.clusters.create(
         bundle=complex_cluster_bundle, name="Cluster", description="Cluster description"
@@ -47,15 +38,9 @@ async def cluster(adcm_client: ADCMClient, complex_cluster_bundle: Bundle) -> Cl
 
 
 @pytest_asyncio.fixture()
-async def hostprovider_bundle(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
-    bundle_path = pack_bundle(from_dir=BUNDLES / "complex_provider", to=tmp_path)
-    return await adcm_client.bundles.create(source=bundle_path)
-
-
-@pytest_asyncio.fixture()
-async def hostprovider(adcm_client: ADCMClient, hostprovider_bundle: Bundle) -> HostProvider:
+async def hostprovider(adcm_client: ADCMClient, complex_hostprovider_bundle: Bundle) -> HostProvider:
     return await adcm_client.hostproviders.create(
-        bundle=hostprovider_bundle, name="Hostprovider name", description="Hostprovider description"
+        bundle=complex_hostprovider_bundle, name="Hostprovider name", description="Hostprovider description"
     )
 
 
@@ -104,12 +89,12 @@ async def test_host_in_host_group(adcm_client: ADCMClient, hostprovider: HostPro
 
 
 async def test_host_objects(
-    adcm_client: ADCMClient, hostprovider_bundle: Bundle, complex_cluster_bundle: Bundle
+    adcm_client: ADCMClient, complex_hostprovider_bundle: Bundle, complex_cluster_bundle: Bundle
 ) -> None:
     """Testing similarity, accessibility of attributes of host objects got from different sources"""
 
     host_name = "Target-test-host"
-    provider = await adcm_client.hostproviders.create(bundle=hostprovider_bundle, name="New provider")
+    provider = await adcm_client.hostproviders.create(bundle=complex_hostprovider_bundle, name="New provider")
     await adcm_client.hosts.create(hostprovider=provider, name=host_name)
     target_host = await adcm_client.hosts.get(name__eq=host_name)
 
