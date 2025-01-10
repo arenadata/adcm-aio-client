@@ -147,12 +147,14 @@ class Parameter[T](_ConfigWrapper):
 
 
 class _Desyncable(_ConfigWrapper):
+    _SYNC_ATTR = "isSynchronized"
+
     def sync(self: Self) -> Self:
-        self._data.set_attribute(parameter=self._name, attribute="isSynced", value=True)
+        self._data.set_attribute(parameter=self._name, attribute=self._SYNC_ATTR, value=True)
         return self
 
     def desync(self: Self) -> Self:
-        self._data.set_attribute(parameter=self._name, attribute="isSynced", value=False)
+        self._data.set_attribute(parameter=self._name, attribute=self._SYNC_ATTR, value=False)
         return self
 
 

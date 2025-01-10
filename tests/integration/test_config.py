@@ -2,6 +2,7 @@ from collections.abc import Iterable
 from functools import reduce
 from pathlib import Path
 from typing import Any
+import asyncio
 
 import pytest
 import pytest_asyncio
@@ -41,6 +42,24 @@ async def cluster(adcm_client: ADCMClient, cluster_bundle: Bundle) -> Cluster:
 
 async def get_service_with_config(cluster: Cluster) -> Service:
     return await cluster.services.get(name__eq="complex_config")
+
+
+async def test_config_history(cluster: Cluster) -> None:
+    config = await cluster.config
+    for i in range(50):
+        await config.save(description=f"config-{i}")
+
+    first_to_last = await asyncio.gather(*(cluster.config_history[i] for i in range(51)))
+    last_to_first = await asyncio.gather(*(cluster.config_history[-(i + 1)] for i in range(51)))
+
+    assert len(first_to_last) == len(last_to_first) == 51
+    assert first_to_last[-1].id == config.id
+    assert last_to_first[0].id == config.id
+
+    first_to_last_ids = [c.id for c in first_to_last]
+    last_to_first_ids = [c.id for c in last_to_first]
+
+    assert first_to_last_ids == list(reversed(last_to_first_ids))
 
 
 async def test_invisible_fields(cluster: Cluster) -> None:
@@ -277,3 +296,11 @@ async def test_host_group_config(cluster: Cluster) -> None:
     main_val, c1_val, c2_val = get_field_value("from_doc", "person", configs=configs)
     assert main_val == c2_val == person_val_1
     assert c1_val == person_val_2
+    # todo ???
+    # since attributes are compared as a whole, desync is considered a change
+    # => priority of local change
+    assert not config_1.data.attributes["/agroup"]["isActive"]
+    assert not config_1.data.attributes["/agroup"]["isSynchronized"]
+    # the opposite situation when we "desynced", but changes overriten
+    assert config_2.data.attributes["/agroup"]["isActive"]
+    assert config_2.data.attributes["/agroup"]["isSynchronized"]
