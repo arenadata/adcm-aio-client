@@ -64,6 +64,9 @@ async def test_equality(queue_requester: QueueRequester) -> None:
     )
     assert instance_1 == instance_5
     assert {instance_1, instance_2, instance_3, instance_4, instance_5} == {
-        instance_1, instance_2, instance_3, instance_4
+        instance_1,
+        instance_2,
+        instance_3,
+        instance_4,
     }
     assert instance_1 != (4, "awesome")
