@@ -79,6 +79,8 @@ class ADCMContainer(DockerContainer):
     def start(self: Self) -> Self:
         adcm_port = find_free_port(start=8000, end=8080)
         self.with_bind_ports(8000, adcm_port)
+        ssl_port = find_free_port(start=8400, end=8480)
+        self.with_bind_ports(8443, ssl_port)
 
         self.with_name(f"{adcm_container_name}_{adcm_port}")
 
@@ -90,6 +92,7 @@ class ADCMContainer(DockerContainer):
         ip = self.get_container_host_ip()
         port = self.get_exposed_port(8000)
         self.url = f"http://{ip}:{port}"
+        self.ssl_url = f"https://{ip}:{ssl_port}"
 
         return self
 

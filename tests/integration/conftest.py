@@ -1,6 +1,7 @@
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 from urllib.parse import urljoin
+import os
 import random
 import string
 
@@ -43,13 +44,31 @@ def postgres(network: Network) -> Generator[ADCMPostgresContainer, None, None]:
         yield container
 
 
+@pytest.fixture(scope="session")
+def ssl_certs_dir(tmp_path_factory: pytest.TempdirFactory) -> Path:
+    cert_dir = Path(tmp_path_factory.mktemp("cert"))
+
+    os.system(  # noqa: S605
+        f"openssl req -x509 -newkey rsa:4096 -keyout {cert_dir}/key.pem -out {cert_dir}/cert.pem"
+        ' -days 365 -subj "/C=RU/ST=Moscow/L=Moscow/O=Arenadata Software LLC/OU=Release/CN=ADCM"'
+        f' -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" -nodes',
+    )
+
+    return cert_dir
+
+
 @pytest.fixture(scope="function")
-def adcm(network: Network, postgres: ADCMPostgresContainer) -> Generator[ADCMContainer, None, None]:
+def adcm(
+    network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir: Path
+) -> Generator[ADCMContainer, None, None]:
     suffix = "".join(random.sample(string.ascii_letters, k=6)).lower()
     db = DatabaseInfo(name=f"adcm_{suffix}", host=postgres.name)
     postgres.execute_statement(f"CREATE DATABASE {db.name} OWNER {DB_USER}")
 
-    with ADCMContainer(image=adcm_image_name, network=network, db=db) as container:
+    adcm = ADCMContainer(image=adcm_image_name, network=network, db=db)
+    adcm.with_volume_mapping(host=str(ssl_certs_dir), container="/adcm/data/conf/ssl/")
+
+    with adcm as container:
         yield container
 
     postgres.execute_statement(f"DROP DATABASE {db.name}")
@@ -61,11 +80,19 @@ def adcm(network: Network, postgres: ADCMPostgresContainer) -> Generator[ADCMCon
 
 
 @pytest_asyncio.fixture(scope="function")
-async def adcm_client(request: pytest.FixtureRequest, adcm: ADCMContainer) -> AsyncGenerator[ADCMClient, None]:
+async def adcm_client(
+    request: pytest.FixtureRequest, adcm: ADCMContainer, ssl_certs_dir: Path
+) -> AsyncGenerator[ADCMClient, None]:
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
-    url = adcm.url
+    url = adcm.ssl_url
     extra_kwargs = getattr(request, "param", {})
-    kwargs: dict = {"timeout": 10, "retry_interval": 1, "retry_attempts": 1} | extra_kwargs
+
+    kwargs: dict = {
+        "verify": str(ssl_certs_dir / "cert.pem"),
+        "timeout": 10,
+        "retry_interval": 1,
+        "retry_attempts": 1,
+    } | extra_kwargs
     async with ADCMSession(url=url, credentials=credentials, **kwargs) as client:
         yield client
 
