@@ -48,7 +48,7 @@ async def context(
 
     first_component = await service.components.get(name__eq="first")
     mapping = await cluster.mapping
-    await mapping.add(component=first_component, host=host_1)
+    await mapping.add(component=first_component, host=(host_1, host_2))
     await mapping.save()
 
     second_component = await service.components.get(name__eq="second")
@@ -88,23 +88,34 @@ async def _test_direct_maintenance_mode_change(obj: Service | Component | Host, 
 
 async def _test_indirect_mm_change(context: Context) -> None:
     # objects in mapping hierarchy
-    host, component, service = context.host_1, context.first_component, context.service
+    host_1, host_2, component, service = context.host_1, context.host_2, context.first_component, context.service
 
     # turn on mm on host
-    await (await host.maintenance_mode).on()
+    await (await host_1.maintenance_mode).on()
+
+    await service.refresh()
+    assert (await service.maintenance_mode).value == "off" == await get_object_mm(service, context.httpx_client)
+    await component.refresh()
+    assert (await component.maintenance_mode).value == "off" == await get_object_mm(component, context.httpx_client)
+
+    # turn on mm on all hosts
+    await (await host_2.maintenance_mode).on()
 
     await service.refresh()
     assert (await service.maintenance_mode).value == "on" == await get_object_mm(service, context.httpx_client)
     await component.refresh()
     assert (await component.maintenance_mode).value == "on" == await get_object_mm(component, context.httpx_client)
 
-    await (await host.maintenance_mode).off()
+    await (await host_1.maintenance_mode).off()
+    await (await host_2.maintenance_mode).off()
 
     # turn on mm on component
     await (await component.maintenance_mode).on()
 
-    await host.refresh()
-    assert (await host.maintenance_mode).value == "off" == await get_object_mm(host, context.httpx_client)
+    await host_1.refresh()
+    assert (await host_1.maintenance_mode).value == "off" == await get_object_mm(host_1, context.httpx_client)
+    await host_2.refresh()
+    assert (await host_2.maintenance_mode).value == "off" == await get_object_mm(host_2, context.httpx_client)
     await service.refresh()
     assert (await service.maintenance_mode).value == "off" == await get_object_mm(service, context.httpx_client)
 
@@ -115,8 +126,10 @@ async def _test_indirect_mm_change(context: Context) -> None:
     for component_object in all_components:
         await (await component_object.maintenance_mode).on()
 
-    await host.refresh()
-    assert (await host.maintenance_mode).value == "off" == await get_object_mm(host, context.httpx_client)
+    await host_1.refresh()
+    assert (await host_1.maintenance_mode).value == "off" == await get_object_mm(host_1, context.httpx_client)
+    await host_2.refresh()
+    assert (await host_2.maintenance_mode).value == "off" == await get_object_mm(host_2, context.httpx_client)
     await service.refresh()
     assert (await service.maintenance_mode).value == "on" == await get_object_mm(service, context.httpx_client)
 
@@ -126,8 +139,10 @@ async def _test_indirect_mm_change(context: Context) -> None:
     # turn on mm on service
     await (await service.maintenance_mode).on()
 
-    await host.refresh()
-    assert (await host.maintenance_mode).value == "off" == await get_object_mm(host, context.httpx_client)
+    await host_1.refresh()
+    assert (await host_1.maintenance_mode).value == "off" == await get_object_mm(host_1, context.httpx_client)
+    await host_2.refresh()
+    assert (await host_2.maintenance_mode).value == "off" == await get_object_mm(host_2, context.httpx_client)
 
     for component_obj in await service.components.all():
         assert (
@@ -137,3 +152,7 @@ async def _test_indirect_mm_change(context: Context) -> None:
         )
 
     await (await service.maintenance_mode).off()
+
+
+async def _test_change_mm_via_action(context: Context) -> None:
+    pass
