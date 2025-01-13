@@ -48,11 +48,14 @@ def postgres(network: Network) -> Generator[ADCMPostgresContainer, None, None]:
 def ssl_certs_dir(tmp_path_factory: pytest.TempdirFactory) -> Path:
     cert_dir = Path(tmp_path_factory.mktemp("cert"))
 
-    os.system(  # noqa: S605
+    exit_code = os.system(  # noqa: S605
         f"openssl req -x509 -newkey rsa:4096 -keyout {cert_dir}/key.pem -out {cert_dir}/cert.pem"
         ' -days 365 -subj "/C=RU/ST=Moscow/L=Moscow/O=Arenadata Software LLC/OU=Release/CN=ADCM"'
         f' -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" -nodes',
     )
+    if exit_code != 0:
+        message = "Certificate generation failed, see logs for more details"
+        raise RuntimeError(message)
 
     return cert_dir
 
