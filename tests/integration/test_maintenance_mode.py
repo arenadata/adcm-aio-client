@@ -5,6 +5,7 @@ import pytest
 import pytest_asyncio
 
 from adcm_aio_client.core.client import ADCMClient
+from adcm_aio_client.core.errors import ConflictError
 from adcm_aio_client.core.filters import Filter
 from adcm_aio_client.core.objects.cm import Bundle, Component, Host, Service
 
@@ -93,6 +94,8 @@ async def test_maintenance_mode(context: Context) -> None:
 
     for obj in {context.service_2, context.first_component_2, context.host_3}:
         await _test_change_mm_via_action(obj=obj, adcm_client=context.client, httpx_client=context.httpx_client)
+
+    await _test_mm_effects_on_mapping(context=context)
 
 
 async def _test_direct_maintenance_mode_change(obj: Service | Component | Host, httpx_client: AsyncClient) -> None:
@@ -213,3 +216,41 @@ async def _test_change_mm_via_action(
     await obj.refresh()
     mm = await obj.maintenance_mode
     assert mm.value == "off" == await get_object_mm(obj, httpx_client)
+
+
+async def _test_mm_effects_on_mapping(context: Context) -> None:
+    cluster, component, host_1, host_2 = (
+        context.service.cluster,
+        context.first_component,
+        context.host_1,
+        context.host_2,
+    )
+    mapping = await cluster.mapping
+
+    # prepare: component, host_1 mapped to component and in mm, host_2 in cluster
+    await mapping.remove(component=component, host=host_2)
+    await mapping.save()
+
+    await (await host_1.maintenance_mode).on()
+
+    # test unmap host_1 in mm
+    await mapping.remove(component=component, host=host_1)
+    await mapping.save()
+
+    # test map host_2 not in mm
+    await mapping.add(component=component, host=host_2)
+    await mapping.save()
+
+    # prepare: component, host_1, host_2 in cluster, not mapped, host_1 in mm
+    await mapping.remove(component=component, host=(host_1, host_2))
+    await mapping.save()
+
+    # test map host_1 in mm
+    await mapping.add(component=component, host=host_1)
+    with pytest.raises(ConflictError, match="You can't save hc with hosts in maintenance mode"):
+        await mapping.save()
+
+    # test map host_2 not in mm
+    await mapping.add(component=component, host=host_2)
+    with pytest.raises(ConflictError, match="You can't save hc with hosts in maintenance mode"):
+        await mapping.save()
