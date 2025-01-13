@@ -191,9 +191,9 @@ async def _test_clusters_node(
     assert_clusters_collection(clusters=first_page_clusters, expected_amount=page_size)
 
     # iter
-    iter_clusters = set()
+    iter_clusters = []
     async for cluster in adcm_client.clusters.iter():
-        iter_clusters.add(cluster)
+        iter_clusters.append(cluster)
     assert_clusters_collection(clusters=iter_clusters, expected_amount=num_clusters)
 
     # filter

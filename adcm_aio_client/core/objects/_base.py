@@ -84,9 +84,6 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
             return False
         return self.id == other_id and self.__class__.__name__ == other.__class__.__name__
 
-    def __hash__(self: Self) -> int:
-        return hash((self.__class__.__name__, self.id))
-
 
 class RootInteractiveObject(InteractiveObject):
     def get_own_path(self: Self) -> Endpoint:
