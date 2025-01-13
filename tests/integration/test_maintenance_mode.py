@@ -19,6 +19,10 @@ class Context(NamedTuple):
     second_component: Component
     host_1: Host
     host_2: Host
+    # second set of objects with defined MM actions
+    service_2: Service
+    first_component_2: Component
+    host_3: Host
 
 
 async def get_object_mm(obj: Service | Component | Host, httpx_client: AsyncClient) -> str:
@@ -34,6 +38,7 @@ async def context(
     adcm_client: ADCMClient,
     httpx_client: AsyncClient,
     complex_cluster_bundle: Bundle,
+    previous_complex_cluster_bundle: Bundle,
     simple_hostprovider_bundle: Bundle,
 ) -> Context:
     cluster = await adcm_client.clusters.create(bundle=complex_cluster_bundle, name="Test cluster with mm")
@@ -53,6 +58,19 @@ async def context(
 
     second_component = await service.components.get(name__eq="second")
 
+    # with mm actions
+    cluster_2 = await adcm_client.clusters.create(bundle=previous_complex_cluster_bundle, name="Test cluster 2 with mm")
+    service_2 = await cluster_2.services.add(filter_=Filter(attr="name", op="eq", value="example_1"))
+    assert len(service_2) == 1
+    service_2 = service_2[0]
+    first_component_2 = await service_2.components.get(name__eq="first")
+
+    host_3 = await adcm_client.hosts.create(hostprovider=provider, name="host-3", cluster=cluster_2)
+
+    mapping_2 = await cluster_2.mapping
+    await mapping_2.add(component=first_component_2, host=host_3)
+    await mapping_2.save()
+
     return Context(
         client=adcm_client,
         httpx_client=httpx_client,
@@ -61,6 +79,9 @@ async def context(
         second_component=second_component,
         host_1=host_1,
         host_2=host_2,
+        service_2=service_2,
+        first_component_2=first_component_2,
+        host_3=host_3,
     )
 
 
@@ -69,6 +90,9 @@ async def test_maintenance_mode(context: Context) -> None:
         await _test_direct_maintenance_mode_change(obj=obj, httpx_client=context.httpx_client)
 
     await _test_indirect_mm_change(context=context)
+
+    for obj in {context.service_2, context.first_component_2, context.host_3}:
+        await _test_change_mm_via_action(obj=obj, adcm_client=context.client, httpx_client=context.httpx_client)
 
 
 async def _test_direct_maintenance_mode_change(obj: Service | Component | Host, httpx_client: AsyncClient) -> None:
@@ -154,5 +178,38 @@ async def _test_indirect_mm_change(context: Context) -> None:
     await (await service.maintenance_mode).off()
 
 
-async def _test_change_mm_via_action(context: Context) -> None:
-    pass
+async def _test_change_mm_via_action(
+    obj: Service | Component | Host, adcm_client: ADCMClient, httpx_client: AsyncClient
+) -> None:
+    if isinstance(obj, Host):
+        turn_on_name = "adcm_host_turn_on_maintenance_mode"
+        turn_off_name = "adcm_host_turn_off_maintenance_mode"
+    else:
+        turn_on_name = "adcm_turn_on_maintenance_mode"
+        turn_off_name = "adcm_turn_off_maintenance_mode"
+
+    # check initial mm state
+    mm = await obj.maintenance_mode
+    assert mm.value == "off" == await get_object_mm(obj, httpx_client)
+
+    # turn mm on via action
+    await mm.on()
+    assert mm.value == "changing"
+
+    mm_task = await adcm_client.jobs.get(object=obj, name__eq=turn_on_name)
+    await mm_task.wait(timeout=10, poll_interval=1)
+
+    await obj.refresh()
+    mm = await obj.maintenance_mode
+    assert mm.value == "on" == await get_object_mm(obj, httpx_client)
+
+    # turn mm off via action
+    await mm.off()
+    assert mm.value == "changing"
+
+    mm_task = await adcm_client.jobs.get(object=obj, name__eq=turn_off_name)
+    await mm_task.wait(timeout=10, poll_interval=1)
+
+    await obj.refresh()
+    mm = await obj.maintenance_mode
+    assert mm.value == "off" == await get_object_mm(obj, httpx_client)
