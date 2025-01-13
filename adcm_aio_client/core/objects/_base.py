@@ -82,10 +82,10 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
     def __eq__(self: Self, other: object) -> bool:
         if not (other_id := getattr(other, "id", None)):
             return False
-        return self.id == other_id and self.__class__ == other.__class__
+        return self.id == other_id and self.__class__.__name__ == other.__class__.__name__
 
     def __hash__(self: Self) -> int:
-        return hash((self.__class__, self.id))
+        return hash((self.__class__.__name__, self.id))
 
 
 class RootInteractiveObject(InteractiveObject):
