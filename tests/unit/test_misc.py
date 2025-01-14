@@ -38,9 +38,9 @@ async def test_async_cached_property() -> None:
 
 def test_filter_init() -> None:
     with pytest.raises(TypeError):
-        Filter("name", "contains", "123")
+        Filter("name", "contains", "123")  # pyright: ignore[reportCallIssue]
 
     with pytest.raises(TypeError):
-        Filter("name", op="contains", value="123")
+        Filter("name", op="contains", value="123")  # pyright: ignore[reportCallIssue]
 
     Filter(attr="name", op="contains", value="123")
