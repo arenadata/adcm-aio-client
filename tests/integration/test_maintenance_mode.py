@@ -228,29 +228,37 @@ async def _test_mm_effects_on_mapping(context: Context) -> None:
     mapping = await cluster.mapping
 
     # prepare: component, host_1 mapped to component and in mm, host_2 in cluster
-    await mapping.remove(component=component, host=host_2)
+    mapping.empty()
+    await mapping.add(component=component, host=host_1)
     await mapping.save()
 
     await (await host_1.maintenance_mode).on()
 
     # test unmap host_1 in mm
+    await cluster.refresh()
+    mapping = await cluster.mapping
     await mapping.remove(component=component, host=host_1)
     await mapping.save()
 
     # test map host_2 not in mm
+    await cluster.refresh()
+    mapping = await cluster.mapping
     await mapping.add(component=component, host=host_2)
     await mapping.save()
 
     # prepare: component, host_1, host_2 in cluster, not mapped, host_1 in mm
-    await mapping.remove(component=component, host=(host_1, host_2))
+    mapping.empty()
     await mapping.save()
 
     # test map host_1 in mm
+    await cluster.refresh()
+    mapping = await cluster.mapping
     await mapping.add(component=component, host=host_1)
     with pytest.raises(ConflictError, match="You can't save hc with hosts in maintenance mode"):
         await mapping.save()
 
     # test map host_2 not in mm
+    await cluster.refresh()
+    mapping = await cluster.mapping
     await mapping.add(component=component, host=host_2)
-    with pytest.raises(ConflictError, match="You can't save hc with hosts in maintenance mode"):
-        await mapping.save()
+    await mapping.save()
