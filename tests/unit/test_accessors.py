@@ -279,7 +279,7 @@ async def _test_paginated_accessor_common_methods[T: dict | list](
     assert all(map(check_entry, (*first_entries, *rest_entries)))
 
     # empty page was not read (because previous page < PAGE_SIZE)
-    assert requester.queue.popleft()["results"] == []
+    assert requester.queue.popleft()["results"] == []  # pyright: ignore[reportCallIssue, reportArgumentType]
 
     # now all results are read
     assert len(requester.queue) == 0
