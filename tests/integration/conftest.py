@@ -1,11 +1,19 @@
+from asyncio import sleep
+from collections import deque
+from io import BytesIO
+import tarfile
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 from urllib.parse import urljoin
 import os
+import re
 import random
 import string
+from uuid import uuid4
 
+from docker.models.containers import Container
 from httpx import AsyncClient
+import docker
 from testcontainers.core.network import Network
 import pytest
 import pytest_asyncio
@@ -30,6 +38,22 @@ BUNDLES = Path(__file__).parent / "bundles"
 ################
 # Infrastructure
 ################
+
+def is_docker() -> bool:
+    """
+    Look into cgroup to detect if we are in container
+    """
+    # taken from adcm_pytest_plugin
+    try:
+        with Path("/proc/self/cgroup").open(encoding="utf-8") as file:
+            for line in file:
+                if re.match(r"\d+:[\w=]+:/docker(-[ce]e)?/\w+", line):
+                    return True
+    except FileNotFoundError:
+        pass
+    return False
+
+
 
 
 @pytest.fixture(scope="session")
@@ -69,9 +93,19 @@ def adcm(
     postgres.execute_statement(f"CREATE DATABASE {db.name} OWNER {DB_USER}")
 
     adcm = ADCMContainer(image=adcm_image_name, network=network, db=db)
-    adcm.with_volume_mapping(host=str(ssl_certs_dir), container="/adcm/data/conf/ssl/")
+    # adcm.with_volume_mapping(host=str(ssl_certs_dir), container="/adcm/data/conf/ssl/")
+    file = BytesIO()
+    with tarfile.open(mode="w:gz", fileobj=file) as tar:
+        tar.add(ssl_certs_dir, "")
+    file.seek(0)
 
     with adcm as container:
+        docker_container = container.get_wrapped_container()
+        docker_container.put_archive("/adcm/data/conf/ssl", file.read())
+        ec, out = container.exec(["nginx", "-s", "reload"])
+        if ec != 0:
+            raise RuntimeError(f"Failed to reload nginx after attaching certs: {out.decode('utf-8')}")
+
         yield container
 
     postgres.execute_statement(f"DROP DATABASE {db.name}")
@@ -89,6 +123,8 @@ async def adcm_client(
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
     url = adcm.ssl_url
     extra_kwargs = getattr(request, "param", {})
+
+    await sleep(5)
 
     kwargs: dict = {
         "verify": str(ssl_certs_dir / "cert.pem"),
