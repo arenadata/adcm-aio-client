@@ -80,9 +80,7 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
         return f"<{self.__class__.__name__} #{self.id}{name}>"
 
     def __eq__(self: Self, other: object) -> bool:
-        if not (other_id := getattr(other, "id", None)):
-            return False
-        return self.id == other_id and self.__class__.__name__ == other.__class__.__name__
+        return self.id == getattr(other, "id", None) and self.__class__ == other.__class__
 
 
 class RootInteractiveObject(InteractiveObject):
