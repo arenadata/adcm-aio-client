@@ -221,5 +221,6 @@ async def _test_service_object_api(service: Service, parent_cluster: Cluster) ->
     assert isinstance(await service.imports, Imports)
     assert isinstance(await service.config_host_groups.all(), list)
     assert isinstance(await service.action_host_groups.all(), list)
+    assert (await service.maintenance_mode).value == "off"
 
     return service_id, name, display_name, cluster_id
