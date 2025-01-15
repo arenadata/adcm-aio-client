@@ -87,7 +87,7 @@ class Accessor[ReturnObject: InteractiveObject](ABC):
 
 class PaginatedAccessor[ReturnObject: InteractiveObject](Accessor[ReturnObject]):
     async def iter(self: Self, **filters: FilterValue) -> AsyncGenerator[ReturnObject, None]:
-        start, step = 0, 10
+        start, step = 0, 50
         while True:
             response = await self._request_endpoint(query={"offset": start, "limit": step}, filters=filters)
             results = self._extract_results_from_response(response=response)
@@ -97,6 +97,9 @@ class PaginatedAccessor[ReturnObject: InteractiveObject](Accessor[ReturnObject])
 
             for record in results:
                 yield self._create_object(record)
+
+            if len(results) < step:
+                return
 
             start += step
 
