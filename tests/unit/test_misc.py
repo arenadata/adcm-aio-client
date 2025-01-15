@@ -3,6 +3,8 @@ from typing import Self
 from asyncstdlib.functools import cached_property as async_cached_property
 import pytest
 
+from adcm_aio_client.core.filters import Filter
+
 pytestmark = [pytest.mark.asyncio]
 
 
@@ -32,3 +34,13 @@ async def test_async_cached_property() -> None:
     res = await obj.func
     assert res == 2, "Expected to execute func() again, increasing the counter"
     assert "func" in obj.__dict__
+
+
+def test_filter_init() -> None:
+    with pytest.raises(TypeError):
+        Filter("name", "contains", "123")  # pyright: ignore[reportCallIssue]
+
+    with pytest.raises(TypeError):
+        Filter("name", op="contains", value="123")  # pyright: ignore[reportCallIssue]
+
+    Filter(attr="name", op="contains", value="123")
