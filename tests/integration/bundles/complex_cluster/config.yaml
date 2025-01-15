@@ -1,6 +1,7 @@
 - type: cluster
   name: Some Cluster
   version: 1
+  allow_maintenance_mode: true
 
   upgrade:
     - &upgrade

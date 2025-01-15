@@ -95,8 +95,7 @@ async def test_host_objects(
 
     host_name = "Target-test-host"
     provider = await adcm_client.hostproviders.create(bundle=complex_hostprovider_bundle, name="New provider")
-    await adcm_client.hosts.create(hostprovider=provider, name=host_name)
-    target_host = await adcm_client.hosts.get(name__eq=host_name)
+    target_host = await adcm_client.hosts.create(hostprovider=provider, name=host_name)
 
     cluster = await adcm_client.clusters.create(
         bundle=complex_cluster_bundle, name="Cluster with hosts", description="descr"

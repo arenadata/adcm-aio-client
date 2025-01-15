@@ -165,3 +165,4 @@ async def _test_component_object_api(component: Component, parent_service: Servi
     assert isinstance(component.config_history, ConfigHistoryNode)
     assert isinstance(await component.config_host_groups.all(), list)
     assert isinstance(await component.action_host_groups.all(), list)
+    assert (await component.maintenance_mode).value == "off"

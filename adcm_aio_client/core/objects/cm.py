@@ -247,6 +247,7 @@ class Service(
     WithImports,
     WithActionHostGroups,
     WithConfigHostGroups,
+    WithMaintenanceMode,
     InteractiveChildObject[Cluster],
 ):
     PATH_PREFIX = "services"
@@ -316,7 +317,13 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
 
 
 class Component(
-    WithStatus, WithActions, WithConfig, WithActionHostGroups, WithConfigHostGroups, InteractiveChildObject[Service]
+    WithStatus,
+    WithActions,
+    WithConfig,
+    WithActionHostGroups,
+    WithConfigHostGroups,
+    WithMaintenanceMode,
+    InteractiveChildObject[Service],
 ):
     PATH_PREFIX = "components"
 
