@@ -33,7 +33,7 @@ type FilterValue = FilterSingleValue | Iterable[FilterSingleValue]
 type SimplifiedValue = str | int | tuple[str | int, ...]
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, kw_only=True)
 class Filter:
     attr: str
     op: str
