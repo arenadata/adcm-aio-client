@@ -5,10 +5,10 @@ import asyncio
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.filters import Filter
-from adcm_aio_client.core.objects._imports import Imports
-from adcm_aio_client.core.objects.cm import Cluster, Service
+from adcm_aio_client import Filter
+from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.objects import Cluster, Service
+from adcm_aio_client.objects._imports import Imports
 from tests.integration.bundle import create_bundles_by_template, pack_bundle
 from tests.integration.conftest import BUNDLES
 

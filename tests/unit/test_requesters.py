@@ -8,9 +8,9 @@ from httpx import AsyncClient
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.errors import ResponseDataConversionError, UnknownError
-from adcm_aio_client.core.requesters import DefaultRequester, HTTPXRequesterResponse
-from adcm_aio_client.core.types import RetryPolicy
+from adcm_aio_client._types import RetryPolicy
+from adcm_aio_client.errors import ResponseDataConversionError, UnknownError
+from adcm_aio_client.requesters import DefaultRequester, HTTPXRequesterResponse
 
 pytestmark = [pytest.mark.asyncio]
 

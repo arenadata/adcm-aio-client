@@ -6,17 +6,17 @@ import yaml
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.config._objects import Parameter, ParameterGroup
-from adcm_aio_client.core.errors import (
+from adcm_aio_client import Filter
+from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.config import Parameter, ParameterGroup
+from adcm_aio_client.errors import (
     ConfigNoParameterError,
     NoConfigInActionError,
     NoMappingInActionError,
     UnknownError,
 )
-from adcm_aio_client.core.filters import Filter
-from adcm_aio_client.core.mapping.refresh import apply_remote_changes
-from adcm_aio_client.core.objects.cm import Bundle, HostProvider, Job
+from adcm_aio_client.mapping._refresh import apply_remote_changes
+from adcm_aio_client.objects import Bundle, HostProvider, Job
 from tests.integration.bundle import pack_bundle
 
 pytestmark = [pytest.mark.asyncio]

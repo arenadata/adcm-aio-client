@@ -5,9 +5,10 @@ from typing import Any, Protocol, Self, overload
 import json
 import asyncio
 
-from adcm_aio_client.core.config._operations import find_config_difference
-from adcm_aio_client.core.config.refresh import apply_local_changes
-from adcm_aio_client.core.config.types import (
+from adcm_aio_client._types import AwareOfOwnPath, WithRequesterProperty
+from adcm_aio_client.config._refresh import apply_local_changes
+from adcm_aio_client.config._operations import find_config_difference
+from adcm_aio_client.config._types import (
     ActionConfigData,
     AnyParameterName,
     ConfigData,
@@ -18,8 +19,7 @@ from adcm_aio_client.core.config.types import (
     LevelNames,
     LocalConfigs,
 )
-from adcm_aio_client.core.errors import ConfigComparisonError, ConfigNoParameterError, RequesterError
-from adcm_aio_client.core.types import AwareOfOwnPath, WithRequesterProperty
+from adcm_aio_client.errors import ConfigComparisonError, ConfigNoParameterError, RequesterError
 
 
 class ConfigOwner(WithRequesterProperty, AwareOfOwnPath, Protocol): ...

@@ -3,11 +3,10 @@ from typing import Self
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
-from adcm_aio_client.core.actions import ActionsAccessor, UpgradeNode
-from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
-from adcm_aio_client.core.config._objects import ConfigOwner, HostGroupConfig
-from adcm_aio_client.core.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
-from adcm_aio_client.core.objects._imports import Imports
+from adcm_aio_client.actions._objects import ActionsAccessor, UpgradeNode
+from adcm_aio_client.config._objects import ConfigHistoryNode, ConfigOwner, HostGroupConfig, ObjectConfig
+from adcm_aio_client.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
+from adcm_aio_client.objects._imports import Imports
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):

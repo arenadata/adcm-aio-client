@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.errors import ObjectDoesNotExistError
-from adcm_aio_client.core.objects.cm import Bundle
-from adcm_aio_client.core.requesters import BundleRetrieverInterface, DefaultRequester
+from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.errors import ObjectDoesNotExistError
+from adcm_aio_client.objects import Bundle
+from adcm_aio_client.requesters import BundleRetrieverInterface, DefaultRequester
 from tests.integration.bundle import create_bundles_by_template, pack_bundle
 from tests.integration.conftest import BUNDLES
 

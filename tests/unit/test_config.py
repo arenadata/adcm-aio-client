@@ -4,16 +4,16 @@ import json
 
 import pytest
 
-from adcm_aio_client.core.config._objects import (
+from adcm_aio_client._types import Endpoint, Requester
+from adcm_aio_client.config._objects import (
     ActivatableParameterGroup,
     ConfigOwner,
     ObjectConfig,
     Parameter,
     ParameterGroup,
 )
-from adcm_aio_client.core.config.types import ConfigData, ConfigSchema
-from adcm_aio_client.core.objects._base import InteractiveObject
-from adcm_aio_client.core.types import Endpoint, Requester
+from adcm_aio_client.config._types import ConfigData, ConfigSchema
+from adcm_aio_client.objects._base import InteractiveObject
 from tests.unit.conftest import RESPONSES
 
 

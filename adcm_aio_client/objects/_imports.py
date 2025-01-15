@@ -1,10 +1,10 @@
 from collections.abc import Collection, Iterable
 from typing import TYPE_CHECKING, Self, Union
 
-from adcm_aio_client.core.types import Endpoint, Requester
+from adcm_aio_client._types import Endpoint, Requester
 
 if TYPE_CHECKING:
-    from adcm_aio_client.core.objects.cm import Cluster, Service
+    from adcm_aio_client.objects import Cluster, Service
 
 
 class Imports:

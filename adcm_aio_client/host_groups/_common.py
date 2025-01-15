@@ -5,22 +5,22 @@ from typing import TYPE_CHECKING, Any, Self, Union
 import asyncio
 import builtins
 
-from adcm_aio_client.core.filters import Filter, FilterValue
-from adcm_aio_client.core.objects._accessors import (
+from adcm_aio_client._filters import Filter, FilterValue
+from adcm_aio_client._types import Endpoint, HostID, QueryParameters, Requester, RequesterResponse
+from adcm_aio_client._utils import safe_gather
+from adcm_aio_client.objects._accessors import (
     DefaultQueryParams as AccessorFilter,
 )
-from adcm_aio_client.core.objects._accessors import (
+from adcm_aio_client.objects._accessors import (
     NonPaginatedAccessor,
     PaginatedChildAccessor,
     filters_to_inline,
 )
-from adcm_aio_client.core.types import Endpoint, HostID, QueryParameters, Requester, RequesterResponse
-from adcm_aio_client.core.utils import safe_gather
 
 if TYPE_CHECKING:
-    from adcm_aio_client.core.host_groups.action_group import ActionHostGroup
-    from adcm_aio_client.core.host_groups.config_group import ConfigHostGroup
-    from adcm_aio_client.core.objects.cm import Cluster, Component, Host, HostProvider, Service
+    from adcm_aio_client.host_groups._action_group import ActionHostGroup
+    from adcm_aio_client.host_groups._config_group import ConfigHostGroup
+    from adcm_aio_client.objects._cm import Cluster, Component, Host, HostProvider, Service
 
 
 class HostsInHostGroupNode(NonPaginatedAccessor["Host"]):
@@ -29,7 +29,7 @@ class HostsInHostGroupNode(NonPaginatedAccessor["Host"]):
     def __new__(cls: type[Self], path: Endpoint, requester: Requester, accessor_filter: AccessorFilter = None) -> Self:
         _ = path, requester, accessor_filter
         if not hasattr(cls, "class_type"):
-            from adcm_aio_client.core.objects.cm import Host, HostsAccessor
+            from adcm_aio_client.objects._cm import Host, HostsAccessor
 
             cls.class_type = Host
             cls.filtering = HostsAccessor.filtering
@@ -94,7 +94,7 @@ class HostsInHostGroupNode(NonPaginatedAccessor["Host"]):
     async def _retrieve_host_ids(
         self: Self, host: Union["Host", Iterable["Host"], Filter], sources: Iterable[Endpoint]
     ) -> builtins.set[HostID]:
-        from adcm_aio_client.core.objects.cm import Host
+        from adcm_aio_client.objects._cm import Host
 
         if isinstance(host, Host):
             return {host.id}

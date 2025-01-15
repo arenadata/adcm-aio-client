@@ -1,7 +1,7 @@
 from collections.abc import Awaitable, Iterable
 import asyncio
 
-from adcm_aio_client.core.types import RequesterResponse
+from adcm_aio_client._types import RequesterResponse
 
 
 async def safe_gather(coros: Iterable[Awaitable[RequesterResponse]], msg: str) -> ExceptionGroup | None:

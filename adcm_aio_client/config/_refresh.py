@@ -1,5 +1,5 @@
-from adcm_aio_client.core.config._operations import find_config_difference
-from adcm_aio_client.core.config.types import ConfigData, ConfigSchema, LocalConfigs
+from adcm_aio_client.config._operations import find_config_difference
+from adcm_aio_client.config._types import ConfigData, ConfigSchema, LocalConfigs
 
 
 def apply_local_changes(local: LocalConfigs, remote: ConfigData, schema: ConfigSchema) -> ConfigData:

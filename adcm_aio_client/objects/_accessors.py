@@ -15,10 +15,10 @@ from collections.abc import AsyncGenerator
 from contextlib import suppress
 from typing import Any, Self
 
-from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
-from adcm_aio_client.core.filters import Filter, Filtering, FilterValue
-from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
-from adcm_aio_client.core.types import Endpoint, QueryParameters, Requester, RequesterResponse
+from adcm_aio_client._filters import Filter, Filtering, FilterValue
+from adcm_aio_client._types import Endpoint, QueryParameters, Requester, RequesterResponse
+from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.objects._base import InteractiveChildObject, InteractiveObject
 
 # filter for narrowing response objects
 type DefaultQueryParams = QueryParameters | None

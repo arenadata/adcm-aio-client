@@ -13,11 +13,13 @@
 from collections import deque
 from collections.abc import Generator, Iterable
 from dataclasses import dataclass
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
-from adcm_aio_client.core.errors import InvalidFilterError
-from adcm_aio_client.core.objects._base import InteractiveObject
-from adcm_aio_client.core.types import QueryParameters
+from adcm_aio_client._types import QueryParameters
+from adcm_aio_client.errors import InvalidFilterError
+
+if TYPE_CHECKING:
+    from adcm_aio_client.objects._base import InteractiveObject
 
 # Filters
 EQUAL_OPERATIONS = frozenset(("eq", "ieq"))
@@ -115,6 +117,8 @@ class Filtering:
         return f"{first}{''.join(map(str.capitalize, rest))}"
 
     def _simplify_value(self: Self, value: FilterValue) -> SimplifiedValue:
+        from adcm_aio_client.objects._base import InteractiveObject
+
         if isinstance(value, str | int):
             return value
 

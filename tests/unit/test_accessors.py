@@ -3,16 +3,16 @@ from typing import Any, Self
 
 import pytest
 
-from adcm_aio_client.core.errors import InvalidFilterError, MultipleObjectsReturnedError, ObjectDoesNotExistError
-from adcm_aio_client.core.filters import FilterBy, FilterByName, Filtering
-from adcm_aio_client.core.objects._accessors import (
+from adcm_aio_client._filters import FilterBy, FilterByName, Filtering
+from adcm_aio_client._types import Endpoint
+from adcm_aio_client.errors import InvalidFilterError, MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.objects._accessors import (
     Accessor,
     NonPaginatedChildAccessor,
     PaginatedAccessor,
     PaginatedChildAccessor,
 )
-from adcm_aio_client.core.objects._base import InteractiveChildObject, InteractiveObject
-from adcm_aio_client.core.types import Endpoint
+from adcm_aio_client.objects._base import InteractiveChildObject, InteractiveObject
 from tests.unit.mocks.requesters import QueueRequester
 from tests.unit.utils import n_entries_as_list
 

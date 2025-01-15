@@ -1,25 +1,20 @@
-from adcm_aio_client.core.config._objects import (
-    ActionConfig,
+from adcm_aio_client.config._objects import (
     ActivatableParameterGroup,
     ActivatableParameterGroupHG,
-    ConfigHistoryNode,
-    HostGroupConfig,
-    ObjectConfig,
     Parameter,
     ParameterGroup,
     ParameterGroupHG,
     ParameterHG,
 )
+from adcm_aio_client.config._refresh import apply_local_changes, apply_remote_changes
 
 __all__ = [
-    "ConfigHistoryNode",
-    "ObjectConfig",
-    "ActionConfig",
-    "HostGroupConfig",
     "Parameter",
     "ParameterHG",
     "ParameterGroup",
     "ParameterGroupHG",
     "ActivatableParameterGroup",
     "ActivatableParameterGroupHG",
+    "apply_local_changes",
+    "apply_remote_changes",
 ]
