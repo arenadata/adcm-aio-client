@@ -1,20 +1,16 @@
-from asyncio import sleep
-from collections import deque
-from io import BytesIO
-import tarfile
 from collections.abc import AsyncGenerator, Generator
+from io import BytesIO
 from pathlib import Path
+from time import sleep
 from urllib.parse import urljoin
 import os
-import re
 import random
 import string
-from uuid import uuid4
+import tarfile
 
-from docker.models.containers import Container
 from httpx import AsyncClient
-import docker
 from testcontainers.core.network import Network
+import httpx
 import pytest
 import pytest_asyncio
 
@@ -28,7 +24,6 @@ from tests.integration.setup_environment import (
     ADCMContainer,
     ADCMPostgresContainer,
     DatabaseInfo,
-    adcm_image_name,
     postgres_image_name,
 )
 
@@ -39,21 +34,34 @@ BUNDLES = Path(__file__).parent / "bundles"
 # Infrastructure
 ################
 
-def is_docker() -> bool:
-    """
-    Look into cgroup to detect if we are in container
-    """
-    # taken from adcm_pytest_plugin
-    try:
-        with Path("/proc/self/cgroup").open(encoding="utf-8") as file:
-            for line in file:
-                if re.match(r"\d+:[\w=]+:/docker(-[ce]e)?/\w+", line):
-                    return True
-    except FileNotFoundError:
-        pass
-    return False
 
+def load_certs_to_running_adcm(adcm: ADCMContainer, certs_dir: Path) -> None:
+    file = BytesIO()
+    with tarfile.open(mode="w:gz", fileobj=file) as tar:
+        tar.add(certs_dir, "")
+    file.seek(0)
 
+    container = adcm.get_wrapped_container()
+    container.put_archive("/adcm/data/conf/ssl", file.read())
+    ec, out = adcm.exec(["nginx", "-s", "reload"])
+    if ec != 0:
+        raise RuntimeError(f"Failed to reload nginx after attaching certs: {out.decode('utf-8')}")
+
+    verify_cert_path = str(certs_dir / "cert.pem")
+
+    attempts = 15
+    last_err = None
+
+    for _ in range(attempts):
+        try:
+            httpx.get(adcm.ssl_url, verify=verify_cert_path)
+        except httpx.ConnectError as e:
+            last_err = e
+            sleep(0.1)
+        else:
+            return
+
+    raise RuntimeError(f"Failed to connect to HTTPS port with {attempts} attempts") from last_err
 
 
 @pytest.fixture(scope="session")
@@ -84,28 +92,37 @@ def ssl_certs_dir(tmp_path_factory: pytest.TempdirFactory) -> Path:
     return cert_dir
 
 
+@pytest.fixture(scope="session")
+def adcm_image(network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir: Path) -> str:
+    suffix = "".join(random.sample(string.ascii_letters, k=6)).lower()
+    base_repo = "hub.adsw.io/adcm/adcm"
+    base_tag = "develop"
+    new_repo = "local/adcm"
+    new_tag = f"{base_tag}-ssl-{suffix}"
+
+    db = DatabaseInfo(name=f"adcm_{suffix}_migration", host=postgres.name)
+    postgres.execute_statement(f"CREATE DATABASE {db.name} OWNER {DB_USER}")
+
+    with ADCMContainer(image=f"{base_repo}:{base_tag}", network=network, db=db, migration_mode=True) as adcm:
+        file = BytesIO()
+        with tarfile.open(mode="w:gz", fileobj=file) as tar:
+            tar.add(ssl_certs_dir, "")
+        file.seek(0)
+
+        container = adcm.get_wrapped_container()
+        container.put_archive("/adcm/data/conf/ssl", file.read())
+        container.commit(repository=new_repo, tag=new_tag)
+
+    return f"{new_repo}:{new_tag}"
+
+
 @pytest.fixture(scope="function")
-def adcm(
-    network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir: Path
-) -> Generator[ADCMContainer, None, None]:
+def adcm(network: Network, postgres: ADCMPostgresContainer, adcm_image: str) -> Generator[ADCMContainer, None, None]:
     suffix = "".join(random.sample(string.ascii_letters, k=6)).lower()
     db = DatabaseInfo(name=f"adcm_{suffix}", host=postgres.name)
     postgres.execute_statement(f"CREATE DATABASE {db.name} OWNER {DB_USER}")
 
-    adcm = ADCMContainer(image=adcm_image_name, network=network, db=db)
-    # adcm.with_volume_mapping(host=str(ssl_certs_dir), container="/adcm/data/conf/ssl/")
-    file = BytesIO()
-    with tarfile.open(mode="w:gz", fileobj=file) as tar:
-        tar.add(ssl_certs_dir, "")
-    file.seek(0)
-
-    with adcm as container:
-        docker_container = container.get_wrapped_container()
-        docker_container.put_archive("/adcm/data/conf/ssl", file.read())
-        ec, out = container.exec(["nginx", "-s", "reload"])
-        if ec != 0:
-            raise RuntimeError(f"Failed to reload nginx after attaching certs: {out.decode('utf-8')}")
-
+    with ADCMContainer(image=adcm_image, network=network, db=db) as container:
         yield container
 
     postgres.execute_statement(f"DROP DATABASE {db.name}")
@@ -123,8 +140,6 @@ async def adcm_client(
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
     url = adcm.ssl_url
     extra_kwargs = getattr(request, "param", {})
-
-    await sleep(5)
 
     kwargs: dict = {
         "verify": str(ssl_certs_dir / "cert.pem"),
