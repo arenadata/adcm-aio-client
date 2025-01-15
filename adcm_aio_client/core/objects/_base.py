@@ -137,6 +137,6 @@ class MaintenanceMode:
 
     async def off(self: Self) -> None:
         current_mm_status = await self._requester.post(
-            *self._path, "maintenanceMode", data={"maintenanceMode": MaintenanceModeStatus.OFF}
+            *self._path, "maintenance-mode", data={"maintenanceMode": MaintenanceModeStatus.OFF}
         )
         self._maintenance_mode_status = current_mm_status.as_dict()["maintenanceMode"]

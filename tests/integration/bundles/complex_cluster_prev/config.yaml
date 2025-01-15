@@ -1,9 +1,10 @@
 - type: cluster
   name: Some Cluster
   version: 0.1
+  allow_maintenance_mode: true
 
   actions: &actions
-    success: &job
+    success: &success_job
       display_name: I will survive
       type: job
       script_type: ansible
@@ -14,17 +15,47 @@
         ansible_tags: ok
       masking: {}
 
-    fail:
-      <<: *job
+    fail: &fail_job
+      <<: *success_job
       display_name: no Way
       params:
         ansible_tags: fail
+
+    adcm_host_turn_on_maintenance_mode: &mm_job
+      type: job
+      script: ./host-mm.yaml
+      script_type: ansible
+      host_action: true
+      states:
+        available: any
+      params:
+        ansible_tags: turn_on
+
+    adcm_host_turn_off_maintenance_mode:
+      <<: *mm_job
+      params:
+        ansible_tags: turn_off
 
 
 - type: service
   name: example_1
   display_name: Old naMe
   version: 0.9
+
+  actions:
+    adcm_turn_on_maintenance_mode:
+      <<: *mm_job
+      host_action: false
+      script: ./service-mm.yaml
+      params:
+        ansible_tags: turn_on
+
+    adcm_turn_off_maintenance_mode:
+      <<: *mm_job
+      host_action: false
+      script: ./service-mm.yaml
+      params:
+        ansible_tags: turn_off
 
   config:
     - name: root_int
@@ -35,6 +66,20 @@
   components: &example_c
     first:
       display_name: First Component
+      actions:
+        adcm_turn_on_maintenance_mode:
+          <<: *mm_job
+          host_action: false
+          script: ./component-mm.yaml
+          params:
+            ansible_tags: turn_on
+
+        adcm_turn_off_maintenance_mode:
+          <<: *mm_job
+          host_action: false
+          script: ./component-mm.yaml
+          params:
+            ansible_tags: turn_off
     second:
       display_name: Second Component
 
@@ -47,11 +92,23 @@
 - type: service
   name: with_actions
   version: 2.0
-  actions: *actions
+  actions:
+    success:
+      <<: *success_job
+    fail:
+      <<: *fail_job
 
   components:
     c1:
       display_name: Awesome
-      actions: *actions
+      actions:
+        success:
+          <<: *success_job
+        fail:
+          <<: *fail_job
     c2:
-      actions: *actions
+      actions:
+        success:
+          <<: *success_job
+        fail:
+          <<: *fail_job

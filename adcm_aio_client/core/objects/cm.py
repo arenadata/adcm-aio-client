@@ -2,6 +2,7 @@ from collections import deque
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from datetime import datetime, timedelta
 from functools import cached_property
+from itertools import chain
 from pathlib import Path
 from typing import Any, Literal, Self
 import asyncio
@@ -247,6 +248,7 @@ class Service(
     WithImports,
     WithActionHostGroups,
     WithConfigHostGroups,
+    WithMaintenanceMode,
     InteractiveChildObject[Cluster],
 ):
     PATH_PREFIX = "services"
@@ -278,12 +280,18 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
     filtering = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
     service_add_filtering = Filtering(FilterByName, FilterByDisplayName)
 
-    async def add(self: Self, filter_: Filter, *, accept_license: bool = False) -> list[Service]:
+    async def add(
+        self: Self, filter_: Filter, *, accept_license: bool = False, with_dependencies: bool = False
+    ) -> list[Service]:
         candidates = await self._retrieve_service_candidates(filter_=filter_)
 
         if not candidates:
             message = "No services to add by given filters"
             raise NotFoundError(message)
+
+        if with_dependencies:
+            dependencies_candidates = await self._find_missing_service_dependencies(candidates)
+            candidates.extend(dependencies_candidates)
 
         if accept_license:
             await self._accept_licenses_safe(candidates)
@@ -294,6 +302,39 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
         query = self.service_add_filtering.to_query(filters=(filter_,))
         response = await self._requester.get(*self._parent.get_own_path(), "service-candidates", query=query)
         return response.as_list()
+
+    async def _find_missing_service_dependencies(self: Self, candidates: list[dict]) -> list[dict]:
+        response = await self._requester.get(*self._parent.get_own_path(), "service-prototypes")
+        all_service_prototypes = response.as_list()
+
+        dependencies = {
+            proto["id"]: {dep["servicePrototype"]["id"] for dep in (proto["dependOn"] or ())}
+            for proto in all_service_prototypes
+        }
+
+        candidate_ids = {c["id"] for c in candidates}
+
+        all_candidate_dependencies = self._detect_missing_dependencies(
+            dependencies=dependencies, to_add=candidate_ids, processed=set()
+        )
+        missing_dependencies = all_candidate_dependencies - candidate_ids
+
+        return [proto for proto in all_service_prototypes if proto["id"] in missing_dependencies]
+
+    def _detect_missing_dependencies(
+        self: Self, dependencies: dict[int, set[int]], to_add: set[int], processed: set[int]
+    ) -> set[int]:
+        unprocessed = to_add - processed
+        if not unprocessed:
+            return to_add
+
+        deps_of_unprocessed = set(chain.from_iterable(map(dependencies.__getitem__, unprocessed)))
+        if not deps_of_unprocessed:
+            return to_add
+
+        return self._detect_missing_dependencies(
+            dependencies=dependencies, to_add=to_add | deps_of_unprocessed, processed=processed | unprocessed
+        )
 
     async def _accept_licenses_safe(self: Self, candidates: list[dict]) -> None:
         unaccepted: deque[int] = deque()
@@ -316,7 +357,13 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
 
 
 class Component(
-    WithStatus, WithActions, WithConfig, WithActionHostGroups, WithConfigHostGroups, InteractiveChildObject[Service]
+    WithStatus,
+    WithActions,
+    WithConfig,
+    WithActionHostGroups,
+    WithConfigHostGroups,
+    WithMaintenanceMode,
+    InteractiveChildObject[Service],
 ):
     PATH_PREFIX = "components"
 

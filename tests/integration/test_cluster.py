@@ -1,4 +1,5 @@
 from collections.abc import Collection
+from functools import partial
 import random
 import string
 import asyncio
@@ -85,6 +86,9 @@ async def host(adcm_client: ADCMClient, simple_hostprovider_bundle: Bundle) -> H
     name = "Test-host"
     await adcm_client.hosts.create(hostprovider=provider, name=name)
     return await adcm_client.hosts.get(name__eq=name)
+
+
+# test_cluster
 
 
 async def test_cluster(
@@ -256,3 +260,33 @@ async def _test_cluster_object_api(httpx_client: AsyncClient, cluster: Cluster, 
     assert cluster.name == new_name
 
     return cluster_id, bundle_id, description, status
+
+
+# test_add_services_with_dependencies
+
+
+async def test_add_services_with_dependencies(adcm_client: ADCMClient, complex_cluster_bundle: Bundle) -> None:
+    bundle = complex_cluster_bundle
+    service_name = partial(Filter, attr="name", op="eq")
+
+    cluster = await adcm_client.clusters.create(bundle=bundle, name="Add C With Deps")
+    services = await cluster.services.add(service_name(value="C"), with_dependencies=True)
+    assert len(services) == 3
+    assert {s.name for s in services} == {"A", "B", "C"}
+
+    cluster = await adcm_client.clusters.create(bundle=bundle, name="Add C Without Deps")
+    services = await cluster.services.add(service_name(value="C"), with_dependencies=False)
+    assert len(services) == 1
+    assert {s.name for s in services} == {"C"}
+
+    cluster = await adcm_client.clusters.create(bundle=bundle, name="Add my_service With Deps")
+    services = await cluster.services.add(service_name(value="my_service"), with_dependencies=True)
+    assert len(services) == 1
+    assert {s.name for s in services} == {"my_service"}
+
+    cluster = await adcm_client.clusters.create(bundle=bundle, name="Add two With Deps")
+    to_add = ["service_with_requires_my_component", "service_with_requires_my_service"]
+    filter_ = Filter(attr="name", op="in", value=to_add)
+    services = await cluster.services.add(filter_, with_dependencies=True)
+    assert len(services) == 3
+    assert {s.name for s in services} == {"my_service", *to_add}
