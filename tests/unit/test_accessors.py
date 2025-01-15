@@ -19,6 +19,7 @@ from tests.unit.utils import n_entries_as_list
 pytestmark = [pytest.mark.asyncio]
 
 
+PAGE_SIZE = 50
 no_validation = Filtering()
 
 
@@ -99,7 +100,7 @@ async def test_non_paginated_child(queue_requester: QueueRequester) -> None:
     create_response = create_non_paginated_response
     check_entry = lambda entry: isinstance(entry, DummyChild) and entry._parent is parent  # noqa: E731
 
-    response_sequence = (create_response(10), create_response(4), create_response(0))
+    response_sequence = (create_response(PAGE_SIZE), create_response(4), create_response(0))
     amount_of_entries = len(response_sequence[0])
 
     # get
@@ -141,7 +142,7 @@ async def test_non_paginated_child(queue_requester: QueueRequester) -> None:
     result = await accessor.list()
 
     assert isinstance(result, list)
-    assert len(result) == 10
+    assert len(result) == PAGE_SIZE
     assert all(map(check_entry, result))
 
     assert len(requester.queue) == len(response_sequence) - 1
@@ -192,7 +193,7 @@ async def _test_paginated_accessor_common_methods[T: dict | list](
     extract_entries: Callable[[T], list],
     check_entry: Callable[[Any], bool],
 ) -> None:
-    response_sequence = (create_response(10), create_response(10), create_response(4), create_response(0))
+    response_sequence = (create_response(PAGE_SIZE), create_response(PAGE_SIZE), create_response(4), create_response(0))
     amount_of_all_entries = sum(map(len, map(extract_entries, response_sequence)))
 
     # get
@@ -235,7 +236,7 @@ async def _test_paginated_accessor_common_methods[T: dict | list](
     result = await accessor.list()
 
     assert isinstance(result, list)
-    assert len(result) == 10
+    assert len(result) == PAGE_SIZE
     assert all(map(check_entry, result))
     assert len(requester.queue) == len(response_sequence) - 1
 
@@ -266,7 +267,7 @@ async def _test_paginated_accessor_common_methods[T: dict | list](
     assert len(requester.queue) == len(response_sequence)
     assert isinstance(result, AsyncGenerator)
 
-    n = 11
+    n = PAGE_SIZE + 1
     first_entries = await n_entries_as_list(result, n=n)
     assert len(first_entries) == n
 
@@ -276,6 +277,9 @@ async def _test_paginated_accessor_common_methods[T: dict | list](
     rest_entries = [i async for i in result]
     assert len(rest_entries) == amount_of_all_entries - n
     assert all(map(check_entry, (*first_entries, *rest_entries)))
+
+    # empty page was not read (because previous page < PAGE_SIZE)
+    assert requester.queue.popleft()["results"] == []  # pyright: ignore[reportCallIssue, reportArgumentType]
 
     # now all results are read
     assert len(requester.queue) == 0
