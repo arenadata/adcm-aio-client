@@ -62,13 +62,16 @@ class ADCMPostgresContainer(PostgresContainer):
 
 class ADCMContainer(DockerContainer):
     url: str
+    ssl_url: str
 
-    def __init__(self: Self, image: str, network: Network, db: DatabaseInfo) -> None:
+    def __init__(self: Self, image: str, network: Network, db: DatabaseInfo, *, migration_mode: bool = False) -> None:
         super().__init__(image)
         self._db = db
+        self._migration_mode = migration_mode
 
         self.with_network(network)
 
+        self.with_env("MIGRATION_MODE", "1" if self._migration_mode else "0")
         self.with_env("STATISTICS_ENABLED", "0")
         self.with_env("DB_USER", DB_USER)
         self.with_env("DB_PASS", DB_PASSWORD)
@@ -79,17 +82,21 @@ class ADCMContainer(DockerContainer):
     def start(self: Self) -> Self:
         adcm_port = find_free_port(start=8000, end=8080)
         self.with_bind_ports(8000, adcm_port)
+        ssl_port = find_free_port(start=8400, end=8480)
+        self.with_bind_ports(8443, ssl_port)
 
         self.with_name(f"{adcm_container_name}_{adcm_port}")
 
         super().start()
 
         wait_container_is_ready(self)
-        wait_for_logs(self, "Run Nginx ...")
+        ready_logs = "Run Nginx ..." if not self._migration_mode else "Run main wsgi application ..."
+        wait_for_logs(self, ready_logs)
 
         ip = self.get_container_host_ip()
         port = self.get_exposed_port(8000)
         self.url = f"http://{ip}:{port}"
+        self.ssl_url = f"https://{ip}:{ssl_port}"
 
         return self
 
