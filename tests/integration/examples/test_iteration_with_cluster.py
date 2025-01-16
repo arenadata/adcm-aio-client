@@ -1,6 +1,7 @@
 import pytest
 
-from adcm_aio_client import ADCMSession, Credentials, Filter
+from adcm_aio_client import ADCMSession, Credentials
+from adcm_aio_client import Filter
 from adcm_aio_client.config import Parameter
 from tests.integration.examples.conftest import RETRY_ATTEMPTS, RETRY_INTERVAL, TIMEOUT
 from tests.integration.setup_environment import ADCMContainer
@@ -23,14 +24,14 @@ async def test_iteration_with_cluster(adcm: ADCMContainer) -> None:
         assert len(clusters) == 0
 
 
-async def test_interaction_with_cluster(adcm_for_examples: ADCMContainer) -> None:
+async def test_interaction_with_cluster(adcm: ADCMContainer) -> None:
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
     kwargs: dict = {
         "timeout": 10,
         "retry_interval": 1,
         "retry_attempts": 1,
     }
-    async with ADCMSession(url=adcm_for_examples.url, credentials=credentials, **kwargs) as client:
+    async with ADCMSession(url=adcm.url, credentials=credentials, **kwargs) as client:
         simple_cluster = await client.clusters.create(
             bundle=await client.bundles.get(name__eq="Simple Cluster"), name="simple_cluster"
         )
