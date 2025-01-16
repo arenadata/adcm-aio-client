@@ -163,9 +163,9 @@ async def _test_services_node(cluster: Cluster, num_services: int) -> None:
     assert_services_collection(services=first_page_services, expected_amount=page_size)
 
     # iter
-    iter_services = set()
+    iter_services = []
     async for service in cluster.services.iter():
-        iter_services.add(service)
+        iter_services.append(service)
     assert_services_collection(services=iter_services, expected_amount=num_services)
 
     # filter

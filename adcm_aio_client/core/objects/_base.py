@@ -79,6 +79,9 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
         name = f" {name}" if isinstance(name, str) else ""
         return f"<{self.__class__.__name__} #{self.id}{name}>"
 
+    def __eq__(self: Self, other: object) -> bool:
+        return self.id == getattr(other, "id", None) and self.__class__ == other.__class__
+
 
 class RootInteractiveObject(InteractiveObject):
     def get_own_path(self: Self) -> Endpoint:
