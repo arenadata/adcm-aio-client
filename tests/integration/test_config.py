@@ -96,8 +96,8 @@ async def test_invisible_fields(cluster: Cluster) -> None:
     second_config = await service.config_history[-1]
 
     diff = first_config.difference(second_config)
-    assert len(diff._values) == 1
-    assert ("very_important_flag",) in diff._values
+    assert len(diff._diff) == 1
+    assert ("very_important_flag",) in diff._diff
     assert first_config.data._values["cant_find"] != second_config.data._values["cant_find"]
 
 
@@ -232,11 +232,7 @@ async def test_config(cluster: Cluster) -> None:
     assert earliest_config.id == pre_save_id
 
     diff = latest_config.difference(earliest_config)
-    # group was activated, then deactivated, so returned to initial state
-    # => no diff
-    assert len(diff._attributes) == 0
-    # field values changed from earliest to latest
-    assert len(diff._values) == 6
+    assert len(diff._diff) == 6
 
 
 async def test_host_group_config(cluster: Cluster) -> None:
