@@ -6,7 +6,7 @@ import json
 import asyncio
 
 from adcm_aio_client._types import AwareOfOwnPath, WithRequesterProperty
-from adcm_aio_client.config._refresh import apply_local_changes
+from adcm_aio_client.config import apply_local_changes
 from adcm_aio_client.config._operations import find_config_difference
 from adcm_aio_client.config._types import (
     ActionConfigData,

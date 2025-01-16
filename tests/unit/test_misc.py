@@ -3,7 +3,7 @@ from typing import Self
 from asyncstdlib.functools import cached_property as async_cached_property
 import pytest
 
-from adcm_aio_client.core.filters import Filter
+from adcm_aio_client import Filter
 
 pytestmark = [pytest.mark.asyncio]
 

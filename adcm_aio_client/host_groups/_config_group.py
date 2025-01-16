@@ -8,7 +8,7 @@ from adcm_aio_client.objects._base import InteractiveChildObject
 from adcm_aio_client.objects._common import Deletable, WithConfigOfHostGroup
 
 if TYPE_CHECKING:
-    from adcm_aio_client.objects._cm import Cluster, Component, Service
+    from adcm_aio_client.objects import Cluster, Component, Service
 
 
 class ConfigHostGroup(InteractiveChildObject, Deletable, WithConfigOfHostGroup):

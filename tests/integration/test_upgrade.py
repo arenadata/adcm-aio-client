@@ -15,7 +15,7 @@ from adcm_aio_client.errors import (
     NoMappingInActionError,
     UnknownError,
 )
-from adcm_aio_client.mapping._refresh import apply_remote_changes
+from adcm_aio_client.mapping import apply_remote_changes
 from adcm_aio_client.objects import Bundle, HostProvider, Job
 from tests.integration.bundle import pack_bundle
 

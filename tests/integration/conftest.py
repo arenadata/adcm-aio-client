@@ -14,8 +14,7 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client._session import ADCMSession
-from adcm_aio_client._types import Credentials
+from adcm_aio_client import ADCMSession, Credentials
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.objects import Bundle
 from tests.integration.bundle import pack_bundle

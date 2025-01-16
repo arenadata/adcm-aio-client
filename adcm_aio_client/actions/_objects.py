@@ -144,7 +144,7 @@ class Action(_GenericAction):
 
         response = await self._requester.post(*self.get_own_path(), "run", data=payload)
 
-        from adcm_aio_client.objects._cm import Job
+        from adcm_aio_client.objects import Job
 
         return Job(requester=self._requester, data=response.as_dict())
 
@@ -163,7 +163,7 @@ class Upgrade(_GenericAction):
 
         bundle_id = self._data["bundle"]["id"]
 
-        from adcm_aio_client.objects._cm import Bundle
+        from adcm_aio_client.objects import Bundle
 
         return await Bundle.with_id(requester=self._requester, object_id=bundle_id)
 
@@ -175,7 +175,7 @@ class Upgrade(_GenericAction):
         if response.get_status_code() == 204:
             return None
 
-        from adcm_aio_client.objects._cm import Job
+        from adcm_aio_client.objects import Job
 
         return Job(requester=self._requester, data=response.as_dict())
 
@@ -186,7 +186,7 @@ class UpgradeNode[Parent: InteractiveObject](NonPaginatedChildAccessor[Parent, U
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:
-    from adcm_aio_client.objects._cm import ActionHostGroup, Cluster, Component, Host, Service
+    from adcm_aio_client.objects import ActionHostGroup, Cluster, Component, Host, Service
 
     if isinstance(owner, ActionHostGroup):
         return await detect_cluster(owner._parent)

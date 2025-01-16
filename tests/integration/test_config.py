@@ -8,10 +8,16 @@ import pytest_asyncio
 
 from adcm_aio_client import Filter
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.config import ActivatableParameterGroup, Parameter, ParameterGroup
-from adcm_aio_client.config import ActivatableParameterGroupHG, ParameterHG
+from adcm_aio_client.config import (
+    ActivatableParameterGroup,
+    ActivatableParameterGroupHG,
+    Parameter,
+    ParameterGroup,
+    ParameterHG,
+    apply_local_changes,
+    apply_remote_changes,
+)
 from adcm_aio_client.config._objects import HostGroupConfig, ObjectConfig
-from adcm_aio_client.config import apply_local_changes, apply_remote_changes
 from adcm_aio_client.errors import ConfigNoParameterError
 from adcm_aio_client.objects import Bundle, Cluster, Service
 
