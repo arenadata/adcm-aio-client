@@ -1,7 +1,7 @@
 from abc import ABC
 from collections import defaultdict
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import reduce
 from typing import Any, NamedTuple, Protocol, Self
 
@@ -125,62 +125,29 @@ class ConfigData(GenericConfigData):
 
 
 @dataclass(slots=True)
-class ValueChange:
-    previous: Any
-    current: Any
+class ParameterChange:
+    previous: dict
+    current: dict
 
 
 def recursive_defaultdict() -> defaultdict:
     return defaultdict(recursive_defaultdict)
 
 
-@dataclass(slots=True)
-class FullConfigDifference:
-    schema: "ConfigSchema"
-    values: dict[LevelNames, ValueChange] = field(default_factory=dict)
-    attributes: dict[LevelNames, ValueChange] = field(default_factory=dict)
-
-    @property
-    def is_empty(self: Self) -> bool:
-        return not bool(self.values or self.attributes)
-
-
 class ConfigDifference:
-    __slots__ = ("_schema", "_values", "_attributes")
+    __slots__ = ("_diff",)
 
-    def __init__(
-        self: Self,
-        schema: "ConfigSchema",
-        values: dict[LevelNames, ValueChange],
-        attributes: dict[LevelNames, ValueChange],
-    ) -> None:
-        self._schema = schema
-        self._values = values
-        self._attributes = attributes
-
-    @classmethod
-    def from_full_format(cls: type[Self], diff: FullConfigDifference) -> Self:
-        visible_value_changes = {k: v for k, v in diff.values.items() if not diff.schema.is_invisible(k)}
-        visible_attr_changes = {k: v for k, v in diff.attributes.items() if not diff.schema.is_invisible(k)}
-        return cls(schema=diff.schema, values=visible_value_changes, attributes=visible_attr_changes)
+    def __init__(self: Self, diff: dict[LevelNames, ParameterChange]) -> None:
+        self._diff = diff
 
     def __str__(self: Self) -> str:
-        values_nested = self._to_nested_dict(self._values)
-        attributes_nested = self._to_nested_dict(self._attributes)
-
-        if not (values_nested or attributes_nested):
+        if not self._diff:
             return "No Changes"
 
-        values_repr = f"Changed Values:\n{values_nested}" if values_nested else ""
-        attributes_repr = f"Changed Attributes:\n{attributes_nested}" if attributes_nested else ""
-
-        return "\n\n".join((values_repr, attributes_repr))
-
-    def _to_nested_dict(self: Self, changes: dict[LevelNames, ValueChange]) -> dict:
         result = recursive_defaultdict()
 
-        for names, change in changes.items():
-            changes_repr = self._prepare_change(change)
+        for names, change in self._diff.items():
+            changes_repr = self._prepare_change(previous=change.previous, current=change.current)
 
             if len(names) == 1:
                 result[names[0]] = changes_repr
@@ -192,22 +159,24 @@ class ConfigDifference:
 
         # get rid of `defaultdict` in favor of `dict`
         # may be not optimal
-        return self._simplify_dict(result)
+        print_ready_dict = self._simplify_dict(result)
 
-    def _prepare_change(self: Self, change: ValueChange) -> tuple | dict:
-        if not (isinstance(change.previous, dict) and isinstance(change.current, dict)):
-            return (change.previous, change.current)
+        return str(print_ready_dict)
+
+    def _prepare_change(self: Self, previous: Any, current: Any) -> tuple | dict:  # noqa: ANN401
+        if not (isinstance(previous, dict) and isinstance(current, dict)):
+            return (previous, current)
 
         dict_diff = {}
 
-        for key, cur_value in change.current.items():
-            prev_value = change.previous.get(key)
+        for key, cur_value in current.items():
+            prev_value = previous.get(key)
             if prev_value != cur_value:
-                dict_diff[key] = self._prepare_change(change=ValueChange(previous=prev_value, current=cur_value))
+                dict_diff[key] = self._prepare_change(previous=prev_value, current=cur_value)
 
-        missing_in_current = set(change.previous.keys()).difference(change.current.keys())
+        missing_in_current = set(previous.keys()).difference(current.keys())
         for key in missing_in_current:
-            dict_diff[key] = self._prepare_change(change=ValueChange(previous=change.previous[key], current=None))
+            dict_diff[key] = self._prepare_change(previous=previous[key], current=None)
 
         return dict_diff
 
@@ -272,6 +241,20 @@ class ConfigSchema:
 
         return {child_name: self.get_default((*parameter_name, child_name)) for child_name in param_spec["properties"]}
 
+    def iterate_parameters(self: Self) -> Iterable[tuple[LevelNames, dict]]:
+        yield from self._iterate_parameters(object_schema=self._raw)
+
+    def _iterate_parameters(self: Self, object_schema: dict) -> Iterable[tuple[LevelNames, dict]]:
+        for level_name, optional_attrs in object_schema["properties"].items():
+            attributes = self._unwrap_optional(optional_attrs)
+
+            yield (level_name,), attributes
+
+            if is_group_v2(attributes):
+                for inner_level, inner_optional_attrs in self._iterate_parameters(attributes):
+                    inner_attributes = self._unwrap_optional(inner_optional_attrs)
+                    yield (level_name, *inner_level), inner_attributes
+
     def _analyze_schema(self: Self) -> None:
         for level_names, param_spec in self._iterate_parameters(object_schema=self._raw):
             if is_group_v2(param_spec):
@@ -296,17 +279,6 @@ class ConfigSchema:
             level_names: param_spec.get("type", "enum")
             for level_names, param_spec in self._iterate_parameters(object_schema=self._raw)
         }
-
-    def _iterate_parameters(self: Self, object_schema: dict) -> Iterable[tuple[LevelNames, dict]]:
-        for level_name, optional_attrs in object_schema["properties"].items():
-            attributes = self._unwrap_optional(optional_attrs)
-
-            yield (level_name,), attributes
-
-            if is_group_v2(attributes):
-                for inner_level, inner_optional_attrs in self._iterate_parameters(attributes):
-                    inner_attributes = self._unwrap_optional(inner_optional_attrs)
-                    yield (level_name, *inner_level), inner_attributes
 
     def _unwrap_optional(self: Self, attributes: dict) -> dict:
         if "oneOf" not in attributes:

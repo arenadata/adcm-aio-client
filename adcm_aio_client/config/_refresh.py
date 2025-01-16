@@ -1,5 +1,5 @@
 from adcm_aio_client.config._operations import find_config_difference
-from adcm_aio_client.config._types import ConfigData, ConfigSchema, LocalConfigs
+from adcm_aio_client.config._types import ConfigData, ConfigSchema, LevelNames, LocalConfigs, ParameterChange
 
 
 def apply_local_changes(local: LocalConfigs, remote: ConfigData, schema: ConfigSchema) -> ConfigData:
@@ -7,20 +7,11 @@ def apply_local_changes(local: LocalConfigs, remote: ConfigData, schema: ConfigS
         return local.changed
 
     local_diff = find_config_difference(previous=local.initial, current=local.changed, schema=schema)
-    if local_diff.is_empty:
+    if not local_diff:
         # no changed, nothing to apply
         return remote
 
-    for parameter_name, value_change in local_diff.values.items():
-        remote.set_value(parameter=parameter_name, value=value_change.current)
-
-    for parameter_name, attribute_change in local_diff.attributes.items():
-        if not isinstance(attribute_change.current, dict):
-            message = f"Can't apply attribute changes of type {type(attribute_change)}, expected dict-like"
-            raise TypeError(message)
-
-        for attribute_name, value in attribute_change.current.items():
-            remote.set_attribute(parameter=parameter_name, attribute=attribute_name, value=value)
+    _apply(data=remote, changes=local_diff)
 
     return remote
 
@@ -30,41 +21,28 @@ def apply_remote_changes(local: LocalConfigs, remote: ConfigData, schema: Config
         return local.changed
 
     local_diff = find_config_difference(previous=local.initial, current=local.changed, schema=schema)
-    if local_diff.is_empty:
+    if not local_diff:
         return remote
 
     remote_diff = find_config_difference(previous=local.initial, current=remote, schema=schema)
 
-    locally_changed = set(local_diff.values.keys())
-    changed_in_both = locally_changed.intersection(remote_diff.values.keys())
-    changed_locally_only = locally_changed.difference(remote_diff.values.keys())
+    changed_in_remote = set(remote_diff.keys())
+    only_local_changes = {k: v for k, v in local_diff.items() if k in changed_in_remote}
 
-    for parameter_name in changed_in_both:
-        remote.set_value(parameter=parameter_name, value=remote_diff.values[parameter_name].current)
-
-    for parameter_name in changed_locally_only:
-        remote.set_value(parameter=parameter_name, value=local_diff.values[parameter_name].current)
-
-    locally_changed = set(local_diff.attributes.keys())
-    changed_in_both = locally_changed.intersection(remote_diff.attributes.keys())
-    changed_locally_only = locally_changed.difference(remote_diff.attributes.keys())
-
-    for parameter_name in changed_in_both:
-        attribute_change = remote_diff.attributes[parameter_name]
-        if not isinstance(attribute_change.current, dict):
-            message = f"Can't apply attribute changes of type {type(attribute_change)}, expected dict-like"
-            raise TypeError(message)
-
-        for attribute_name, value in attribute_change.current.items():
-            remote.set_attribute(parameter=parameter_name, attribute=attribute_name, value=value)
-
-    for parameter_name in changed_locally_only:
-        attribute_change = local_diff.attributes[parameter_name]
-        if not isinstance(attribute_change.current, dict):
-            message = f"Can't apply attribute changes of type {type(attribute_change)}, expected dict-like"
-            raise TypeError(message)
-
-        for attribute_name, value in attribute_change.current.items():
-            remote.set_attribute(parameter=parameter_name, attribute=attribute_name, value=value)
+    _apply(data=remote, changes=only_local_changes)
 
     return remote
+
+
+def _apply(data: ConfigData, changes: dict[LevelNames, ParameterChange]) -> None:
+    for parameter_name, change in changes.items():
+        prev_value = change.previous.get("value")
+        cur_value = change.current.get("value")
+        # rechecking diff, because value may be present even if nothing is different,
+        # yet assigning defaults (`None`) may break data
+        if prev_value != cur_value:
+            data.set_value(parameter=parameter_name, value=cur_value)
+
+        for parameter_name, current_attributes in change.current.get("attrs", {}).items():
+            for attribute_name, value in current_attributes.current.items():
+                data.set_attribute(parameter=parameter_name, attribute=attribute_name, value=value)

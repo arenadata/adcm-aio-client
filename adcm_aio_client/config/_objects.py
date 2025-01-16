@@ -301,7 +301,7 @@ class _GeneralConfig[C: GenericConfigData, T: _ConfigWrapperCreator]:
             current = other
 
         full_diff = find_config_difference(previous=previous.data, current=current.data, schema=self._schema)
-        return ConfigDifference.from_full_format(full_diff)
+        return ConfigDifference(diff=full_diff)
 
     # Public For Internal Use Only
 
