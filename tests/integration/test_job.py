@@ -6,12 +6,13 @@ import asyncio
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.filters import Filter, FilterValue
-from adcm_aio_client.core.host_groups.action_group import ActionHostGroup
-from adcm_aio_client.core.objects._common import WithActions
-from adcm_aio_client.core.objects.cm import Bundle, Cluster, Component, Job
-from adcm_aio_client.core.types import WithID
+from adcm_aio_client import Filter
+from adcm_aio_client._filters import FilterValue
+from adcm_aio_client._types import WithID
+from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.host_groups._action_group import ActionHostGroup
+from adcm_aio_client.objects import Bundle, Cluster, Component, Job
+from adcm_aio_client.objects._common import WithActions
 
 pytestmark = [pytest.mark.asyncio]
 

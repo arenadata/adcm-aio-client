@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NamedTuple, Protocol
+from typing import TYPE_CHECKING, NamedTuple, Protocol, Self
 
-from adcm_aio_client.core.types import ComponentID, HostID
+from adcm_aio_client._types import ComponentID, HostID
 
 if TYPE_CHECKING:
-    from adcm_aio_client.core.objects.cm import Component, Host
+    from adcm_aio_client.objects import Component, Host
 
 
 type MappingPair = tuple[Component, Host]
@@ -25,4 +25,4 @@ class LocalMappings(NamedTuple):
 
 
 class MappingRefreshStrategy(Protocol):
-    def __call__(self, local: LocalMappings, remote: MappingData) -> MappingData: ...  # noqa: ANN101
+    def __call__(self: Self, local: LocalMappings, remote: MappingData) -> MappingData: ...  # noqa: ANN101

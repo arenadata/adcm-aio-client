@@ -2,8 +2,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Self
 
-from adcm_aio_client.core.errors import ResponseDataConversionError
-from adcm_aio_client.core.types import Credentials, PathPart, QueryParameters, Requester, RequesterResponse
+from adcm_aio_client._types import Credentials, PathPart, QueryParameters, Requester, RequesterResponse
+from adcm_aio_client.errors import ResponseDataConversionError
 
 type FakeResponseData = dict | list
 

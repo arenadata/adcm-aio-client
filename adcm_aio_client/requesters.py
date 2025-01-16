@@ -21,7 +21,16 @@ from urllib.parse import urljoin
 
 import httpx
 
-from adcm_aio_client.core.errors import (
+from adcm_aio_client._types import (
+    Credentials,
+    PathPart,
+    QueryParameters,
+    Requester,
+    RequesterResponse,
+    RetryPolicy,
+    URLStr,
+)
+from adcm_aio_client.errors import (
     AuthenticationError,
     BadGatewayError,
     BadRequestError,
@@ -38,15 +47,6 @@ from adcm_aio_client.core.errors import (
     ServiceUnavailableError,
     UnauthorizedError,
     UnknownError,
-)
-from adcm_aio_client.core.types import (
-    Credentials,
-    PathPart,
-    QueryParameters,
-    Requester,
-    RequesterResponse,
-    RetryPolicy,
-    URLStr,
 )
 
 Json: TypeAlias = Any  # noqa: UP040

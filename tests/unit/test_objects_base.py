@@ -3,8 +3,8 @@ from typing import Self
 
 import pytest
 
-from adcm_aio_client.core.objects._base import InteractiveObject
-from adcm_aio_client.core.types import Endpoint
+from adcm_aio_client._types import Endpoint
+from adcm_aio_client.objects._base import InteractiveObject
 from tests.unit.mocks.requesters import QueueRequester
 
 pytestmark = [pytest.mark.asyncio]

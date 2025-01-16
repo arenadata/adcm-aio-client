@@ -1,13 +1,13 @@
 import pytest
 
-from adcm_aio_client.core.actions import ActionsAccessor, UpgradeNode
-from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.config import (
+from adcm_aio_client.actions._objects import ActionsAccessor, UpgradeNode
+from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.config._objects import (
     ConfigHistoryNode,
     ObjectConfig,
 )
-from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
-from adcm_aio_client.core.objects.cm import Bundle, HostProvider
+from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.objects import Bundle, HostProvider
 
 pytestmark = [pytest.mark.asyncio]
 

@@ -5,11 +5,11 @@ import asyncio
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.filters import Filter
-from adcm_aio_client.core.mapping.refresh import apply_local_changes, apply_remote_changes
-from adcm_aio_client.core.mapping.types import MappingPair
-from adcm_aio_client.core.objects.cm import Bundle, Cluster, Host
+from adcm_aio_client import Filter
+from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.mapping import apply_local_changes, apply_remote_changes
+from adcm_aio_client.mapping._types import MappingPair
+from adcm_aio_client.objects import Bundle, Cluster, Host
 
 pytestmark = [pytest.mark.asyncio]
 

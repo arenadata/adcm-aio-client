@@ -6,14 +6,16 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Any, Self
 import asyncio
 
-from adcm_aio_client.core.filters import Filter, FilterByDisplayName, FilterByName, FilterByStatus, Filtering
-from adcm_aio_client.core.mapping.refresh import apply_local_changes, apply_remote_changes
-from adcm_aio_client.core.mapping.types import LocalMappings, MappingEntry, MappingPair, MappingRefreshStrategy
-from adcm_aio_client.core.objects._accessors import NonPaginatedAccessor, filters_to_inline
-from adcm_aio_client.core.types import ComponentID, HostID, Requester
+from adcm_aio_client import Filter
+from adcm_aio_client._filters import FilterByDisplayName, FilterByName, FilterByStatus, Filtering
+from adcm_aio_client._types import ComponentID, HostID, Requester
+from adcm_aio_client.mapping import apply_local_changes, apply_remote_changes
+from adcm_aio_client.mapping._types import LocalMappings, MappingEntry, MappingPair, MappingRefreshStrategy
+from adcm_aio_client.objects._accessors import NonPaginatedAccessor, filters_to_inline
 
 if TYPE_CHECKING:
-    from adcm_aio_client.core.objects.cm import Cluster, Component, Host, HostsAccessor, Service
+    from adcm_aio_client.objects import Cluster, Component, Host, Service
+    from adcm_aio_client.objects._cm import HostsAccessor
 
 
 class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
@@ -23,7 +25,7 @@ class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
         _ = cluster, requester
 
         if not hasattr(cls, "class_type"):
-            from adcm_aio_client.core.objects.cm import Component
+            from adcm_aio_client.objects import Component
 
             cls.class_type = Component
 
@@ -35,7 +37,7 @@ class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
         self._cluster = cluster
 
     def _create_object(self: Self, data: dict[str, Any]) -> Component:
-        from adcm_aio_client.core.objects.cm import Service
+        from adcm_aio_client.objects import Service
 
         # service data here should be enough,
         # when not, we should use lazy objects
@@ -103,7 +105,7 @@ class ActionMapping:
 
     @cached_property
     def hosts(self: Self) -> HostsAccessor:
-        from adcm_aio_client.core.objects.cm import HostsAccessor
+        from adcm_aio_client.objects._cm import HostsAccessor
 
         cluster_hosts_path = (*self._cluster.get_own_path(), "hosts")
 
@@ -112,7 +114,7 @@ class ActionMapping:
     async def _resolve_components_and_hosts(
         self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter
     ) -> tuple[Iterable[Component], Iterable[Host]]:
-        from adcm_aio_client.core.objects.cm import Component, Host
+        from adcm_aio_client.objects import Component, Host
 
         if isinstance(component, Component):
             component = (component,)

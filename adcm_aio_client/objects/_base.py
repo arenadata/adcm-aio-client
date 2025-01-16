@@ -5,7 +5,7 @@ from typing import Any, Self
 
 from asyncstdlib.functools import CachedProperty
 
-from adcm_aio_client.core.types import (
+from adcm_aio_client._types import (
     AwareOfOwnPath,
     Endpoint,
     MaintenanceModeStatus,

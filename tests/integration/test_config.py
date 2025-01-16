@@ -6,13 +6,20 @@ import asyncio
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.config import ActivatableParameterGroup, Parameter, ParameterGroup
-from adcm_aio_client.core.config._objects import ActivatableParameterGroupHG, HostGroupConfig, ObjectConfig, ParameterHG
-from adcm_aio_client.core.config.refresh import apply_local_changes, apply_remote_changes
-from adcm_aio_client.core.errors import ConfigNoParameterError
-from adcm_aio_client.core.filters import Filter
-from adcm_aio_client.core.objects.cm import Bundle, Cluster, Service
+from adcm_aio_client import Filter
+from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.config import (
+    ActivatableParameterGroup,
+    ActivatableParameterGroupHG,
+    Parameter,
+    ParameterGroup,
+    ParameterHG,
+    apply_local_changes,
+    apply_remote_changes,
+)
+from adcm_aio_client.config._objects import HostGroupConfig, ObjectConfig
+from adcm_aio_client.errors import ConfigNoParameterError
+from adcm_aio_client.objects import Bundle, Cluster, Service
 
 pytestmark = [pytest.mark.asyncio]
 

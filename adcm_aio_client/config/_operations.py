@@ -1,4 +1,4 @@
-from adcm_aio_client.core.config.types import (
+from adcm_aio_client.config._types import (
     ConfigSchema,
     FullConfigDifference,
     GenericConfigData,

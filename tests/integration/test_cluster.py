@@ -8,13 +8,13 @@ from httpx import AsyncClient
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
-from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
-from adcm_aio_client.core.filters import Filter
-from adcm_aio_client.core.mapping import ClusterMapping
-from adcm_aio_client.core.objects._imports import Imports
-from adcm_aio_client.core.objects.cm import Bundle, Cluster, Host
+from adcm_aio_client import Filter
+from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.config._objects import ConfigHistoryNode, ObjectConfig
+from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.mapping._objects import ClusterMapping
+from adcm_aio_client.objects import Bundle, Cluster, Host
+from adcm_aio_client.objects._imports import Imports
 
 pytestmark = [pytest.mark.asyncio]
 

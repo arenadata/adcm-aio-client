@@ -1,4 +1,4 @@
-from adcm_aio_client.core.mapping.types import LocalMappings, MappingData
+from adcm_aio_client.mapping._types import LocalMappings, MappingData
 
 type Added = MappingData
 type Removed = MappingData
