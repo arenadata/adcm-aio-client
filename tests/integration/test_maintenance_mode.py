@@ -87,12 +87,12 @@ async def context(
 
 
 async def test_maintenance_mode(context: Context) -> None:
-    for obj in {context.service, context.second_component, context.host_2}:
+    for obj in [context.service, context.second_component, context.host_2]:
         await _test_direct_maintenance_mode_change(obj=obj, httpx_client=context.httpx_client)
 
     await _test_indirect_mm_change(context=context)
 
-    for obj in {context.service_2, context.first_component_2, context.host_3}:
+    for obj in [context.service_2, context.first_component_2, context.host_3]:
         await _test_change_mm_via_action(obj=obj, adcm_client=context.client, httpx_client=context.httpx_client)
 
     await _test_mm_effects_on_mapping(context=context)

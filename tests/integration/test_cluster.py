@@ -191,43 +191,45 @@ async def _test_clusters_node(
     assert_clusters_collection(clusters=first_page_clusters, expected_amount=page_size)
 
     # iter
-    iter_clusters = set()
+    iter_clusters = []
     async for cluster in adcm_client.clusters.iter():
-        iter_clusters.add(cluster)
+        iter_clusters.append(cluster)
     assert_clusters_collection(clusters=iter_clusters, expected_amount=num_clusters)
 
     # filter
     # complex_bundle: "Test-cluster-N" - 50; "Very special cluster" - 1;
     # simple_bundle: "Simple cluster" - 1
-    filters_data = {
-        ("bundle__eq", simple_bundle): 1,
-        ("bundle__in", (complex_bundle, simple_bundle)): num_clusters,
-        ("bundle__ne", complex_bundle): 1,
-        ("bundle__exclude", (simple_bundle, complex_bundle)): 0,
-        ("name__eq", "Very special cluster"): 1,
-        ("name__ieq", "VERY SPECIAL cluster"): 1,
-        ("name__ne", "Simple cluster"): num_clusters - 1,
-        ("name__ine", "SIMPLE CLUSTER"): num_clusters - 1,
-        ("name__in", ("Test-cluster-1", "Test-cluster-2", "TEST-cluster-3", "Not a cluster")): 2,
-        ("name__iin", ("TEST-cluster-1", "Test-CLUSTER-2", "SIMPLE CLUSTER")): 3,
-        ("name__exclude", ("Test-cluster-1", "Test-cluster-2", "Not a cluster")): num_clusters - 2,
-        ("name__iexclude", ("VERY special CLUSTER", "Not a cluster")): num_clusters - 1,
-        ("name__contains", "special"): 1,
-        ("name__icontains", "-ClUsTeR-"): num_clusters - 2,
-        ("status__eq", "up"): 0,
-        ("status__eq", "down"): num_clusters,
-        ("status__in", ("down", "some status")): num_clusters,
-        ("status__in", ("up", "some status")): 0,
-        ("status__ne", "down"): 0,
-        ("status__ne", "up"): num_clusters,
-        ("status__exclude", ("excluded_status", "down")): 0,
-        ("status__exclude", ("excluded_status", "up")): num_clusters,
-        ("status__exclude", ("up", "down")): 0,
-    }
-    for filter_, expected in filters_data.items():
-        filter_value = {filter_[0]: filter_[1]}
-        clusters = await adcm_client.clusters.filter(**filter_value)
-        assert len(clusters) == expected, f"Filter: {filter_value}"
+    filters_data = (
+        ("bundle__eq", (simple_bundle, 1)),
+        ("bundle__in", ((complex_bundle, simple_bundle), num_clusters)),
+        ("bundle__ne", (complex_bundle, 1)),
+        ("bundle__exclude", ((simple_bundle, complex_bundle), 0)),
+        ("name__eq", ("Very special cluster", 1)),
+        ("name__ieq", ("VERY SPECIAL cluster", 1)),
+        ("name__ne", ("Simple cluster", num_clusters - 1)),
+        ("name__ine", ("SIMPLE CLUSTER", num_clusters - 1)),
+        ("name__in", (("Test-cluster-1", "Test-cluster-2", "TEST-cluster-3", "Not a cluster"), 2)),
+        ("name__iin", (("TEST-cluster-1", "Test-CLUSTER-2", "SIMPLE CLUSTER"), 3)),
+        ("name__exclude", (("Test-cluster-1", "Test-cluster-2", "Not a cluster"), num_clusters - 2)),
+        ("name__iexclude", (("VERY special CLUSTER", "Not a cluster"), num_clusters - 1)),
+        ("name__contains", ("special", 1)),
+        ("name__icontains", ("-ClUsTeR-", num_clusters - 2)),
+        ("status__eq", ("up", 0)),
+        ("status__eq", ("down", num_clusters)),
+        ("status__in", (("down", "some status"), num_clusters)),
+        ("status__in", (("up", "some status"), 0)),
+        ("status__ne", ("down", 0)),
+        ("status__ne", ("up", num_clusters)),
+        ("status__exclude", (("excluded_status", "down"), 0)),
+        ("status__exclude", (("excluded_status", "up"), num_clusters)),
+        ("status__exclude", (("up", "down"), 0)),
+    )
+
+    for filter_key, (filter_value, expected) in filters_data:
+        field, operator = filter_key.rsplit("__", 1)
+        filter_dict = {f"{field}__{operator}": filter_value}
+        clusters = await adcm_client.clusters.filter(**filter_dict)
+        assert len(clusters) == expected, f"Filter: {filter_dict}"
 
 
 async def _test_cluster_object_api(httpx_client: AsyncClient, cluster: Cluster, cluster_bundle: Bundle) -> tuple:

@@ -101,9 +101,9 @@ async def _test_component_node(service: Service, num_components: int) -> None:
     assert_components_collection(components=first_page_components, expected_amount=page_size)
 
     # iter
-    iter_components = set()
+    iter_components = []
     async for component in service.components.iter():
-        iter_components.add(component)
+        iter_components.append(component)
     assert_components_collection(components=iter_components, expected_amount=num_components)
 
     # filter
