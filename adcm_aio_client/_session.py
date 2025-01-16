@@ -5,10 +5,10 @@ from typing import Self
 import httpx
 import adcm_version
 
-from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.errors import ClientInitError, NotSupportedVersionError
-from adcm_aio_client.core.requesters import BundleRetriever, DefaultRequester
-from adcm_aio_client.core.types import Cert, ConnectionSecurity, Credentials, RequestPolicy, RetryPolicy, SessionInfo
+from adcm_aio_client._types import Cert, ConnectionSecurity, Credentials, RequestPolicy, RetryPolicy, SessionInfo
+from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.errors import ClientInitError, NotSupportedVersionError
+from adcm_aio_client.requesters import BundleRetriever, DefaultRequester
 
 MIN_ADCM_VERSION = "2.5.0"
 

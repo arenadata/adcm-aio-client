@@ -3,17 +3,19 @@ from typing import NamedTuple
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.actions import ActionsAccessor
-from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
-from adcm_aio_client.core.filters import Filter
-from adcm_aio_client.core.host_groups.action_group import HostsInActionHostGroupNode
-from adcm_aio_client.core.host_groups.config_group import HostsInConfigHostGroupNode
-from adcm_aio_client.core.objects.cm import (
+from adcm_aio_client import Filter
+from adcm_aio_client.actions._objects import ActionsAccessor
+from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.host_groups._action_group import HostsInActionHostGroupNode
+from adcm_aio_client.host_groups._config_group import HostsInConfigHostGroupNode
+from adcm_aio_client.objects import (
     Bundle,
     Cluster,
     Host,
     HostProvider,
+)
+from adcm_aio_client.objects._cm import (
     HostsInClusterNode,
     HostsNode,
 )

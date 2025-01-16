@@ -13,8 +13,9 @@
 from functools import cached_property
 from typing import Self
 
-from adcm_aio_client.core.objects.cm import ADCM, BundlesNode, ClustersNode, HostProvidersNode, HostsNode, JobsNode
-from adcm_aio_client.core.requesters import BundleRetrieverInterface, Requester
+from adcm_aio_client.objects import ADCM
+from adcm_aio_client.objects._cm import BundlesNode, ClustersNode, HostProvidersNode, HostsNode, JobsNode
+from adcm_aio_client.requesters import BundleRetrieverInterface, Requester
 
 MIN_ADCM_VERSION = "2.5.0"
 

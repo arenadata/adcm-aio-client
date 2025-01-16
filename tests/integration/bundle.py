@@ -5,8 +5,8 @@ import shutil
 
 import yaml
 
-from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.objects.cm import Bundle
+from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.objects import Bundle
 
 
 def pack_bundle(from_dir: Path, to: Path) -> Path:

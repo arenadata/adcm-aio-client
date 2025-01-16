@@ -9,9 +9,7 @@ import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
-from adcm_aio_client.core.actions._objects import Action
-from adcm_aio_client.core.errors import InvalidFilterError, NotFoundError, WaitTimeoutError
-from adcm_aio_client.core.filters import (
+from adcm_aio_client._filters import (
     ALL_OPERATIONS,
     COMMON_OPERATIONS,
     Filter,
@@ -22,20 +20,30 @@ from adcm_aio_client.core.filters import (
     Filtering,
     FilterValue,
 )
-from adcm_aio_client.core.host_groups import WithActionHostGroups, WithConfigHostGroups
-from adcm_aio_client.core.host_groups.action_group import ActionHostGroup
-from adcm_aio_client.core.mapping import ClusterMapping
-from adcm_aio_client.core.objects._accessors import (
+from adcm_aio_client._types import (
+    DEFAULT_JOB_TERMINAL_STATUSES,
+    Endpoint,
+    Requester,
+    URLStr,
+    WithProtectedRequester,
+)
+from adcm_aio_client._utils import safe_gather
+from adcm_aio_client.actions._objects import Action
+from adcm_aio_client.errors import InvalidFilterError, NotFoundError, WaitTimeoutError
+from adcm_aio_client.host_groups._action_group import ActionHostGroup, WithActionHostGroups
+from adcm_aio_client.host_groups._config_group import WithConfigHostGroups
+from adcm_aio_client.mapping._objects import ClusterMapping
+from adcm_aio_client.objects._accessors import (
     PaginatedAccessor,
     PaginatedChildAccessor,
     filters_to_inline,
 )
-from adcm_aio_client.core.objects._base import (
+from adcm_aio_client.objects._base import (
     InteractiveChildObject,
     InteractiveObject,
     RootInteractiveObject,
 )
-from adcm_aio_client.core.objects._common import (
+from adcm_aio_client.objects._common import (
     Deletable,
     WithActions,
     WithConfig,
@@ -44,15 +52,7 @@ from adcm_aio_client.core.objects._common import (
     WithStatus,
     WithUpgrades,
 )
-from adcm_aio_client.core.requesters import BundleRetrieverInterface
-from adcm_aio_client.core.types import (
-    DEFAULT_JOB_TERMINAL_STATUSES,
-    Endpoint,
-    Requester,
-    URLStr,
-    WithProtectedRequester,
-)
-from adcm_aio_client.core.utils import safe_gather
+from adcm_aio_client.requesters import BundleRetrieverInterface
 
 
 class ADCM(InteractiveObject, WithActions, WithConfig):

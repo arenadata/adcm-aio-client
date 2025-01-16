@@ -6,11 +6,11 @@ import string
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client.core.client import ADCMClient
-from adcm_aio_client.core.config import ConfigHistoryNode, ObjectConfig
-from adcm_aio_client.core.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
-from adcm_aio_client.core.filters import Filter
-from adcm_aio_client.core.objects.cm import Cluster, Component, Service
+from adcm_aio_client import Filter
+from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.config._objects import ConfigHistoryNode, ObjectConfig
+from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.objects import Cluster, Component, Service
 from tests.integration.bundle import pack_bundle
 from tests.integration.yaml_ext import create_yaml
 
