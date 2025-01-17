@@ -13,11 +13,13 @@ def find_config_difference(
         prev = {"value": None, "attrs": {}}
         cur = {"value": None, "attrs": {}}
 
+        # TypeError / KeyError may occur when `None` is in values
+        # (e.g. structure with dict as root item and with None value)
         if not schema.is_group(names):
-            with suppress(KeyError):
+            with suppress(TypeError, KeyError):
                 prev["value"] = previous.get_value(names)
 
-            with suppress(KeyError):
+            with suppress(TypeError, KeyError):
                 cur["value"] = current.get_value(names)
         else:
             prev.pop("value")

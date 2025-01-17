@@ -27,7 +27,7 @@ def apply_remote_changes(local: LocalConfigs, remote: ConfigData, schema: Config
     remote_diff = find_config_difference(previous=local.initial, current=remote, schema=schema)
 
     changed_in_remote = set(remote_diff.keys())
-    only_local_changes = {k: v for k, v in local_diff.items() if k in changed_in_remote}
+    only_local_changes = {k: v for k, v in local_diff.items() if k not in changed_in_remote}
 
     _apply(data=remote, changes=only_local_changes)
 
@@ -43,6 +43,5 @@ def _apply(data: ConfigData, changes: dict[LevelNames, ParameterChange]) -> None
         if prev_value != cur_value:
             data.set_value(parameter=parameter_name, value=cur_value)
 
-        for parameter_name, current_attributes in change.current.get("attrs", {}).items():
-            for attribute_name, value in current_attributes.current.items():
-                data.set_attribute(parameter=parameter_name, attribute=attribute_name, value=value)
+        for name, value in change.current.get("attrs", {}).items():
+            data.set_attribute(parameter=parameter_name, attribute=name, value=value)
