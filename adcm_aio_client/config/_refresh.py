@@ -36,11 +36,8 @@ def apply_remote_changes(local: LocalConfigs, remote: ConfigData, schema: Config
 
 def _apply(data: ConfigData, changes: dict[LevelNames, ParameterChange]) -> None:
     for parameter_name, change in changes.items():
-        prev_value = change.previous.get("value")
-        cur_value = change.current.get("value")
-        # rechecking diff, because value may be present even if nothing is different,
-        # yet assigning defaults (`None`) may break data
-        if prev_value != cur_value:
+        if "value" in change.current:
+            cur_value = change.current["value"]
             data.set_value(parameter=parameter_name, value=cur_value)
 
         for name, value in change.current.get("attrs", {}).items():

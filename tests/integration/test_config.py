@@ -259,6 +259,8 @@ async def test_host_group_config(cluster: Cluster) -> None:
     assert all(v == person_default for v in values)
 
     req_val_1, req_val_2 = 12, 44
+    complexity_default = 4
+    complexity_changed = 10
     person_val_1 = {"name": "Boss", "age": "unknown"}
     person_val_2 = {"name": "Moss", "awesome": "yes"}
     strange_val_1 = {"custom": [1, 2, 3]}
@@ -269,6 +271,7 @@ async def test_host_group_config(cluster: Cluster) -> None:
     main_config["from_doc"]["person"].set(person_val_1)  # type: ignore
     main_config["more"]["strange"].set(strange_val_1)  # type: ignore
     main_config["Optional", ActivatableParameterGroup].activate()
+    main_config["complexity_level", Parameter].set(complexity_changed)
     # todo fix working with structures here
     # sag = main_config["A lot of text"]["sag"]
     # sag["quantity"].set(4)
@@ -279,10 +282,12 @@ async def test_host_group_config(cluster: Cluster) -> None:
     config_1["from_doc"]["person"].set(person_val_2)  # type: ignore
     config_1["more"]["strange"].set(strange_val_2)  # type: ignore
     config_1["Optional", ActivatableParameterGroupHG].desync()
+    config_1["complexity_level", ParameterHG].desync()
 
     config_2["from_doc"]["person"].set(person_val_2)  # type: ignore
     config_2["more"]["strange"].set(strange_val_3)  # type: ignore
     config_2["Optional", ActivatableParameterGroupHG].desync()
+    config_2["complexity_level", ParameterHG].desync()
 
     await main_config.save()
     await config_1.refresh(strategy=apply_local_changes)
@@ -298,11 +303,15 @@ async def test_host_group_config(cluster: Cluster) -> None:
     main_val, c1_val, c2_val = get_field_value("from_doc", "person", configs=configs)
     assert main_val == c2_val == person_val_1
     assert c1_val == person_val_2
+    values = get_field_value("complexity_level", configs=configs)
+    assert values == (complexity_changed, complexity_default, complexity_changed)
     # since attributes are compared as a whole, desync is considered a change
     # => priority of local change
+    assert not config_1.data.attributes["/complexity_level"]["isSynchronized"]
     assert not config_1.data.attributes["/agroup"]["isActive"]
     assert not config_1.data.attributes["/agroup"]["isSynchronized"]
     # the opposite situation when we "desynced", but changes overriten
+    assert config_2.data.attributes["/complexity_level"]["isSynchronized"]
     assert config_2.data.attributes["/agroup"]["isActive"]
     assert config_2.data.attributes["/agroup"]["isSynchronized"]
 
