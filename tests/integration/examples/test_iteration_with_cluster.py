@@ -1,7 +1,6 @@
 import pytest
 
-from adcm_aio_client import ADCMSession, Credentials
-from adcm_aio_client import Filter
+from adcm_aio_client import ADCMSession, Credentials, Filter
 from adcm_aio_client.config import Parameter
 from tests.integration.examples.conftest import RETRY_ATTEMPTS, RETRY_INTERVAL, TIMEOUT
 from tests.integration.setup_environment import ADCMContainer
