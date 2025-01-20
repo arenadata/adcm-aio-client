@@ -179,6 +179,11 @@
       actions: *actions
 
 - type: service
+  name: with_license
+  version: 1
+  license: ./license.txt
+
+- type: service
   name: complex_config
   version: 0.3
   config_group_customization: yes
