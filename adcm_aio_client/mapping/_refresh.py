@@ -1,39 +1,13 @@
 from adcm_aio_client.mapping._types import LocalMappings, MappingData
 
-type Added = MappingData
-type Removed = MappingData
-
 
 def apply_local_changes(local: LocalMappings, remote: MappingData) -> MappingData:
-    if local.initial == remote:
-        return local.current
-
-    local_added, local_removed = _find_difference(previous=local.initial, current=local.current)
-
-    remote |= local_added
-    remote -= local_removed
-
-    return remote
+    all_entries = local.current | remote
+    removed_locally = local.initial - local.current
+    return all_entries - removed_locally
 
 
 def apply_remote_changes(local: LocalMappings, remote: MappingData) -> MappingData:
-    local_added, local_removed = _find_difference(previous=local.initial, current=local.current)
-
-    remote_added, remote_removed = _find_difference(previous=local.initial, current=remote)
-
-    # `to_add` feels impossible, because remote can't remove what we haven't added,
-    # yet it's general rule for this strategy, so we'll keep it for a time being
-    to_add = local_added - remote_removed
-    to_remove = local_removed - remote_added
-
-    remote |= to_add
-    remote -= to_remove
-
-    return remote
-
-
-def _find_difference(previous: MappingData, current: MappingData) -> tuple[Added, Removed]:
-    added = current - previous
-    removed = previous - current
-
-    return added, removed
+    all_entries = local.current | remote
+    removed_in_remotely = local.initial - remote
+    return all_entries - removed_in_remotely

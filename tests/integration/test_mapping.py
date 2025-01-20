@@ -44,37 +44,37 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
     assert len(await mapping.components.all()) == 6
 
     await cluster.hosts.add(host=hosts)
-    host_1, host_2, host_3, host_4, host_5 = await mapping.hosts.all()
+    h1, h2, h3, h4, h5 = await mapping.hosts.all()
 
     service_1 = await cluster.services.get(display_name__eq="First Example")
     service_2 = await cluster.services.get(name__eq="example_2")
 
-    component_1_s1 = await service_1.components.get(name__eq="first")
-    component_2_s2 = await service_2.components.get(display_name__in=["Second Component"])
+    c1 = await service_1.components.get(name__eq="first")
+    c2 = await service_2.components.get(display_name__in=["Second Component"])
 
     # local mapping editing
 
-    await mapping.add(component=component_1_s1, host=host_1)
+    await mapping.add(component=c1, host=h1)
     assert len(tuple(mapping.iter())) == 1
 
-    await mapping.add(component=(component_1_s1, component_2_s2), host=(host_1, host_3, host_4))
+    await mapping.add(component=(c1, c2), host=(h1, h3, h4))
     assert len(mapping.all()) == 6
 
-    await mapping.remove(component=component_2_s2, host=(host_2, host_3))
+    await mapping.remove(component=c2, host=(h2, h3))
     assert len(mapping.all()) == 5
 
-    await mapping.remove(component=(component_1_s1, component_2_s2), host=host_1)
+    await mapping.remove(component=(c1, c2), host=h1)
     assert len(mapping.all()) == 3
 
     await mapping.add(
         component=await mapping.components.filter(display_name__icontains="different"),
-        host=Filter(attr="name", op="in", value=(host_2.name, host_5.name)),
+        host=Filter(attr="name", op="in", value=(h2.name, h5.name)),
     )
     assert len(mapping.all()) == 7
 
     await mapping.remove(
         component=await mapping.components.filter(display_name__icontains="different"),
-        host=Filter(attr="name", op="in", value=(host_2.name, host_5.name)),
+        host=Filter(attr="name", op="in", value=(h2.name, h5.name)),
     )
     assert len(mapping.all()) == 3
 
@@ -85,13 +85,11 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
 
     all_components = await mapping.components.all()
 
-    await mapping.add(component=all_components, host=host_5)
-    await mapping.add(component=component_1_s1, host=(host_2, host_3))
+    await mapping.add(component=all_components, host=h5)
+    await mapping.add(component=c1, host=(h2, h3))
     await mapping.save()
 
-    expected_mapping = build_name_mapping(
-        ((c, host_5) for c in all_components), ((component_1_s1, h) for h in (host_2, host_3))
-    )
+    expected_mapping = build_name_mapping(((c, h5) for c in all_components), ((c1, h) for h in (h2, h3)))
     actual_mapping = build_name_mapping(mapping.iter())
     assert actual_mapping == expected_mapping
 
@@ -102,23 +100,22 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
 
     assert build_name_mapping(mapping.iter()) == build_name_mapping(mapping_alt.iter())
 
-    component_3_s2 = await service_2.components.get(name__eq="third_one")
-    components_except_3_s2 = tuple(c for c in all_components if c.id != component_3_s2.id)
+    c3 = await service_2.components.get(name__eq="third_one")
 
-    await mapping_alt.remove(component_1_s1, host_3)
-    await mapping_alt.add(component_3_s2, (host_2, host_4))
+    await mapping_alt.remove(c1, h3)
+    await mapping_alt.add(c3, (h2, h4))
 
-    await mapping.add((component_1_s1, component_3_s2), host_1)
-    await mapping.remove(component_3_s2, host_5)
+    await mapping.add((c1, c3), h1)
+    await mapping.remove(c3, h5)
 
     await mapping_alt.save()
 
     await mapping.refresh(strategy=apply_remote_changes)
 
     expected_mapping = build_name_mapping(
-        ((c, host_5) for c in components_except_3_s2),
-        ((component_1_s1, h) for h in (host_1, host_2)),
-        ((component_3_s2, h) for h in (host_1, host_2, host_4)),
+        ((c, h5) for c in all_components),
+        ((c1, h) for h in (h1, h2)),
+        ((c3, h) for h in (h1, h2, h4)),
     )
     actual_mapping = build_name_mapping(mapping.iter())
     assert actual_mapping == expected_mapping
@@ -127,8 +124,8 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
     await cluster.refresh()
     mapping = await cluster.mapping
 
-    await mapping.add((component_1_s1, component_3_s2), host_1)
-    await mapping.remove(component_3_s2, host_5)
+    await mapping.add((c1, c3), h1)
+    await mapping.remove(c3, h5)
 
     await mapping.refresh(strategy=apply_local_changes)
 
@@ -136,9 +133,43 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
         # base is remote, but with local changes
         build_name_mapping(mapping_alt.iter())
         # remove what's removed locally
-        - build_name_mapping(((component_3_s2, host_5),))
+        - build_name_mapping(((c3, h5),))
         # add what's added locally
-        | build_name_mapping(((component_1_s1, host_1), (component_3_s2, host_1)))
+        | build_name_mapping(((c1, h1), (c3, h1)))
     )
     actual_mapping = build_name_mapping(mapping.iter())
     assert actual_mapping == expected_mapping
+
+
+async def test_refresh_strategies(cluster: Cluster, hosts: FiveHosts) -> None:
+    service_1 = await cluster.services.get(display_name__eq="First Example")
+    c1, c2, c3 = await service_1.components.all()
+    h1, h2, *_ = hosts
+    await cluster.hosts.add((h1, h2))
+
+    mapping = await cluster.mapping
+    await mapping.add(c1, h1)
+    await mapping.add(c1, h2)
+    await mapping.save()
+
+    mapping_1 = await (await cluster.refresh()).mapping
+    mapping_2 = await (await cluster.refresh()).mapping
+
+    # changes in remote, and same changes for "parallel user" mappings
+    await mapping.remove(c1, h2)
+    await mapping.add(c3, h1)
+    await mapping.save()
+
+    for mapping_ in (mapping_1, mapping_2):
+        await mapping_.remove(c1, h1)
+        await mapping_.add(c2, h1)
+
+    # local
+    expected = build_name_mapping(((c1, h2), (c2, h1), (c3, h1)))
+    await mapping_1.refresh(strategy=apply_local_changes)
+    assert build_name_mapping(mapping_1.all()) == expected
+
+    # remote
+    expected = build_name_mapping(((c1, h1), (c2, h1), (c3, h1)))
+    await mapping_2.refresh(strategy=apply_remote_changes)
+    assert build_name_mapping(mapping_2.all()) == expected
