@@ -9,6 +9,7 @@ from tests.integration.setup_environment import ADCMContainer
 REQUEST_KWARGS: dict = {"timeout": 10, "retry_interval": 1, "retry_attempts": 1}
 CREDENTIALS = Credentials(username="admin", password="admin")  # noqa: S106
 
+
 @pytest_asyncio.fixture()
 def adcm(
     adcm: ADCMContainer,

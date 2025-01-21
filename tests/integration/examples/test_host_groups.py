@@ -2,8 +2,7 @@ import asyncio
 
 import pytest
 
-from adcm_aio_client import ADCMSession
-from adcm_aio_client._filters import Filter
+from adcm_aio_client import ADCMSession, Filter
 from adcm_aio_client.config import ParameterHG
 from adcm_aio_client.objects import ActionHostGroup, ConfigHostGroup
 from tests.integration.examples.conftest import CREDENTIALS, REQUEST_KWARGS
