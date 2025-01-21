@@ -1,5 +1,6 @@
 - type: cluster
   name: Some Cluster
+  config_group_customization: yes
   version: 1
   allow_maintenance_mode: true
 
