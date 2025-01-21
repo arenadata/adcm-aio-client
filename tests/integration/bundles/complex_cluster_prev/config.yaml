@@ -3,6 +3,11 @@
   version: 0.1
   allow_maintenance_mode: true
 
+  config:
+    - name: string_field_prev
+      type: string
+      default: "string value"
+
   actions: &actions
     success: &success_job
       display_name: I will survive
