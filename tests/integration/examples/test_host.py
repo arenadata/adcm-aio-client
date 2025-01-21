@@ -8,6 +8,17 @@ pytestmark = [pytest.mark.asyncio]
 
 
 async def test_host(admin_client: ADCMClient, example_cluster: Cluster, example_hostprovider: HostProvider) -> None:
+    """
+    Service (`client.hosts`) API Examples:
+        - creating a host
+        - retrieval with filtering / all hosts
+        - iteration through all hosts
+        - adding host to cluster
+        - turning on maintenance mode
+        - refreshing host's data
+        - host removal
+    """
+
     client = admin_client
     cluster = example_cluster
     hostprovider = example_hostprovider
