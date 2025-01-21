@@ -1,19 +1,14 @@
 from collections.abc import AsyncGenerator, Generator
-import docker.errors
 from io import BytesIO
 from pathlib import Path
-from time import sleep
 from urllib.parse import urljoin
 import os
 import random
 import string
 import tarfile
-from filelock import FileLock
 
-from docker.errors import DockerException
 from httpx import AsyncClient
 from testcontainers.core.network import Network
-import httpx
 import pytest
 import pytest_asyncio
 
@@ -37,9 +32,6 @@ BUNDLES = Path(__file__).parent / "bundles"
 ################
 
 
-
-
-
 @pytest.fixture(scope="session")
 def network() -> Generator[Network, None, None]:
     with Network() as network:
@@ -47,26 +39,7 @@ def network() -> Generator[Network, None, None]:
 
 
 @pytest.fixture(scope="session")
-def postgres(network: Network, tmp_path_factory: pytest.TempdirFactory, worker_id: str) -> Generator[ADCMPostgresContainer, None, None]:
-    with ADCMPostgresContainer(image=postgres_image_name, network=network) as container:
-        yield container
-
-    return 
-    if worker_id == "master":
-        # non distributed execution
-        with ADCMPostgresContainer(image=postgres_image_name, network=network) as container:
-            yield container
-
-        return
-
-    root_tmp_dir = tmp_path_factory.getbasetemp().parent
-    pg_container_name_file = Path(root_tmp_dir / "postgres_name")
-
-    with FileLock(f"{pg_container_name_file}.lock"):
-        if pg_container_name_file.is_file():
-            container_name = pg_container_name_file.read_text().strip()
-            return container_name
-
+def postgres(network: Network) -> Generator[ADCMPostgresContainer, None, None]:
     with ADCMPostgresContainer(image=postgres_image_name, network=network) as container:
         yield container
 
@@ -119,12 +92,11 @@ def adcm(network: Network, postgres: ADCMPostgresContainer, adcm_image: str) -> 
     postgres.execute_statement(f"CREATE DATABASE {db.name} OWNER {DB_USER}")
 
     adcm = ADCMContainer(image=adcm_image, network=network, db=db)
-    
+
     with adcm as container:
         yield container
 
     postgres.execute_statement(f"DROP DATABASE {db.name}")
-
 
 
 #########

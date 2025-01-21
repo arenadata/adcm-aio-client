@@ -1,16 +1,16 @@
 from dataclasses import dataclass
-import docker.errors
 from time import sleep
-import string
-import random
 from typing import Self
+import random
 import socket
+import string
 
 from docker.errors import DockerException
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.network import Network
 from testcontainers.core.waiting_utils import wait_container_is_ready, wait_for_logs
 from testcontainers.postgres import DbContainer, PostgresContainer
+import docker.errors
 
 postgres_image_name = "postgres:latest"
 adcm_image_name = "hub.adsw.io/adcm/adcm:develop"
