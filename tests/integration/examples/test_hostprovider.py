@@ -1,6 +1,7 @@
 import pytest
 
-from adcm_aio_client import ADCMSession, Credentials
+from adcm_aio_client import ADCMSession
+from tests.integration.examples.conftest import CREDENTIALS, REQUEST_KWARGS
 from tests.integration.setup_environment import ADCMContainer
 
 pytestmark = [pytest.mark.asyncio]
@@ -16,8 +17,7 @@ async def test_hostprovider(adcm: ADCMContainer) -> None:
         - retrieval a list of hosts by hostprovider with filtering / all hosts
         - upgrade of hostprovider
     """
-    credentials = Credentials(username="admin", password="admin")  # noqa: S106
-    async with ADCMSession(url=adcm.url, credentials=credentials) as client:
+    async with ADCMSession(url=adcm.url, credentials=CREDENTIALS, **REQUEST_KWARGS) as client:
         # adding new hostprovider
         hostprovider = await client.hostproviders.create(
             bundle=await client.bundles.get(name__eq="simple_provider"), name="first provider"
