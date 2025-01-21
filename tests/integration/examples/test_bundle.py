@@ -5,7 +5,7 @@ import pytest
 from adcm_aio_client import ADCMSession
 from tests.integration.bundle import pack_bundle
 from tests.integration.conftest import BUNDLES
-from tests.integration.examples.conftest import DEFAULT_SESSION_KWARGS
+from tests.integration.examples.conftest import CREDENTIALS, REQUEST_KWARGS
 from tests.integration.setup_environment import ADCMContainer
 
 pytestmark = [pytest.mark.asyncio]
@@ -26,7 +26,7 @@ async def test_bundle(adcm: ADCMContainer, packed_bundle_with_license: Path) -> 
         - bundle removal
         - retrieval with filtering / all bundles
     """
-    async with ADCMSession(url=adcm.url, **DEFAULT_SESSION_KWARGS) as client:
+    async with ADCMSession(url=adcm.url, credentials=CREDENTIALS, **REQUEST_KWARGS) as client:
         all_bundles = await client.bundles.all()
         assert len(all_bundles) == 4
 

@@ -2,19 +2,12 @@ from collections.abc import Generator
 
 import pytest_asyncio
 
-from adcm_aio_client._types import Credentials
+from adcm_aio_client import Credentials
 from adcm_aio_client.objects import Bundle
 from tests.integration.setup_environment import ADCMContainer
 
-TIMEOUT = 10
-RETRY_INTERVAL = 1
-RETRY_ATTEMPTS = 1
-DEFAULT_SESSION_KWARGS = {
-    "timeout": TIMEOUT,
-    "retry_interval": RETRY_INTERVAL,
-    "retry_attempts": RETRY_ATTEMPTS,
-    "credentials": Credentials(username="admin", password="admin"),  # noqa: S106
-}
+REQUEST_KWARGS: dict = {"timeout": 10, "retry_interval": 1, "retry_attempts": 1}
+CREDENTIALS = Credentials(username="admin", password="admin")  # noqa: S106
 
 
 @pytest_asyncio.fixture()
