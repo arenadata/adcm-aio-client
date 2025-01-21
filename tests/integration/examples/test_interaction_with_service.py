@@ -1,6 +1,7 @@
 import pytest
 
 from adcm_aio_client import Filter
+from adcm_aio_client.errors import ObjectDoesNotExistError
 from adcm_aio_client.objects import Cluster, Component, Host, Service
 
 pytestmark = [pytest.mark.asyncio]
@@ -8,6 +9,7 @@ pytestmark = [pytest.mark.asyncio]
 
 async def test_interaction_with_service(example_cluster: Cluster, three_hosts: list[Host]) -> None:
     cluster = example_cluster
+    host_1, host_2, host_3 = sorted(three_hosts, key=lambda host: host.name)
 
     # Add services "example_1" and "example_2" using Filter
     await cluster.services.add(filter_=Filter(attr="name", op="iin", value=["Example_1", "example_2"]))
@@ -53,28 +55,24 @@ async def test_interaction_with_service(example_cluster: Cluster, three_hosts: l
     # Get specific component
     component = await service.components.get(name__eq="first")
 
-    # Prepare data
-    await _map_hosts_to_component(hosts=three_hosts, component=component)
+    # Prepare data: add 3 hosts to cluster, map two of them to component
+    await cluster.hosts.add(host=[host_1, host_2, host_3])
+    mapping = await cluster.mapping
+    await mapping.add(component=component, host=[host_1, host_2])
+    await mapping.save()
 
     # Get all component's hosts
     component_hosts: list[Host] = await component.hosts.all()  # noqa: F841
 
     # Get specific host, mapped to this component
-    host_3_from_component = await component.hosts.get(name__eq="host-3")  # noqa: F841
+    host_2_from_component = await component.hosts.get(name__eq=host_2.name)  # noqa: F841
+
+    # Trying to get host_3 from component, get error: host_3 is not mapped to component
+    with pytest.raises(ObjectDoesNotExistError, match="No objects found with the given filter."):
+        host_3_from_component = await component.hosts.get(name__eq=host_3.name)  # noqa: F841
 
     # Turn on maintenance mode on component
     await (await component.maintenance_mode).on()
 
     # Sync component's data with remote state
     await component.refresh()
-
-
-async def _map_hosts_to_component(hosts: list[Host], component: Component) -> None:
-    cluster = component.cluster
-
-    await cluster.hosts.add(host=hosts)
-
-    mapping = await cluster.mapping
-
-    await mapping.add(component=component, host=hosts)
-    await mapping.save()
