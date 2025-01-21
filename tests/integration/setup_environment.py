@@ -1,4 +1,8 @@
 from dataclasses import dataclass
+import docker.errors
+from time import sleep
+import string
+import random
 from typing import Self
 import socket
 
@@ -38,7 +42,8 @@ def find_free_port(start: int, end: int) -> int:
 class ADCMPostgresContainer(PostgresContainer):
     def __init__(self: Self, image: str, network: Network) -> None:
         super().__init__(image)
-        self.name = postgres_name
+        suffix = "".join(random.sample(string.ascii_letters, k=6)).lower()
+        self.name = f"test_pg_db_{suffix}"
         self.with_name(self.name)
         self.with_network(network)
 
@@ -80,14 +85,26 @@ class ADCMContainer(DockerContainer):
         self.with_env("DB_PORT", str(self._db.port))
 
     def start(self: Self) -> Self:
-        adcm_port = find_free_port(start=8000, end=8080)
-        self.with_bind_ports(8000, adcm_port)
-        ssl_port = find_free_port(start=8400, end=8480)
-        self.with_bind_ports(8443, ssl_port)
+        last_err = None
+        for _ in range(20):
+            suffix = "".join(random.sample(string.ascii_letters, k=6)).lower()
+            self.with_name(f"{adcm_container_name}_{suffix}")
+            self.with_bind_ports(8000, find_free_port(start=8000, end=8080))
+            self.with_bind_ports(8443, find_free_port(start=8400, end=8480))
 
-        self.with_name(f"{adcm_container_name}_{adcm_port}")
+            try:
+                super().start()
+            except docker.errors.APIError as e:
+                last_err = e
+                sleep(0.05)
+            else:
+                break
+        else:
+            if last_err:
+                raise last_err
 
-        super().start()
+            message = "ADCM start loop hasn't invoke `break` and has error, container state is unpredictable"
+            raise RuntimeError(message)
 
         wait_container_is_ready(self)
         ready_logs = "Run Nginx ..." if not self._migration_mode else "Run main wsgi application ..."
@@ -95,6 +112,7 @@ class ADCMContainer(DockerContainer):
 
         ip = self.get_container_host_ip()
         port = self.get_exposed_port(8000)
+        ssl_port = self.get_exposed_port(8443)
         self.url = f"http://{ip}:{port}"
         self.ssl_url = f"https://{ip}:{ssl_port}"
 

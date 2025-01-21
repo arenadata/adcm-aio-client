@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator, Generator
+import docker.errors
 from io import BytesIO
 from pathlib import Path
 from time import sleep
@@ -7,7 +8,9 @@ import os
 import random
 import string
 import tarfile
+from filelock import FileLock
 
+from docker.errors import DockerException
 from httpx import AsyncClient
 from testcontainers.core.network import Network
 import httpx
@@ -34,33 +37,7 @@ BUNDLES = Path(__file__).parent / "bundles"
 ################
 
 
-def load_certs_to_running_adcm(adcm: ADCMContainer, certs_dir: Path) -> None:
-    file = BytesIO()
-    with tarfile.open(mode="w:gz", fileobj=file) as tar:
-        tar.add(certs_dir, "")
-    file.seek(0)
 
-    container = adcm.get_wrapped_container()
-    container.put_archive("/adcm/data/conf/ssl", file.read())
-    ec, out = adcm.exec(["nginx", "-s", "reload"])
-    if ec != 0:
-        raise RuntimeError(f"Failed to reload nginx after attaching certs: {out.decode('utf-8')}")
-
-    verify_cert_path = str(certs_dir / "cert.pem")
-
-    attempts = 15
-    last_err = None
-
-    for _ in range(attempts):
-        try:
-            httpx.get(adcm.ssl_url, verify=verify_cert_path)
-        except httpx.ConnectError as e:
-            last_err = e
-            sleep(0.1)
-        else:
-            return
-
-    raise RuntimeError(f"Failed to connect to HTTPS port with {attempts} attempts") from last_err
 
 
 @pytest.fixture(scope="session")
@@ -70,7 +47,26 @@ def network() -> Generator[Network, None, None]:
 
 
 @pytest.fixture(scope="session")
-def postgres(network: Network) -> Generator[ADCMPostgresContainer, None, None]:
+def postgres(network: Network, tmp_path_factory: pytest.TempdirFactory, worker_id: str) -> Generator[ADCMPostgresContainer, None, None]:
+    with ADCMPostgresContainer(image=postgres_image_name, network=network) as container:
+        yield container
+
+    return 
+    if worker_id == "master":
+        # non distributed execution
+        with ADCMPostgresContainer(image=postgres_image_name, network=network) as container:
+            yield container
+
+        return
+
+    root_tmp_dir = tmp_path_factory.getbasetemp().parent
+    pg_container_name_file = Path(root_tmp_dir / "postgres_name")
+
+    with FileLock(f"{pg_container_name_file}.lock"):
+        if pg_container_name_file.is_file():
+            container_name = pg_container_name_file.read_text().strip()
+            return container_name
+
     with ADCMPostgresContainer(image=postgres_image_name, network=network) as container:
         yield container
 
@@ -102,12 +98,13 @@ def adcm_image(network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir:
     db = DatabaseInfo(name=f"adcm_{suffix}_migration", host=postgres.name)
     postgres.execute_statement(f"CREATE DATABASE {db.name} OWNER {DB_USER}")
 
-    with ADCMContainer(image=f"{base_repo}:{base_tag}", network=network, db=db, migration_mode=True) as adcm:
-        file = BytesIO()
-        with tarfile.open(mode="w:gz", fileobj=file) as tar:
-            tar.add(ssl_certs_dir, "")
-        file.seek(0)
+    file = BytesIO()
+    with tarfile.open(mode="w:gz", fileobj=file) as tar:
+        tar.add(ssl_certs_dir, "")
+    file.seek(0)
+    adcm = ADCMContainer(image=f"{base_repo}:{base_tag}", network=network, db=db, migration_mode=True)
 
+    with adcm:
         container = adcm.get_wrapped_container()
         container.put_archive("/adcm/data/conf/ssl", file.read())
         container.commit(repository=new_repo, tag=new_tag)
@@ -121,10 +118,13 @@ def adcm(network: Network, postgres: ADCMPostgresContainer, adcm_image: str) -> 
     db = DatabaseInfo(name=f"adcm_{suffix}", host=postgres.name)
     postgres.execute_statement(f"CREATE DATABASE {db.name} OWNER {DB_USER}")
 
-    with ADCMContainer(image=adcm_image, network=network, db=db) as container:
+    adcm = ADCMContainer(image=adcm_image, network=network, db=db)
+    
+    with adcm as container:
         yield container
 
     postgres.execute_statement(f"DROP DATABASE {db.name}")
+
 
 
 #########
