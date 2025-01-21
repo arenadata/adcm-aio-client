@@ -8,6 +8,22 @@ pytestmark = [pytest.mark.asyncio]
 
 
 async def test_service(example_cluster: Cluster, three_hosts: list[Host]) -> None:
+    """
+    Service (`cluster.services`) API Examples:
+        - adding a service to cluster
+            - with accepting license
+            - with dependencies
+        - retrieval with filtering / all cluster's services
+        - iteration through all cluster's services
+        - service removal
+        - turning on maintenance mode
+        - refreshing service's data
+    Component (`service.components`) API Examples:
+        - retrieval with filtering / all service's components
+        - retrieval hosts, mapped to component with filtering / all mapped hosts
+        - turning on maintenance mode
+        - refreshing component's data
+    """
     cluster = example_cluster
     host_1, host_2, host_3 = sorted(three_hosts, key=lambda host: host.name)
 
@@ -63,6 +79,13 @@ async def test_service(example_cluster: Cluster, three_hosts: list[Host]) -> Non
 
     # Get all component's hosts
     component_hosts: list[Host] = await component.hosts.all()  # noqa: F841
+
+    # Iterate through all service's components
+    async for comp in service.components.iter():  # noqa: B007
+        pass
+
+    # Get all hosts, mapped to component
+    all_component_hosts: list[Host] = await component.hosts.all()  # noqa: F841
 
     # Get specific host, mapped to this component
     host_2_from_component = await component.hosts.get(name__eq=host_2.name)  # noqa: F841
