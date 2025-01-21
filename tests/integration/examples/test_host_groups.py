@@ -80,8 +80,8 @@ async def test_action_host_group(adcm: ADCMContainer) -> None:
 
         # Since it's there's only one group, get without parameters will work,
         # yet avoid using it like that.
-        group_ = await cluster.config_host_groups.get()
+        group_ = await cluster.action_host_groups.get()
         assert group_.id == group.id
 
         await group.delete()
-        assert len(await cluster.config_host_groups.all()) == 0
+        assert len(await cluster.action_host_groups.all()) == 0
