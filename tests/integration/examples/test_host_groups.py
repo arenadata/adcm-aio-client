@@ -12,6 +12,14 @@ pytestmark = [pytest.mark.asyncio]
 
 
 async def test_config_host_group(adcm: ADCMContainer) -> None:
+    """
+    Config Host Group API Examples:
+        - creation
+        - deletion
+        - hosts management
+        - various retrieval approaches
+        - config basic interaction
+    """
     async with ADCMSession(url=adcm.url, credentials=CREDENTIALS, **REQUEST_KWARGS) as client:
         bundle = await client.bundles.get(name__eq="simple_provider")
         hostprovider = await client.hostproviders.create(bundle=bundle, name="For Hosts")
@@ -51,6 +59,14 @@ async def test_config_host_group(adcm: ADCMContainer) -> None:
 
 
 async def test_action_host_group(adcm: ADCMContainer) -> None:
+    """
+    Action Host Group API Examples:
+        - creation
+        - deletion
+        - hosts management
+        - various retrieval approaches
+        - action basic interaction
+    """
     async with ADCMSession(url=adcm.url, credentials=CREDENTIALS, **REQUEST_KWARGS) as client:
         bundle = await client.bundles.get(name__eq="simple_provider")
         hostprovider = await client.hostproviders.create(bundle=bundle, name="For Hosts")
