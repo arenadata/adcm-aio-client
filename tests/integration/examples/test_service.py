@@ -7,7 +7,7 @@ from adcm_aio_client.objects import Cluster, Component, Host, Service
 pytestmark = [pytest.mark.asyncio]
 
 
-async def test_interaction_with_service(example_cluster: Cluster, three_hosts: list[Host]) -> None:
+async def test_service(example_cluster: Cluster, three_hosts: list[Host]) -> None:
     cluster = example_cluster
     host_1, host_2, host_3 = sorted(three_hosts, key=lambda host: host.name)
 
