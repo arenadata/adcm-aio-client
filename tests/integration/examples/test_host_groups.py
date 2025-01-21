@@ -15,7 +15,7 @@ async def test_config_host_group(adcm: ADCMContainer) -> None:
     async with ADCMSession(url=adcm.url, credentials=CREDENTIALS, **REQUEST_KWARGS) as client:
         bundle = await client.bundles.get(name__eq="simple_provider")
         hostprovider = await client.hostproviders.create(bundle=bundle, name="For Hosts")
-        bundle = await client.bundles.get(name__icontains="some")
+        bundle = await client.bundles.get(name__icontains="Some cluste", version__eq="1")
         cluster = await client.clusters.create(bundle=bundle, name="For CHG")
         hosts = await asyncio.gather(
             *(
@@ -54,7 +54,7 @@ async def test_action_host_group(adcm: ADCMContainer) -> None:
     async with ADCMSession(url=adcm.url, credentials=CREDENTIALS, **REQUEST_KWARGS) as client:
         bundle = await client.bundles.get(name__eq="simple_provider")
         hostprovider = await client.hostproviders.create(bundle=bundle, name="For Hosts")
-        bundle = await client.bundles.get(name__icontains="some")
+        bundle = await client.bundles.get(name__icontains="Some cluste", version__eq="1")
         cluster = await client.clusters.create(bundle=bundle, name="For AHG")
         hosts = await asyncio.gather(
             *(
