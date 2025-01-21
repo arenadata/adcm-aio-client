@@ -1,8 +1,8 @@
 import pytest
 
-from adcm_aio_client import ADCMSession, Credentials, Filter
+from adcm_aio_client import ADCMSession, Filter
 from adcm_aio_client.config import Parameter
-from tests.integration.examples.conftest import RETRY_ATTEMPTS, RETRY_INTERVAL, TIMEOUT
+from tests.integration.examples.conftest import CREDENTIALS, REQUEST_KWARGS
 from tests.integration.setup_environment import ADCMContainer
 
 pytestmark = [pytest.mark.asyncio]
@@ -14,11 +14,8 @@ async def test_iteration_with_cluster(adcm: ADCMContainer) -> None:
     configuring cluster configuration, launching actions on the cluster and updating the cluster.
     """
     url = adcm.url
-    credentials = Credentials(username="admin", password="admin")  # noqa: S106
 
-    async with ADCMSession(
-        url=url, credentials=credentials, timeout=TIMEOUT, retry_attempts=RETRY_ATTEMPTS, retry_interval=RETRY_INTERVAL
-    ) as client:
+    async with ADCMSession(url=url, credentials=CREDENTIALS, **REQUEST_KWARGS) as client:
         clusters = await client.clusters.all()
         assert len(clusters) == 0
 
@@ -28,8 +25,7 @@ async def test_interaction_with_cluster(adcm: ADCMContainer) -> None:
     Interaction with clusters: creating, deleting, getting a list of clusters using filtering,
     configuring cluster configuration, launching actions on the cluster and updating the cluster.
     """
-    credentials = Credentials(username="admin", password="admin")  # noqa: S106
-    async with ADCMSession(url=adcm.url, credentials=credentials) as client:
+    async with ADCMSession(url=adcm.url, credentials=CREDENTIALS, **REQUEST_KWARGS) as client:
         simple_cluster = await client.clusters.create(
             bundle=await client.bundles.get(name__eq="Simple Cluster"), name="simple_cluster"
         )
