@@ -7,9 +7,8 @@ from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.objects import Bundle, Cluster, Host
 from tests.integration.setup_environment import ADCMContainer
 
-TIMEOUT = 10
-RETRY_INTERVAL = 1
-RETRY_ATTEMPTS = 1
+REQUEST_KWARGS: dict = {"timeout": 10, "retry_interval": 1, "retry_attempts": 1}
+CREDENTIALS = Credentials(username="admin", password="admin")  # noqa: S106
 
 
 @pytest_asyncio.fixture()
@@ -26,15 +25,7 @@ def adcm(
 
 @pytest_asyncio.fixture()
 async def admin_client(adcm: ADCMContainer) -> AsyncGenerator[ADCMClient, None]:
-    credentials = Credentials(username="admin", password="admin")  # noqa: S106
-
-    async with ADCMSession(
-        url=adcm.url,
-        credentials=credentials,
-        timeout=TIMEOUT,
-        retry_interval=RETRY_INTERVAL,
-        retry_attempts=RETRY_ATTEMPTS,
-    ) as client:
+    async with ADCMSession(url=adcm.url, credentials=CREDENTIALS, **REQUEST_KWARGS) as client:
         yield client
 
 
