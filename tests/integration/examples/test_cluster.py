@@ -8,22 +8,16 @@ from tests.integration.setup_environment import ADCMContainer
 pytestmark = [pytest.mark.asyncio]
 
 
-async def test_iteration_with_cluster(adcm: ADCMContainer) -> None:
+async def test_cluster(adcm: ADCMContainer) -> None:
     """
-    Interaction with clusters: creating, deleting, getting a list of clusters using filtering,
-    configuring cluster configuration, launching actions on the cluster and updating the cluster.
-    """
-    url = adcm.url
-
-    async with ADCMSession(url=url, credentials=CREDENTIALS, **REQUEST_KWARGS) as client:
-        clusters = await client.clusters.all()
-        assert len(clusters) == 0
-
-
-async def test_interaction_with_cluster(adcm: ADCMContainer) -> None:
-    """
-    Interaction with clusters: creating, deleting, getting a list of clusters using filtering,
-    configuring cluster configuration, launching actions on the cluster and updating the cluster.
+    Cluster (`client.clusters`) API Examples:
+        - upload from path
+        - retrieval with filtering / all clusters
+        - cluster removal
+        - change of mapping between hosts and components by cluster
+        - update of cluster config
+        - upgrade of cluster
+        - running of cluster action
     """
     async with ADCMSession(url=adcm.url, credentials=CREDENTIALS, **REQUEST_KWARGS) as client:
         simple_cluster = await client.clusters.create(
