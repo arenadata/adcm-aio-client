@@ -223,11 +223,11 @@ async def _test_upgrade_with_mapping(context: Context) -> None:
 
 async def _test_upgrade_filtering(context: Context, tmp_path: Path) -> None:
     hostprovider = context.hostprovider
-    upgrades_simple = 40
+    upgrades_simple = 41
     upgrades_action = 20
     upgrades_total = upgrades_simple + upgrades_action
 
-    assert await hostprovider.upgrades.all() == []
+    assert await hostprovider.upgrades.all() == [await hostprovider.upgrades.get(name__eq="simple_provider")]
 
     new_bundle = await upload_hp_bundle_with_50_plus_upgrades(adcm_client=context.client, workdir=tmp_path)
 
