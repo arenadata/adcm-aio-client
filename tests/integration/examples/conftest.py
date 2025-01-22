@@ -4,7 +4,7 @@ import pytest_asyncio
 
 from adcm_aio_client import ADCMSession, Credentials
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.objects import Bundle, Cluster, HostProvider
+from adcm_aio_client.objects import Bundle, Cluster, Host, HostProvider
 from tests.integration.setup_environment import ADCMContainer
 
 REQUEST_KWARGS: dict = {"timeout": 10, "retry_interval": 1, "retry_attempts": 1}
@@ -42,3 +42,12 @@ async def example_cluster(admin_client: ADCMClient) -> AsyncGenerator[Cluster, N
 @pytest_asyncio.fixture()
 async def example_hostprovider(admin_client: ADCMClient, simple_hostprovider_bundle: Bundle) -> HostProvider:
     return await admin_client.hostproviders.create(bundle=simple_hostprovider_bundle, name="Example hostprovider")
+
+
+@pytest_asyncio.fixture()
+async def three_hosts(admin_client: ADCMClient, example_hostprovider: HostProvider) -> list[Host]:
+    names = {"host-1", "host-2", "host-3"}
+    for name in names:
+        await admin_client.hosts.create(hostprovider=example_hostprovider, name=name)
+
+    return await admin_client.hosts.filter(name__in=names)
