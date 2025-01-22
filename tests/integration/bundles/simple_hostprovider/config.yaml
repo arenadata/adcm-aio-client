@@ -2,6 +2,15 @@
   name: simple_provider
   version: 4
 
+  upgrade:
+    - name: simple_provider
+      display_name: "simple upgrade"
+      versions:
+        min: 1
+        max: 4
+      states:
+        available: any
+
   actions: &actions
     success: &job
       display_name: I will survive
