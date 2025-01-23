@@ -160,7 +160,6 @@ class _Desyncable(_ConfigWrapper):
             # we assume that this element is a structure,
             # so we have to (de)sync it
             closest_attribute = self._find_closest_attribute(self._name)
-            print(closest_attribute)
             if closest_attribute is None or not self._schema.is_group(closest_attribute):
                 # it's not a structure-based group
                 raise
