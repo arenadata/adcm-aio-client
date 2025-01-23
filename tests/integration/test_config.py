@@ -292,6 +292,7 @@ async def test_host_group_config(cluster: Cluster) -> None:
     await config_1.refresh(strategy=apply_local_changes)
     await config_2.refresh(strategy=apply_remote_changes)
 
+    config_1["A lot of text"]["sag"]["nested"]["op"].sync().desync()  # type: ignore
     values = get_field_value("A lot of text", "sag", "quantity", configs=configs)
     assert set(values) == {4}
     values = get_field_value("Set me", configs=configs)

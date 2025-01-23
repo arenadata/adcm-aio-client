@@ -144,12 +144,43 @@ class _Desyncable(_ConfigWrapper):
     _SYNC_ATTR = "isSynchronized"
 
     def sync(self: Self) -> Self:
-        self._data.set_attribute(parameter=self._name, attribute=self._SYNC_ATTR, value=True)
-        return self
+        return self._set(value=True)
 
     def desync(self: Self) -> Self:
-        self._data.set_attribute(parameter=self._name, attribute=self._SYNC_ATTR, value=False)
+        return self._set(value=False)
+
+    def _set(self: Self, *, value: bool) -> Self:
+        try:
+            self._data.set_attribute(parameter=self._name, attribute=self._SYNC_ATTR, value=value)
+        except KeyError:
+            if len(self._name) == 1:
+                # not a group, attribute have to exist
+                raise
+
+            # we assume that this element is a structure,
+            # so we have to (de)sync it
+            closest_attribute = self._find_closest_attribute(self._name)
+            print(closest_attribute)
+            if closest_attribute is None or not self._schema.is_group(closest_attribute):
+                # it's not a structure-based group
+                raise
+
+            self._data.set_attribute(parameter=closest_attribute, attribute=self._SYNC_ATTR, value=value)
+
         return self
+
+    def _find_closest_attribute(self: Self, name: LevelNames) -> LevelNames | None:
+        if not name:
+            return None
+
+        prev_name = tuple(name[:-1])
+
+        try:
+            self._data.get_attribute(parameter=prev_name, attribute=self._SYNC_ATTR)
+        except KeyError:
+            return self._find_closest_attribute(prev_name)
+
+        return prev_name
 
 
 class ParameterHG[T](_Desyncable, Parameter[T]):
