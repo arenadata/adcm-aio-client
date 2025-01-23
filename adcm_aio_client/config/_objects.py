@@ -113,49 +113,73 @@ class Parameter[T](_ConfigWrapper):
     def set(self: Self, value: Any) -> Self:  # noqa: ANN401
         try:
             self._data.set_value(parameter=self._name, value=value)
-        except (TypeError, KeyError) as err:
+        except (TypeError, KeyError):
             if len(self._name) == 1:
                 # not in any sort of group, should continue with exception
                 raise
 
-            self._set_parent_groups_to_defaults(err=err)
+            self._ensure_parent_groups_are_dicts()
             self._data.set_value(parameter=self._name, value=value)
 
         return self
 
-    def _set_parent_groups_to_defaults(self: Self, err: Exception) -> None:
-        # find first `None` group
-        root_group_name, *rest = self._name[:-1]
-        group = (root_group_name,)
+    def _ensure_parent_groups_are_dicts(self: Self) -> None:
+        *groups, _ = self._name
+        path = ()
+        for group in groups:
+            group_name = (*path, group)
 
-        while rest:
-            value_ = self._data.get_value(group)
-            if value_ is None:
-                break
+            try:
+                value = self._data.get_value(group_name)
+            except KeyError:
+                value = None
 
-            next_group_name, *rest = rest
-            group = (*group, next_group_name)
+            if value is None:
+                self._data.set_value(group_name, {})
 
-        value_ = self._data.get_value(group)
-        if value_ is not None:
-            # error was legit and not about None group
-            raise err
-
-        # actually build defaults
-        defaults = self._schema.get_default(group)
-        self._data.set_value(group, defaults)
+            path = group_name
 
 
 class _Desyncable(_ConfigWrapper):
     _SYNC_ATTR = "isSynchronized"
 
     def sync(self: Self) -> Self:
-        self._data.set_attribute(parameter=self._name, attribute=self._SYNC_ATTR, value=True)
-        return self
+        return self._set(value=True)
 
     def desync(self: Self) -> Self:
-        self._data.set_attribute(parameter=self._name, attribute=self._SYNC_ATTR, value=False)
+        return self._set(value=False)
+
+    def _set(self: Self, *, value: bool) -> Self:
+        try:
+            self._data.set_attribute(parameter=self._name, attribute=self._SYNC_ATTR, value=value)
+        except KeyError:
+            if len(self._name) == 1:
+                # not a group, attribute have to exist
+                raise
+
+            # we assume that this element is a structure,
+            # so we have to (de)sync it
+            closest_attribute = self._find_closest_attribute(self._name)
+            if closest_attribute is None or not self._schema.is_group(closest_attribute):
+                # it's not a structure-based group
+                raise
+
+            self._data.set_attribute(parameter=closest_attribute, attribute=self._SYNC_ATTR, value=value)
+
         return self
+
+    def _find_closest_attribute(self: Self, name: LevelNames) -> LevelNames | None:
+        if not name:
+            return None
+
+        prev_name = tuple(name[:-1])
+
+        try:
+            self._data.get_attribute(parameter=prev_name, attribute=self._SYNC_ATTR)
+        except KeyError:
+            return self._find_closest_attribute(prev_name)
+
+        return prev_name
 
 
 class ParameterHG[T](_Desyncable, Parameter[T]):
