@@ -113,37 +113,31 @@ class Parameter[T](_ConfigWrapper):
     def set(self: Self, value: Any) -> Self:  # noqa: ANN401
         try:
             self._data.set_value(parameter=self._name, value=value)
-        except (TypeError, KeyError) as err:
+        except (TypeError, KeyError):
             if len(self._name) == 1:
                 # not in any sort of group, should continue with exception
                 raise
 
-            self._set_parent_groups_to_defaults(err=err)
+            self._ensure_parent_groups_are_dicts()
             self._data.set_value(parameter=self._name, value=value)
 
         return self
 
-    def _set_parent_groups_to_defaults(self: Self, err: Exception) -> None:
-        # find first `None` group
-        root_group_name, *rest = self._name[:-1]
-        group = (root_group_name,)
+    def _ensure_parent_groups_are_dicts(self: Self) -> None:
+        *groups, _ = self._name
+        path = ()
+        for group in groups:
+            group_name = (*path, group)
 
-        while rest:
-            value_ = self._data.get_value(group)
-            if value_ is None:
-                break
+            try:
+                value = self._data.get_value(group_name)
+            except KeyError:
+                value = None
 
-            next_group_name, *rest = rest
-            group = (*group, next_group_name)
+            if value is None:
+                self._data.set_value(group_name, {})
 
-        value_ = self._data.get_value(group)
-        if value_ is not None:
-            # error was legit and not about None group
-            raise err
-
-        # actually build defaults
-        defaults = self._schema.get_default(group)
-        self._data.set_value(group, defaults)
+            path = group_name
 
 
 class _Desyncable(_ConfigWrapper):

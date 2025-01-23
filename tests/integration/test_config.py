@@ -272,11 +272,10 @@ async def test_host_group_config(cluster: Cluster) -> None:
     main_config["more"]["strange"].set(strange_val_1)  # type: ignore
     main_config["Optional", ActivatableParameterGroup].activate()
     main_config["complexity_level", Parameter].set(complexity_changed)
-    # todo fix working with structures here
-    # sag = main_config["A lot of text"]["sag"]
-    # sag["quantity"].set(4)
-    # sag["nested"]["attr"].set(  "foo")
-    # sag["nested"]["op"].set(  "bar")
+    sag = main_config["A lot of text"]["sag"]  # type: ignore
+    sag["quantity"].set(4)  # type: ignore
+    sag["nested"]["attr"].set("foo")  # type: ignore
+    sag["nested"]["op"].set("bar")  # type: ignore
 
     config_1["Set me", ParameterHG].set(req_val_2)
     config_1["from_doc"]["person"].set(person_val_2)  # type: ignore
@@ -293,9 +292,8 @@ async def test_host_group_config(cluster: Cluster) -> None:
     await config_1.refresh(strategy=apply_local_changes)
     await config_2.refresh(strategy=apply_remote_changes)
 
-    # todo same fix with structure
-    # values = get_field_value("A lot of text", "sag", "quantity", configs=configs)
-    # assert set(values) == {4}
+    values = get_field_value("A lot of text", "sag", "quantity", configs=configs)
+    assert set(values) == {4}
     values = get_field_value("Set me", configs=configs)
     assert values == (req_val_1, req_val_2, req_val_1)
     values = get_field_value("more", "strange", configs=configs)
