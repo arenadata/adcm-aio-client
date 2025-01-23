@@ -1,16 +1,39 @@
-[tool.poetry]
+[project]
 name = "adcm-aio-client"
-version = "0.1.0"
-description = "ADCM Client"
-authors = ["Aleksandr Alferov <aas@arenadata.io>"]
-license = "Apache License Version 2.0"
+description = "Asynchronous HTTP Client for ADCM (Arenadata Cluster Manager)"
+authors = [
+    { name = "Aleksandr Alferov", email = "<aas@arenadata.io>" },
+    { name = "Egor Araslanov", email = "<aer@arenadata.io>" },
+    { name = "Daniil Skrynnik", email = "<d.skrynnik@arenadata.io>" },
+    { name = "Artem Starovoitov", email = "<a.starovoitov@arenadata.io>" },
+    { name = "Vasiliy Chudasov", email = "<v.chudasov@arenadata.io>" }
+]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 readme = "README.md"
+requires-python = ">=3.12"
+keywords = ["ADCM"]
+dependencies = [
+    "httpx (>=0.27.2, <1.0.0)",
+    "asyncstdlib (>=3.13.0, <4.0.0)",
+    "adcm-version (>=1.0.3, <2.0.0)"
+]
+dynamic = ["version", "classifiers"]
+
+[project.urls]
+homepage = "https://github.com/arenadata/adcm-aio-client"
+repository = "https://github.com/arenadata/adcm-aio-client"
+
+[tool.poetry]
+version = "0.1.0"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
 
 [tool.poetry.dependencies]
-python = "^3.12"
-httpx = "^0.27.2"
-asyncstdlib = "^3.13.0"
-adcm-version = "^1.0.3"
+python = ">=3.12,<4.0"
 
 [tool.poetry.group.dev]
 optional = true
@@ -77,7 +100,7 @@ include = [
 
 executionEnvironments = [
     { root = "." },
-    { root = "tests", extraPaths = [ "." ] },
+    { root = "tests", extraPaths = ["."] },
 ]
 
 typeCheckingMode = "standard"
