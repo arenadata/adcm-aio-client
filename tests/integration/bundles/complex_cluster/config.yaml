@@ -322,6 +322,9 @@
           type: json
           default: []
 
+  components:
+    component1:
+
 
 - type: service
   name: with_host_actions

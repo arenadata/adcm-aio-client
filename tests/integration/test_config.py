@@ -31,9 +31,9 @@ from adcm_aio_client.config import (
     apply_remote_changes,
 )
 from adcm_aio_client.config._objects import HostGroupConfig, ObjectConfig
-from adcm_aio_client.errors import ConfigNoParameterError
+from adcm_aio_client.errors import ConfigNoParameterError, ConflictError
 from adcm_aio_client.host_groups._config_group import ConfigHostGroup
-from adcm_aio_client.objects import Bundle, Cluster, Service
+from adcm_aio_client.objects import Bundle, Cluster, Host, Service
 from tests.integration.setup_environment import ADCMContainer
 
 pytestmark = [pytest.mark.asyncio]
@@ -78,10 +78,8 @@ async def refresh_and_get_two_configs(
     cfg1 = await obj1.config
     cfg2 = await obj2.config
 
-    if type(obj1) is type(obj2):
+    if type(obj1) is type(obj2) and obj1.id == obj2.id:
         assert cfg1.data.id == cfg2.data.id
-        assert obj1.id == obj2.id
-        assert type(obj1) is type(obj2)
         assert cfg1._parent._data["id"] == cfg2._parent._data["id"]  # pyright: ignore[reportAttributeAccessIssue]
     assert id(cfg1._parent._requester) != id(cfg2._parent._requester)  # pyright: ignore[reportAttributeAccessIssue]
 
@@ -382,7 +380,9 @@ async def test_host_group_config(cluster: Cluster) -> None:
     assert param.value == strange_val_1
 
 
-async def test_config_two_sessions(adcm: ADCMContainer, httpx_client: AsyncClient, cluster: Cluster) -> None:
+async def test_config_two_sessions(
+    adcm: ADCMContainer, httpx_client: AsyncClient, cluster: Cluster, simple_hostprovider_bundle: Bundle
+) -> None:
     kwargs = {"verify": False, "timeout": 10, "retry_interval": 1, "retry_attempts": 1}
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
 
@@ -390,8 +390,16 @@ async def test_config_two_sessions(adcm: ADCMContainer, httpx_client: AsyncClien
         ADCMSession(url=adcm.url, credentials=credentials, **kwargs) as client_1,
         ADCMSession(url=adcm.url, credentials=credentials, **kwargs) as client_2,
     ):
+        provider = await client_1.hostproviders.create(bundle=simple_hostprovider_bundle, name="Test HP")
+        host = await client_1.hosts.create(hostprovider=provider, name="Test-host", cluster=cluster)
+
         service_1 = await (await client_1.clusters.get(name__eq=cluster.name)).services.get(name__eq="complex_config")
         service_2 = await (await client_2.clusters.get(name__eq=cluster.name)).services.get(name__eq="complex_config")
+
+        component = await service_1.components.get(name__eq="component1")
+        mapping = await cluster.mapping
+        await mapping.add(component=component, host=host)
+        await mapping.save()
 
         # set required field
         cfg = await service_1.config
@@ -399,11 +407,12 @@ async def test_config_two_sessions(adcm: ADCMContainer, httpx_client: AsyncClien
         await cfg.save()
 
         # tests
-        await two_sessions_case_1(service_1, service_2, httpx_client)
-        await two_sessions_case_2(service_1, service_2, httpx_client)
-        await two_sessions_case_3(service_1, service_2, httpx_client)
-        await two_sessions_case_4(service_1, service_2, httpx_client)
-        await two_sessions_case_5(service_1, service_2, httpx_client)
+        await two_sessions_case_1(service_1, service_2, httpx_client=httpx_client)
+        await two_sessions_case_2(service_1, service_2, httpx_client=httpx_client)
+        await two_sessions_case_3(service_1, service_2, httpx_client=httpx_client)
+        await two_sessions_case_4(service_1, service_2, httpx_client=httpx_client)
+        await two_sessions_case_5(service_1, service_2, httpx_client=httpx_client)
+        await two_sessions_case_6(service_1, service_2, host=host)
 
 
 async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
@@ -598,3 +607,21 @@ async def two_sessions_case_5(obj1: Service, obj2: Service, httpx_client: AsyncC
     assert cfg1[field1, Parameter].value == value3 == remote_cfg[field1]
     assert cfg1[field2, Parameter].value == value2 == remote_cfg[field2]
     assert cfg1[field3, Parameter].value == value4 == remote_cfg[field3]
+
+
+async def two_sessions_case_6(obj1: Service, obj2: Service, host: Host) -> None:
+    """
+    user 1: map host to chg1;
+    user 2: map host to chg2, get error
+    """
+
+    chg1 = await obj1.config_host_groups.create(name="Service CHG 1")
+    chg2 = await obj2.config_host_groups.create(name="Service CHG 2")
+
+    # user 1
+    await chg1.hosts.add(host=host)
+
+    # user 2
+    with pytest.raises(ExceptionGroup) as exc:
+        await chg2.hosts.add(host=host)
+    assert exc.group_contains(ConflictError, match="GROUP_CONFIG_HOST_ERROR")
