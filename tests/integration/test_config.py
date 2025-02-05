@@ -32,6 +32,7 @@ from adcm_aio_client.config import (
 )
 from adcm_aio_client.config._objects import HostGroupConfig, ObjectConfig
 from adcm_aio_client.errors import ConfigNoParameterError
+from adcm_aio_client.host_groups._config_group import ConfigHostGroup
 from adcm_aio_client.objects import Bundle, Cluster, Service
 from tests.integration.setup_environment import ADCMContainer
 
@@ -49,7 +50,7 @@ async def get_service_with_config(cluster: Cluster) -> Service:
     return await cluster.services.get(name__eq="complex_config")
 
 
-async def get_object_config(obj: Service, httpx_client: AsyncClient) -> dict:
+async def get_object_config(obj: Service | ConfigHostGroup, httpx_client: AsyncClient) -> dict:
     url = "/".join(map(str, (*obj.get_own_path(), "configs", "")))
     response = await httpx_client.get(url=url, params={"ordering": "-id", "limit": 2})
     assert response.status_code == 200
@@ -68,17 +69,20 @@ async def get_object_config(obj: Service, httpx_client: AsyncClient) -> dict:
     return response.json()["config"]
 
 
-async def refresh_and_get_two_configs(obj1: Service, obj2: Service) -> tuple[ObjectConfig, ObjectConfig]:
+async def refresh_and_get_two_configs(
+    obj1: Service | ConfigHostGroup, obj2: Service | ConfigHostGroup
+) -> tuple[ObjectConfig, ObjectConfig]:
     await obj1.refresh()
     await obj2.refresh()
 
     cfg1 = await obj1.config
     cfg2 = await obj2.config
 
-    assert cfg1.data.id == cfg2.data.id
-    assert obj1.id == obj2.id
-    assert type(obj1) is type(obj2)
-    assert cfg1._parent._data["id"] == cfg2._parent._data["id"]  # pyright: ignore[reportAttributeAccessIssue]
+    if type(obj1) is type(obj2):
+        assert cfg1.data.id == cfg2.data.id
+        assert obj1.id == obj2.id
+        assert type(obj1) is type(obj2)
+        assert cfg1._parent._data["id"] == cfg2._parent._data["id"]  # pyright: ignore[reportAttributeAccessIssue]
     assert id(cfg1._parent._requester) != id(cfg2._parent._requester)  # pyright: ignore[reportAttributeAccessIssue]
 
     return cfg1, cfg2
@@ -397,6 +401,7 @@ async def test_config_two_sessions(adcm: ADCMContainer, httpx_client: AsyncClien
         # tests
         await two_sessions_case_1(service_1, service_2, httpx_client)
         await two_sessions_case_2(service_1, service_2, httpx_client)
+        await two_sessions_case_3(service_1, service_2, httpx_client)
 
 
 async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
@@ -469,3 +474,43 @@ async def two_sessions_case_2(obj1: Service, obj2: Service, httpx_client: AsyncC
     assert (
         cfg2[agr_display_name, ActivatableParameterGroup][field2, Parameter].value == value2 == remote_agr_cgf[field2]
     )
+
+
+async def two_sessions_case_3(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
+    """
+    user 1: config group: desync field, set field value1;
+    user 2: object: set field value2, save config
+    user1: config group: save config
+    """
+    # create_config group
+    chg = await obj2.config_host_groups.create(name="Service CHG")
+
+    object_cfg, chg_cfg = await refresh_and_get_two_configs(obj1, chg)
+
+    field, value1, value2, initial = "complexity_level", 0, 1, 4
+    assert (
+        (await get_object_config(obj1, httpx_client))[field]
+        == (await get_object_config(chg, httpx_client))[field]
+        == initial
+        == object_cfg[field, Parameter].value
+        == chg_cfg[field].value
+    )
+
+    # user 1
+    field1 = chg_cfg[field, ParameterHG]
+    field1.desync()
+    field1.set(value1)
+
+    # user 2
+    field2 = object_cfg[field, Parameter]
+    field2.set(value2)
+    await object_cfg.save()
+
+    # user 1
+    await chg_cfg.save()
+
+    remote_object_cfg = await get_object_config(obj1, httpx_client)
+    remote_chg_cfg = await get_object_config(chg, httpx_client)
+
+    assert remote_chg_cfg[field] == value1 == chg_cfg[field, ParameterHG].value
+    assert remote_object_cfg[field] == value2 == object_cfg[field, Parameter].value
