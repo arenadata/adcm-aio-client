@@ -71,7 +71,7 @@ async def get_object_config(obj: Service | ConfigHostGroup, httpx_client: AsyncC
 
 async def refresh_and_get_two_configs(
     obj1: Service | ConfigHostGroup, obj2: Service | ConfigHostGroup
-) -> tuple[ObjectConfig, ObjectConfig]:
+) -> tuple[ObjectConfig | HostGroupConfig, ObjectConfig | HostGroupConfig]:
     await obj1.refresh()
     await obj2.refresh()
 
@@ -402,6 +402,7 @@ async def test_config_two_sessions(adcm: ADCMContainer, httpx_client: AsyncClien
         await two_sessions_case_1(service_1, service_2, httpx_client)
         await two_sessions_case_2(service_1, service_2, httpx_client)
         await two_sessions_case_3(service_1, service_2, httpx_client)
+        await two_sessions_case_4(service_1, service_2, httpx_client)
 
 
 async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
@@ -411,6 +412,7 @@ async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncC
     """
 
     cfg1, cfg2 = await refresh_and_get_two_configs(obj1, obj2)
+    assert isinstance(cfg1, ObjectConfig) and isinstance(cfg2, ObjectConfig)
 
     field_display_name, field_name, value = "Complexity Level", "complexity_level", 4
     assert (await get_object_config(obj1, httpx_client))[field_name] == value
@@ -441,6 +443,7 @@ async def two_sessions_case_2(obj1: Service, obj2: Service, httpx_client: AsyncC
     """
 
     cfg1, cfg2 = await refresh_and_get_two_configs(obj1, obj2)
+    assert isinstance(cfg1, ObjectConfig) and isinstance(cfg2, ObjectConfig)
 
     agr_display_name, agr_name, field1, value1, field2, value2 = "Optional", "agroup", "justhere", 3, "field2", 6
 
@@ -486,6 +489,7 @@ async def two_sessions_case_3(obj1: Service, obj2: Service, httpx_client: AsyncC
     chg = await obj2.config_host_groups.create(name="Service CHG")
 
     object_cfg, chg_cfg = await refresh_and_get_two_configs(obj1, chg)
+    assert isinstance(object_cfg, ObjectConfig) and isinstance(chg_cfg, HostGroupConfig)
 
     field, value1, value2, initial = "complexity_level", 0, 1, 4
     assert (
@@ -493,7 +497,7 @@ async def two_sessions_case_3(obj1: Service, obj2: Service, httpx_client: AsyncC
         == (await get_object_config(chg, httpx_client))[field]
         == initial
         == object_cfg[field, Parameter].value
-        == chg_cfg[field].value
+        == chg_cfg[field, ParameterHG].value
     )
 
     # user 1
@@ -514,3 +518,44 @@ async def two_sessions_case_3(obj1: Service, obj2: Service, httpx_client: AsyncC
 
     assert remote_chg_cfg[field] == value1 == chg_cfg[field, ParameterHG].value
     assert remote_object_cfg[field] == value2 == object_cfg[field, Parameter].value
+
+
+async def two_sessions_case_4(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
+    """
+    user 1: set field1 - value1, field2 - value2, field3 - value3;
+    user 2: set field1 - value3, save config
+    user 1: refresh (apply local)
+    """
+
+    cfg1, cfg2 = await refresh_and_get_two_configs(obj1, obj2)
+    assert isinstance(cfg1, ObjectConfig) and isinstance(cfg2, ObjectConfig)
+
+    field1, field2, field3 = "complexity_level", "very_important_flag", "int_field"
+    initial1, initial2, initial3 = 1, True, None
+    value1, value2, value3 = 90, False, 5
+
+    remote_cfg = await get_object_config(obj1, httpx_client)
+    assert remote_cfg[field1] == initial1
+    assert remote_cfg[field2] == initial2
+    assert remote_cfg[field3] == initial3
+
+    # user 1
+    cfg1[field1, Parameter].set(value1)
+    cfg1[field2, Parameter].set(value2)
+    cfg1[field3, Parameter].set(value3)
+
+    # user 2
+    cfg2[field1, Parameter].set(value3)
+    await cfg2.save()
+
+    # user 1
+    await cfg1.refresh(strategy=apply_local_changes)
+
+    assert cfg1[field1, Parameter].value == value1
+    assert cfg1[field2, Parameter].value == value2
+    assert cfg1[field3, Parameter].value == value3
+
+    remote_cfg = await get_object_config(obj1, httpx_client)
+    assert remote_cfg[field1] == value3 == cfg2[field1, Parameter].value
+    assert remote_cfg[field2] == initial2 == cfg2[field2, Parameter].value
+    assert remote_cfg[field3] == initial3 == cfg2[field3, Parameter].value
