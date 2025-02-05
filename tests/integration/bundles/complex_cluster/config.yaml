@@ -302,6 +302,9 @@
         - name: justhere
           type: integer
           required: false
+        - name: field2
+          type: integer
+          required: false
     - name: more
       type: group
       subs:

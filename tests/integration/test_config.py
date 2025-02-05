@@ -15,10 +15,11 @@ from functools import reduce
 from typing import Any
 import asyncio
 
+from httpx import AsyncClient
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client import Filter
+from adcm_aio_client import ADCMSession, Credentials, Filter
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.config import (
     ActivatableParameterGroup,
@@ -32,6 +33,7 @@ from adcm_aio_client.config import (
 from adcm_aio_client.config._objects import HostGroupConfig, ObjectConfig
 from adcm_aio_client.errors import ConfigNoParameterError
 from adcm_aio_client.objects import Bundle, Cluster, Service
+from tests.integration.setup_environment import ADCMContainer
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -43,15 +45,50 @@ def get_field_value(*names: str, configs: Iterable[ObjectConfig | HostGroupConfi
     )
 
 
+async def get_service_with_config(cluster: Cluster) -> Service:
+    return await cluster.services.get(name__eq="complex_config")
+
+
+async def get_object_config(obj: Service, httpx_client: AsyncClient) -> dict:
+    url = "/".join(map(str, (*obj.get_own_path(), "configs", "")))
+    response = await httpx_client.get(url=url, params={"ordering": "-id", "limit": 2})
+    assert response.status_code == 200
+
+    for result in response.json()["results"]:
+        if result["isCurrent"]:
+            cfg_id = result["id"]
+            break
+    else:
+        raise RuntimeError("Can't find current config")
+
+    response = await httpx_client.get(url=f"{url}/{cfg_id}/")
+    assert response.status_code == 200
+    assert response.json()["isCurrent"]
+
+    return response.json()["config"]
+
+
+async def refresh_and_get_two_configs(obj1: Service, obj2: Service) -> tuple[ObjectConfig, ObjectConfig]:
+    await obj1.refresh()
+    await obj2.refresh()
+
+    cfg1 = await obj1.config
+    cfg2 = await obj2.config
+
+    assert cfg1.data.id == cfg2.data.id
+    assert obj1.id == obj2.id
+    assert type(obj1) is type(obj2)
+    assert cfg1._parent._data["id"] == cfg2._parent._data["id"]  # pyright: ignore[reportAttributeAccessIssue]
+    assert id(cfg1._parent._requester) != id(cfg2._parent._requester)  # pyright: ignore[reportAttributeAccessIssue]
+
+    return cfg1, cfg2
+
+
 @pytest_asyncio.fixture()
 async def cluster(adcm_client: ADCMClient, complex_cluster_bundle: Bundle) -> Cluster:
     cluster = await adcm_client.clusters.create(bundle=complex_cluster_bundle, name="Awesome Cluster")
     await cluster.services.add(filter_=Filter(attr="name", op="eq", value="complex_config"))
     return cluster
-
-
-async def get_service_with_config(cluster: Cluster) -> Service:
-    return await cluster.services.get(name__eq="complex_config")
 
 
 async def test_config_history(cluster: Cluster) -> None:
@@ -339,3 +376,96 @@ async def test_host_group_config(cluster: Cluster) -> None:
     param: ParameterHG = config_1["more"]["strange"]  # type: ignore
     # bit of ADCM logic: sync parameter shipped from object's config
     assert param.value == strange_val_1
+
+
+async def test_config_two_sessions(adcm: ADCMContainer, httpx_client: AsyncClient, cluster: Cluster) -> None:
+    kwargs = {"verify": False, "timeout": 10, "retry_interval": 1, "retry_attempts": 1}
+    credentials = Credentials(username="admin", password="admin")  # noqa: S106
+
+    async with (
+        ADCMSession(url=adcm.url, credentials=credentials, **kwargs) as client_1,
+        ADCMSession(url=adcm.url, credentials=credentials, **kwargs) as client_2,
+    ):
+        service_1 = await (await client_1.clusters.get(name__eq=cluster.name)).services.get(name__eq="complex_config")
+        service_2 = await (await client_2.clusters.get(name__eq=cluster.name)).services.get(name__eq="complex_config")
+
+        # set required field
+        cfg = await service_1.config
+        cfg["Set me", Parameter].set(True)
+        await cfg.save()
+
+        # tests
+        await two_sessions_case_1(service_1, service_2, httpx_client)
+        await two_sessions_case_2(service_1, service_2, httpx_client)
+
+
+async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
+    """
+    user 1: set value (same as initial), save config;
+    user 2: set value (same as initial), refresh (apply remote)
+    """
+
+    cfg1, cfg2 = await refresh_and_get_two_configs(obj1, obj2)
+
+    field_display_name, field_name, value = "Complexity Level", "complexity_level", 4
+    assert (await get_object_config(obj1, httpx_client))[field_name] == value
+
+    field1 = cfg1[field_display_name, Parameter]
+    field2 = cfg2[field_display_name, Parameter]
+
+    # user 1
+    field1.set(value)
+    await cfg1.save()
+
+    # user 2
+    field2.set(value)
+    await cfg2.refresh(strategy=apply_remote_changes)
+
+    assert (
+        (await get_object_config(obj1, httpx_client))[field_name]
+        == value
+        == cfg1[field_display_name, Parameter].value
+        == cfg2[field_display_name, Parameter].value
+    )
+
+
+async def two_sessions_case_2(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
+    """
+    user 1: activate group, set field1's value, save config;
+    user 2: activate group, set field2's value, refresh (apply local); save config
+    """
+
+    cfg1, cfg2 = await refresh_and_get_two_configs(obj1, obj2)
+
+    agr_display_name, agr_name, field1, value1, field2, value2 = "Optional", "agroup", "justhere", 3, "field2", 6
+
+    # user 1
+    gr1 = cfg1[agr_display_name, ActivatableParameterGroup]
+    gr1.activate()
+    gr1[field1, Parameter].set(value1)
+    await cfg1.save()
+
+    assert (
+        cfg1[agr_name, ActivatableParameterGroup][field1, Parameter].value
+        == value1
+        == (await get_object_config(obj1, httpx_client))[agr_name][field1]
+    )
+
+    # user 2
+    gr2 = cfg2[agr_display_name, ActivatableParameterGroup]
+    gr2.activate()
+    gr2[field2, Parameter].set(value2)
+    await cfg2.refresh(strategy=apply_local_changes)
+
+    assert cfg2[agr_name, ActivatableParameterGroup][field1, Parameter].value == value1
+    assert cfg2[agr_name, ActivatableParameterGroup][field2, Parameter].value == value2
+
+    await cfg2.save()
+
+    remote_agr_cgf = (await get_object_config(obj1, httpx_client))[agr_name]
+    assert (
+        cfg2[agr_display_name, ActivatableParameterGroup][field1, Parameter].value == value1 == remote_agr_cgf[field1]
+    )
+    assert (
+        cfg2[agr_display_name, ActivatableParameterGroup][field2, Parameter].value == value2 == remote_agr_cgf[field2]
+    )
