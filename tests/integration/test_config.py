@@ -413,6 +413,7 @@ async def test_config_two_sessions(
         await two_sessions_case_4(service_1, service_2, httpx_client=httpx_client)
         await two_sessions_case_5(service_1, service_2, httpx_client=httpx_client)
         await two_sessions_case_6(service_1, service_2, host=host)
+        await two_sessions_case_7(service_1, service_2, host=host)
 
 
 async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
@@ -617,6 +618,7 @@ async def two_sessions_case_6(obj1: Service, obj2: Service, host: Host) -> None:
 
     chg1 = await obj1.config_host_groups.create(name="Service CHG 1")
     chg2 = await obj2.config_host_groups.create(name="Service CHG 2")
+    assert id(chg1._requester) != id(chg2._requester)
 
     # user 1
     await chg1.hosts.add(host=host)
@@ -625,3 +627,32 @@ async def two_sessions_case_6(obj1: Service, obj2: Service, host: Host) -> None:
     with pytest.raises(ExceptionGroup) as exc:
         await chg2.hosts.add(host=host)
     assert exc.group_contains(ConflictError, match="GROUP_CONFIG_HOST_ERROR")
+
+
+async def two_sessions_case_7(obj1: Service, obj2: Service, host: Host) -> None:
+    """
+    cluster with service, component, host mapped to component, service AHG with the host
+    user 1: remove host from component, save mapping, check service AHG has no hosts;
+    user 2: create new service AHG, map host to this AHG, get error
+    """
+
+    # prepare
+    component = await obj1.components.get(name__eq="component1")
+    mapping = await obj1.cluster.mapping
+    mapping.empty()
+    await mapping.save()
+    await mapping.add(component=component, host=host)
+    await mapping.save()
+
+    ahg = await obj1.action_host_groups.create(name="Service AHG 1", hosts=[host])
+
+    # user 1
+    await mapping.remove(component=component, host=host)
+    await mapping.save()
+
+    assert not await ahg.hosts.all()
+
+    # user 2
+    with pytest.raises(ExceptionGroup) as exc:
+        await obj2.action_host_groups.create(name="Service AHG 2", hosts=[host])
+    assert exc.group_contains(ConflictError, match="HOST_GROUP_CONFLICT")
