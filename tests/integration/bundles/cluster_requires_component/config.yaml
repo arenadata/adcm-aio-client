@@ -29,9 +29,6 @@
 
 - type: service
   name: hdfs
-  requires:
-    - service: zookeeper
-      component: SERVER
   display_name: HDFS
   version: "3.1.2"
   components:

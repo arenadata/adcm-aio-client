@@ -1,0 +1,36 @@
+
+---
+- type: cluster
+  name: cluster_bound
+  version: 1.0
+
+- type: service
+  name: first_service
+  flag_autogeneration:
+    enable_outdated_config: True
+  version: 1.5
+
+  components:
+    first_component:
+      flag_autogeneration:
+        enable_outdated_config: True
+    second_component:
+      flag_autogeneration:
+        enable_outdated_config: False
+
+- type: service
+  name: second_service
+  flag_autogeneration:
+    enable_outdated_config: False
+  version: 1.2
+  components:
+    first_component:
+      bound_to:
+        service: first_service
+        component: first_component
+      flag_autogeneration:
+        enable_outdated_config: False
+    second_component:
+      flag_autogeneration:
+        enable_outdated_config: False
+
