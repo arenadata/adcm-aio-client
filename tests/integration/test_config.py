@@ -386,15 +386,14 @@ async def test_config_two_sessions(
     kwargs = {"verify": False, "timeout": 10, "retry_interval": 1, "retry_attempts": 1}
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
 
-    async with (
-        ADCMSession(url=adcm.url, credentials=credentials, **kwargs) as client_1,
-        ADCMSession(url=adcm.url, credentials=credentials, **kwargs) as client_2,
-    ):
-        provider = await client_1.hostproviders.create(bundle=simple_hostprovider_bundle, name="Test HP")
-        host = await client_1.hosts.create(hostprovider=provider, name="Test-host", cluster=cluster)
+    async with ADCMSession(url=adcm.url, credentials=credentials, **kwargs) as second_client:
+        provider = await second_client.hostproviders.create(bundle=simple_hostprovider_bundle, name="Test HP")
+        host = await second_client.hosts.create(hostprovider=provider, name="Test-host", cluster=cluster)
 
-        service_1 = await (await client_1.clusters.get(name__eq=cluster.name)).services.get(name__eq="complex_config")
-        service_2 = await (await client_2.clusters.get(name__eq=cluster.name)).services.get(name__eq="complex_config")
+        # get two copies of the same object with different requesters
+        service_name = "complex_config"
+        service_1 = await cluster.services.get(name__eq=service_name)
+        service_2 = await (await second_client.clusters.get(name__eq=cluster.name)).services.get(name__eq=service_name)
 
         component = await service_1.components.get(name__eq="component1")
         mapping = await cluster.mapping
@@ -415,6 +414,7 @@ async def test_config_two_sessions(
         await two_sessions_case_6(service_1, service_2, host=host)
         await two_sessions_case_7(service_1, service_2, host=host)
         await two_sessions_case_8(service_1, service_2, httpx_client=httpx_client)
+        await two_sessions_case_9(service_1, service_2)
 
 
 async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
@@ -687,3 +687,32 @@ async def two_sessions_case_8(obj1: Service, obj2: Service, httpx_client: AsyncC
     await chg_cfg.save()
 
     assert chg_cfg[field, ParameterHG].value == value2 == (await get_object_config(chg, httpx_client))[field] == value2
+
+
+async def two_sessions_case_9(obj1: Service, obj2: Service) -> None:
+    """
+    cluster with service, service CHG, deactivated activatable group in service cfg
+    user 1: in CHG: set field - value1, save cfg;
+    user 2: in object: set field - value2, refresh config (apply local)
+    """
+
+    # prepare
+    chg = await obj1.config_host_groups.get(name__eq="Service CHG 2")
+
+    obj_cfg = await obj1.config
+    assert obj_cfg.data.attributes["/agroup"]["isActive"] is True
+
+    obj_cfg["agroup", ActivatableParameterGroup].deactivate()
+    await obj_cfg.save()
+
+    chg_cfg, obj_cfg = await refresh_and_get_two_configs(chg, obj2)
+    assert isinstance(chg_cfg, HostGroupConfig) and isinstance(obj_cfg, ObjectConfig)
+    field, value1, value2 = "int_field2", 31, 32
+
+    # user 1
+    chg_cfg[field, ParameterHG].set(value1)
+    await chg_cfg.save()
+
+    # user 2  # TODO: ???
+    obj_cfg[field, Parameter].set(value2)
+    await obj_cfg.refresh(strategy=apply_local_changes)
