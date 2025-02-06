@@ -414,6 +414,7 @@ async def test_config_two_sessions(
         await two_sessions_case_5(service_1, service_2, httpx_client=httpx_client)
         await two_sessions_case_6(service_1, service_2, host=host)
         await two_sessions_case_7(service_1, service_2, host=host)
+        await two_sessions_case_8(service_1, service_2, httpx_client=httpx_client)
 
 
 async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
@@ -656,3 +657,33 @@ async def two_sessions_case_7(obj1: Service, obj2: Service, host: Host) -> None:
     with pytest.raises(ExceptionGroup) as exc:
         await obj2.action_host_groups.create(name="Service AHG 2", hosts=[host])
     assert exc.group_contains(ConflictError, match="HOST_GROUP_CONFLICT")
+
+
+async def two_sessions_case_8(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
+    """
+    cluster with CHG
+    user 1: in CHG: desync field, set field - value1;
+    user 2: in object: set field - value2, save cfg;
+    user 1: in CHG: reset cfg, save
+    """
+
+    chg = await obj1.config_host_groups.get(name__eq="Service CHG 2")
+    chg_cfg, obj_cfg = await refresh_and_get_two_configs(chg, obj2)
+    assert isinstance(chg_cfg, HostGroupConfig) and isinstance(obj_cfg, ObjectConfig)
+    field, value1, value2 = "int_field2", 55, 66
+
+    # user 1
+    field1 = chg_cfg[field, ParameterHG]
+    field1.desync()
+    field1.set(value1)
+
+    # user 2
+    field2 = obj_cfg[field, Parameter]
+    field2.set(value2)
+    await obj_cfg.save()
+
+    # user 1
+    chg_cfg.reset()
+    await chg_cfg.save()
+
+    assert chg_cfg[field, ParameterHG].value == value2 == (await get_object_config(chg, httpx_client))[field] == value2
