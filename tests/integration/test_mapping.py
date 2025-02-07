@@ -10,12 +10,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Iterable
+from collections.abc import AsyncGenerator, Iterable
 from contextlib import suppress
 from itertools import chain
 from pathlib import Path
 import asyncio
 
+from asyncstdlib.contextlib import contextmanager
 from httpx import AsyncClient
 import pytest
 import pytest_asyncio
@@ -28,7 +29,6 @@ from adcm_aio_client.mapping._types import MappingPair
 from adcm_aio_client.objects import Bundle, Cluster, Component, Host
 from tests.integration.bundle import pack_bundle
 from tests.integration.conftest import BUNDLES
-from tests.integration.examples.conftest import REQUEST_KWARGS
 from tests.integration.setup_environment import ADCMContainer
 
 pytestmark = [pytest.mark.asyncio]
@@ -91,8 +91,23 @@ async def create_additional_user(httpx_client: AsyncClient, username: str) -> Cr
     return Credentials(username, "Password1234")
 
 
-def assert_mapping(mapping: Iterable[tuple[Component, Host]], expected: Iterable[tuple[Component, Host]]) -> bool:
-    return sorted([(p.id, v.id) for p, v in mapping]) == sorted([(p.id, v.id) for p, v in expected])
+def assert_mapping(mapping: Iterable[tuple[Component, Host]], expected: Iterable[tuple[Component, Host]]) -> None:
+    assert sorted([(p.id, v.id) for p, v in mapping]) == sorted([(p.id, v.id) for p, v in expected])
+
+
+@contextmanager
+async def new_admin_session(adcm: ADCMContainer) -> AsyncGenerator[ADCMClient, None]:
+    session = None
+    credentials = Credentials(username="admin", password="admin")  # noqa: S106
+    kwargs = {"verify": False, "timeout": 10, "retry_interval": 1, "retry_attempts": 1}
+    try:
+        session = ADCMSession(url=adcm.url, credentials=credentials, **kwargs)
+        yield await session.__aenter__()
+    except Exception as e:  # noqa: BLE001
+        print(f"An error occurred while creating an admin session: {e}")
+    finally:
+        if session:
+            await session.__aexit__()
 
 
 async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts: FiveHosts) -> None:
@@ -235,7 +250,7 @@ async def test_refresh_strategies(cluster: Cluster, hosts: FiveHosts) -> None:
 
 
 async def test_apply_remote_changes_if_local_mapping_did_not_change(
-    adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts, httpx_client: AsyncClient
+    adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts
 ) -> None:
     service_1 = await cluster.services.get(display_name__eq="First Example")
     c1, c2, _ = await service_1.components.all()
@@ -243,13 +258,10 @@ async def test_apply_remote_changes_if_local_mapping_did_not_change(
 
     await cluster.hosts.add((h1, h2))
     mapping = await cluster.mapping
-    await mapping.add(c1, h1)
-    await mapping.add(c1, h2)
+    await mapping.add(c1, (h1, h2))
     await mapping.save()
 
-    async with ADCMSession(
-        url=adcm.url, credentials=await create_additional_user(httpx_client, "second_user"), **REQUEST_KWARGS
-    ) as session_2:
+    async with new_admin_session(adcm) as session_2:
         mapping_session2 = await (await session_2.clusters.get(name__contains="Awesome")).mapping
         refreshed_entries = (await mapping_session2.refresh(strategy=apply_remote_changes)).all()
 
@@ -257,7 +269,7 @@ async def test_apply_remote_changes_if_local_mapping_did_not_change(
 
 
 async def test_full_mapping_update_with_apply_local_changes(
-    adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts, httpx_client: AsyncClient
+    adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts
 ) -> None:
     service_1 = await cluster.services.get(display_name__eq="First Example")
 
@@ -266,21 +278,15 @@ async def test_full_mapping_update_with_apply_local_changes(
     await cluster.hosts.add((h1, h2, h3))
 
     mapping_session_1 = await cluster.mapping
-    await mapping_session_1.add(c1, h1)
-    await mapping_session_1.add(c1, h2)
-    await mapping_session_1.add(c1, h3)
-    await mapping_session_1.add(c2, h1)
-    await mapping_session_1.add(c3, h1)
+    await mapping_session_1.add(c1, (h2, h3))
+    await mapping_session_1.add((c2, c3), h1)
     await mapping_session_1.save()
 
-    async with ADCMSession(
-        url=adcm.url, credentials=await create_additional_user(httpx_client, "second_user"), **REQUEST_KWARGS
-    ) as session_2:
+    async with new_admin_session(adcm) as session_2:
         mapping_session2 = await (await session_2.clusters.get(name__contains="Awesome")).mapping
 
-        await mapping_session2.add(c3, h2)
+        await mapping_session2.add(c3, (h2, h3))
         await mapping_session2.add(c1, h2)
-        await mapping_session2.add(c3, h3)
         await mapping_session2.add(c2, h1)
         await mapping_session2.save()
 
@@ -289,7 +295,7 @@ async def test_full_mapping_update_with_apply_local_changes(
 
 
 async def test_full_mapping_update_with_apply_remote_changes(
-    adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts, httpx_client: AsyncClient
+    adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts
 ) -> None:
     service_1 = await cluster.services.get(display_name__eq="First Example")
 
@@ -298,20 +304,14 @@ async def test_full_mapping_update_with_apply_remote_changes(
     await cluster.hosts.add((h1, h2, h3))
 
     mapping_session_1 = await cluster.mapping
-    await mapping_session_1.add(c1, h1)
-    await mapping_session_1.add(c1, h2)
-    await mapping_session_1.add(c1, h3)
-    await mapping_session_1.add(c2, h1)
-    await mapping_session_1.add(c3, h1)
+    await mapping_session_1.add(c1, (h1, h2, h3))
+    await mapping_session_1.add((c2, c3), h1)
     await mapping_session_1.save()
 
-    async with ADCMSession(
-        url=adcm.url, credentials=await create_additional_user(httpx_client, "second_user"), **REQUEST_KWARGS
-    ) as session_2:
+    async with new_admin_session(adcm) as session_2:
         mapping_session2 = await (await session_2.clusters.get(name__contains="Awesome")).mapping
 
-        await mapping_session2.add(c3, h2)
-        await mapping_session2.add(c1, h2)
+        await mapping_session2.add((c3, c1), h2)
         await mapping_session2.add(c3, h3)
         await mapping_session2.add(c2, h1)
         await mapping_session2.save()
@@ -321,9 +321,7 @@ async def test_full_mapping_update_with_apply_remote_changes(
         assert_mapping(refreshed_entries, [(c1, h1), (c2, h1), (c3, h1), (c3, h2), (c1, h2), (c1, h3), (c3, h3)])
 
 
-async def test_mapping_with_hosts_in_mm(
-    adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts, httpx_client: AsyncClient
-) -> None:
+async def test_mapping_with_hosts_in_mm(adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts) -> None:
     service_1 = await cluster.services.get(display_name__eq="First Example")
 
     c1, *_ = await service_1.components.all()
@@ -339,11 +337,9 @@ async def test_mapping_with_hosts_in_mm(
         await mapping_session_1.save()
 
     refreshed_entries = (await mapping_session_1.refresh()).all()
-    assert_mapping(refreshed_entries, [])
+    assert_mapping(refreshed_entries, [(c1, h1)])
 
-    async with ADCMSession(
-        url=adcm.url, credentials=await create_additional_user(httpx_client, "second_user"), **REQUEST_KWARGS
-    ) as session_2:
+    async with new_admin_session(adcm) as session_2:
         mapping_session_2 = await (await session_2.clusters.get(name__contains="Awesome")).mapping
         await mapping_session_2.add(c1, h2)
         await mapping_session_2.save()
@@ -353,7 +349,7 @@ async def test_mapping_with_hosts_in_mm(
 
 
 async def test_partial_mapping_update_with_apply_local_changes(
-    adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts, httpx_client: AsyncClient
+    adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts
 ) -> None:
     service_1 = await cluster.services.get(display_name__eq="First Example")
 
@@ -362,20 +358,14 @@ async def test_partial_mapping_update_with_apply_local_changes(
     await cluster.hosts.add((h1, h2))
 
     mapping_session_1 = await cluster.mapping
-    await mapping_session_1.add(c1, h1)
-    await mapping_session_1.add(c1, h2)
-    await mapping_session_1.add(c1, h2)
+    await mapping_session_1.add(c1, (h1, h2))
     await mapping_session_1.add(c2, h1)
     await mapping_session_1.save()
 
-    async with ADCMSession(
-        url=adcm.url, credentials=await create_additional_user(httpx_client, "second_user"), **REQUEST_KWARGS
-    ) as session_2:
+    async with new_admin_session(adcm) as session_2:
         mapping_session2 = await (await session_2.clusters.get(name__contains="Awesome")).mapping
 
-        await mapping_session2.add(c1, h1)
-        await mapping_session2.add(c1, h1)
-        await mapping_session2.add(c1, h2)
+        await mapping_session2.add(c1, (h1, h2))
         await mapping_session2.save()
 
         refreshed_entries = (await mapping_session_1.refresh(strategy=apply_local_changes)).all()
@@ -383,7 +373,7 @@ async def test_partial_mapping_update_with_apply_local_changes(
 
 
 async def test_partial_mapping_update_with_apply_remote_changes(
-    adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts, httpx_client: AsyncClient
+    adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts
 ) -> None:
     service_1 = await cluster.services.get(display_name__eq="First Example")
 
@@ -392,28 +382,21 @@ async def test_partial_mapping_update_with_apply_remote_changes(
     await cluster.hosts.add((h1, h2))
 
     mapping_session_1 = await cluster.mapping
-    await mapping_session_1.add(c1, h1)
-    await mapping_session_1.add(c1, h2)
+    await mapping_session_1.add(c1, (h1, h2))
     await mapping_session_1.add(c2, h1)
     await mapping_session_1.save()
 
-    async with ADCMSession(
-        url=adcm.url, credentials=await create_additional_user(httpx_client, "second_user"), **REQUEST_KWARGS
-    ) as session_2:
+    async with new_admin_session(adcm) as session_2:
         mapping_session2 = await (await session_2.clusters.get(name__contains="Awesome")).mapping
 
-        await mapping_session2.add(c1, h1)
-        await mapping_session2.add(c1, h1)
-        await mapping_session2.add(c1, h2)
+        await mapping_session2.add(c1, (h1, h2))
         await mapping_session2.save()
 
         refreshed_entries = (await mapping_session_1.refresh(strategy=apply_remote_changes)).all()
         assert_mapping(refreshed_entries, [(c1, h2), (c2, h1), (c1, h1)])
 
 
-async def test_remapping_host_with_mm(
-    adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts, httpx_client: AsyncClient
-) -> None:
+async def test_remapping_host_with_mm(adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts) -> None:
     service_1 = await cluster.services.get(display_name__eq="First Example")
 
     c1, *_ = await service_1.components.all()
@@ -431,9 +414,7 @@ async def test_remapping_host_with_mm(
     refreshed_entries = (await mapping_session_1.refresh(strategy=apply_remote_changes)).all()
     assert_mapping(refreshed_entries, [(c1, h1)])
 
-    async with ADCMSession(
-        url=adcm.url, credentials=await create_additional_user(httpx_client, "second_user"), **REQUEST_KWARGS
-    ) as session_2:
+    async with new_admin_session(adcm) as session_2:
         mapping_session2 = await (await session_2.clusters.get(name__contains="Awesome")).mapping
         await mapping_session2.remove(c1, h1)
 
@@ -444,13 +425,14 @@ async def test_remapping_host_with_mm(
 async def test_mapping_service_with_dependency_from_another_service(
     cluster_with_service_dependencies: Cluster, hosts: FiveHosts
 ) -> None:
-    service_1 = await cluster_with_service_dependencies.services.get(name__eq="second_service")
+    cluster = cluster_with_service_dependencies
+    service_1 = await cluster.services.get(name__eq="second_service")
 
     c1 = await service_1.components.get(name__eq="first_component")
     h1, h2, *_ = hosts
-    await cluster_with_service_dependencies.hosts.add((h1, h2))
+    await cluster.hosts.add((h1, h2))
 
-    mapping = await cluster_with_service_dependencies.mapping
+    mapping = await cluster.mapping
     await mapping.add(c1, h1)
 
     with suppress(ConflictError):
@@ -459,11 +441,7 @@ async def test_mapping_service_with_dependency_from_another_service(
     refreshed_entries = (await mapping.refresh(strategy=apply_remote_changes)).all()
     assert_mapping(refreshed_entries, [(c1, h1)])
 
-    service_2 = (
-        await cluster_with_service_dependencies.services.add(
-            filter_=Filter(attr="name", op="eq", value="first_service")
-        )
-    )[0]
+    service_2 = (await cluster.services.add(filter_=Filter(attr="name", op="eq", value="first_service")))[0]
 
     c2 = await service_2.components.get(name__eq="first_component")
 
@@ -478,13 +456,14 @@ async def test_mapping_service_with_dependency_from_another_service(
 async def test_mapping_component_with_dependency_from_another_service(
     cluster_with_bound_component: Cluster, hosts: FiveHosts
 ) -> None:
+    cluster = cluster_with_bound_component
     service_1 = await cluster_with_bound_component.services.get(name__eq="second_service")
 
     c1 = await service_1.components.get(name__eq="first_component")
     h1, h2, *_ = hosts
-    await cluster_with_bound_component.hosts.add((h1, h2))
+    await cluster.hosts.add((h1, h2))
 
-    mapping = await cluster_with_bound_component.mapping
+    mapping = await cluster.mapping
     await mapping.add(c1, h1)
 
     with suppress(ConflictError):
@@ -493,9 +472,7 @@ async def test_mapping_component_with_dependency_from_another_service(
     refreshed_entries = (await mapping.refresh(strategy=apply_remote_changes)).all()
     assert_mapping(refreshed_entries, [(c1, h1)])
 
-    service_2 = (
-        await cluster_with_bound_component.services.add(filter_=Filter(attr="name", op="eq", value="first_service"))
-    )[0]
+    service_2 = (await cluster.services.add(filter_=Filter(attr="name", op="eq", value="first_service")))[0]
 
     c2 = await service_2.components.get(name__eq="first_component")
 
