@@ -30,7 +30,7 @@ def apply_local_changes(local: LocalConfigs, remote: ConfigData, schema: ConfigS
 
 def apply_remote_changes(local: LocalConfigs, remote: ConfigData, schema: ConfigSchema) -> ConfigData:
     if local.initial.id == remote.id:
-        return local.changed
+        return remote
 
     local_diff = find_config_difference(previous=local.initial, current=local.changed, schema=schema)
     if not local_diff:

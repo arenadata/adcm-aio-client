@@ -706,29 +706,53 @@ async def two_sessions_case_9(obj1: Service, obj2: Service, httpx_client: AsyncC
     obj_cfg["agroup", ActivatableParameterGroup].deactivate()
     await obj_cfg.save()
 
-    chg_cfg1, obj_cfg2 = await refresh_and_get_two_configs(chg1, obj2)
-    chg_cfg2, obj_cfg1 = await refresh_and_get_two_configs(chg2, obj1)
+    await chg1.refresh()
+    chg_cfg1 = await chg1.config
+    await chg2.refresh()
+    chg_cfg2 = await chg2.config
+
     assert isinstance(chg_cfg1, HostGroupConfig) and isinstance(chg_cfg2, HostGroupConfig)
-    assert isinstance(obj_cfg1, ObjectConfig) and isinstance(obj_cfg2, ObjectConfig)
-    assert id(chg_cfg1._parent.requester) == id(obj_cfg1._parent._requester)  # pyright: ignore[reportAttributeAccessIssue]
-    assert id(chg_cfg2._parent.requester) == id(obj_cfg2._parent._requester)  # pyright: ignore[reportAttributeAccessIssue]
+    assert chg_cfg1.id == chg_cfg2.id
+    assert type(chg_cfg1._parent) is type(chg_cfg2._parent) and chg_cfg1._parent.id == chg_cfg2._parent.id  # pyright: ignore[reportAttributeAccessIssue]
+    assert id(chg_cfg1._parent._requester) != id(chg_cfg2._parent._requester)  # pyright: ignore[reportAttributeAccessIssue]
 
     group, gr_field, value1, value2 = "agroup", "justhere", 100, 200
     initial = (await get_object_config(obj1, httpx_client))[group][gr_field]
+    assert len({initial, value1, value2}) == 3  # ensure no duplicate values
 
     # user 1
     group1 = chg_cfg1[group, ActivatableParameterGroupHG]
-    group1[gr_field, ParameterHG].set(value1)
+    assert isinstance(group1, ActivatableParameterGroupHG)
+
+    field1 = group1[gr_field, ParameterHG]
+    assert isinstance(field1, ParameterHG)
+    assert field1._data.attributes[f"/{group}/{gr_field}"]["isSynchronized"]
+
+    field1.set(value1)
+    assert not field1._data.attributes[f"/{group}/{gr_field}"]["isSynchronized"]
+
     await chg_cfg1.save()
 
-    # # user 2
+    assert (
+        chg_cfg1[group, ActivatableParameterGroupHG][gr_field, ParameterHG].value
+        == value1
+        == (await get_object_config(chg1, httpx_client))[group][gr_field]
+    )
+
+    # user 2 (apply local)
     group2 = chg_cfg2[group, ActivatableParameterGroupHG]
     group2[gr_field, ParameterHG].set(value2)
 
     await chg_cfg2.refresh(strategy=apply_local_changes)
 
     assert chg_cfg2[group, ActivatableParameterGroupHG][gr_field, ParameterHG].value == value2
-    assert (await get_object_config(chg2, httpx_client))[group][gr_field] != initial
+
+    # user 2 (apply remote)
+    await chg2.refresh()
+    chg_cfg2 = await chg2.config
+    group2 = chg_cfg2[group, ActivatableParameterGroupHG]
+    group2[gr_field, ParameterHG].set(value2)
 
     await chg_cfg2.refresh(strategy=apply_remote_changes)
-    assert chg_cfg2[group, ActivatableParameterGroupHG][gr_field, ParameterHG].value == value2  # TODO
+
+    assert chg_cfg2[group, ActivatableParameterGroupHG][gr_field, ParameterHG].value == value1
