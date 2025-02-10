@@ -162,6 +162,8 @@ async def _test_host_properties(host: Host, expected: Expected) -> None:
     assert await host.get_status() == expected.status
     assert (await host.hostprovider).id == expected.provider_id
     assert (await host.maintenance_mode).value == expected.maintenance_mode
+    # ADCM-6334 bug
+    assert await host.config
 
 
 async def _test_host_accessors(
