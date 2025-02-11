@@ -196,6 +196,7 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
 
     # drop cached mapping and apply the same local changes
     await cluster.refresh()
+
     mapping = await cluster.mapping
 
     await mapping.add((c1, c3), h1)
@@ -240,12 +241,16 @@ async def test_refresh_strategies(cluster: Cluster, hosts: FiveHosts) -> None:
 
     # local
     expected = build_name_mapping(((c1, h2), (c2, h1), (c3, h1)))
+
     await mapping_1.refresh(strategy=apply_local_changes)
+
     assert build_name_mapping(mapping_1.all()) == expected
 
     # remote
     expected = build_name_mapping(((c1, h1), (c2, h1), (c3, h1)))
+
     await mapping_2.refresh(strategy=apply_remote_changes)
+
     assert build_name_mapping(mapping_2.all()) == expected
 
 
@@ -263,6 +268,7 @@ async def test_apply_remote_changes_if_local_mapping_did_not_change(
 
     async with new_admin_session(adcm) as session_2:
         mapping_session2 = await (await session_2.clusters.get(name__contains="Awesome")).mapping
+
         refreshed_entries = (await mapping_session2.refresh(strategy=apply_remote_changes)).all()
 
         assert_mapping(refreshed_entries, [(c1, h1), (c1, h2)])
@@ -291,6 +297,7 @@ async def test_full_mapping_update_with_apply_local_changes(
         await mapping_session2.save()
 
         refreshed_entries = (await mapping_session_1.refresh(strategy=apply_local_changes)).all()
+
         assert_mapping(refreshed_entries, [(c1, h1), (c1, h2), (c1, h3), (c2, h1), (c3, h1), (c3, h2), (c3, h3)])
 
 
@@ -337,6 +344,7 @@ async def test_mapping_with_hosts_in_mm(adcm: ADCMContainer, cluster: Cluster, h
         await mapping_session_1.save()
 
     refreshed_entries = (await mapping_session_1.refresh()).all()
+
     assert_mapping(refreshed_entries, [(c1, h1)])
 
     async with new_admin_session(adcm) as session_2:
@@ -345,6 +353,7 @@ async def test_mapping_with_hosts_in_mm(adcm: ADCMContainer, cluster: Cluster, h
         await mapping_session_2.save()
 
         refreshed_entries = (await mapping_session_1.refresh()).all()
+
         assert_mapping(refreshed_entries, [(c1, h2)])
 
 
@@ -369,6 +378,7 @@ async def test_partial_mapping_update_with_apply_local_changes(
         await mapping_session2.save()
 
         refreshed_entries = (await mapping_session_1.refresh(strategy=apply_local_changes)).all()
+
         assert_mapping(refreshed_entries, [(c1, h2), (c2, h1), (c1, h1)])
 
 
@@ -393,6 +403,7 @@ async def test_partial_mapping_update_with_apply_remote_changes(
         await mapping_session2.save()
 
         refreshed_entries = (await mapping_session_1.refresh(strategy=apply_remote_changes)).all()
+
         assert_mapping(refreshed_entries, [(c1, h2), (c2, h1), (c1, h1)])
 
 
@@ -412,6 +423,7 @@ async def test_remapping_host_with_mm(adcm: ADCMContainer, cluster: Cluster, hos
         await mapping_session_1.save()
 
     refreshed_entries = (await mapping_session_1.refresh(strategy=apply_remote_changes)).all()
+
     assert_mapping(refreshed_entries, [(c1, h1)])
 
     async with new_admin_session(adcm) as session_2:
@@ -419,6 +431,7 @@ async def test_remapping_host_with_mm(adcm: ADCMContainer, cluster: Cluster, hos
         await mapping_session2.remove(c1, h1)
 
         refreshed_entries = (await mapping_session_1.refresh(strategy=apply_remote_changes)).all()
+
         assert_mapping(refreshed_entries, [])
 
 
@@ -439,6 +452,7 @@ async def test_mapping_service_with_dependency_from_another_service(
         await mapping.save()
 
     refreshed_entries = (await mapping.refresh(strategy=apply_remote_changes)).all()
+
     assert_mapping(refreshed_entries, [(c1, h1)])
 
     service_2 = (await cluster.services.add(filter_=Filter(attr="name", op="eq", value="first_service")))[0]
@@ -450,6 +464,7 @@ async def test_mapping_service_with_dependency_from_another_service(
     await mapping.save()
 
     refreshed_entries = (await mapping.refresh(strategy=apply_remote_changes)).all()
+
     assert_mapping(refreshed_entries, [(c1, h1), (c2, h1)])
 
 
@@ -470,6 +485,7 @@ async def test_mapping_component_with_dependency_from_another_service(
         await mapping.save()
 
     refreshed_entries = (await mapping.refresh(strategy=apply_remote_changes)).all()
+
     assert_mapping(refreshed_entries, [(c1, h1)])
 
     service_2 = (await cluster.services.add(filter_=Filter(attr="name", op="eq", value="first_service")))[0]
@@ -481,4 +497,5 @@ async def test_mapping_component_with_dependency_from_another_service(
     await mapping.save()
 
     refreshed_entries = (await mapping.refresh(strategy=apply_remote_changes)).all()
+
     assert_mapping(refreshed_entries, [(c1, h1), (c2, h1)])
