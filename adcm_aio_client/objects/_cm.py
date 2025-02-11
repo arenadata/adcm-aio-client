@@ -458,7 +458,7 @@ class HostProvidersNode(PaginatedAccessor[HostProvider]):
         return HostProvider(requester=self._requester, data=response.as_dict())
 
 
-class Host(Deletable, WithActions, WithStatus, WithMaintenanceMode, RootInteractiveObject):
+class Host(Deletable, WithActions, WithConfig, WithStatus, WithMaintenanceMode, RootInteractiveObject):
     PATH_PREFIX = "hosts"
 
     @property
