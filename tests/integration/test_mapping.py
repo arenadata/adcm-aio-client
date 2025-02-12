@@ -10,13 +10,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import Iterable
 from contextlib import suppress
 from itertools import chain
 from pathlib import Path
 import asyncio
 
-from asyncstdlib.contextlib import contextmanager
 from httpx import AsyncClient
 import pytest
 import pytest_asyncio
@@ -95,19 +94,10 @@ def assert_mapping(mapping: Iterable[tuple[Component, Host]], expected: Iterable
     assert sorted([(p.id, v.id) for p, v in mapping]) == sorted([(p.id, v.id) for p, v in expected])
 
 
-@contextmanager
-async def new_admin_session(adcm: ADCMContainer) -> AsyncGenerator[ADCMClient, None]:
-    session = None
+def new_admin_session(adcm: ADCMContainer) -> ADCMSession:
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
     kwargs = {"verify": False, "timeout": 10, "retry_interval": 1, "retry_attempts": 1}
-    try:
-        session = ADCMSession(url=adcm.url, credentials=credentials, **kwargs)
-        yield await session.__aenter__()
-    except Exception as e:  # noqa: BLE001
-        print(f"An error occurred while creating an admin session: {e}")
-    finally:
-        if session:
-            await session.__aexit__()
+    return ADCMSession(url=adcm.url, credentials=credentials, **kwargs)
 
 
 async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts: FiveHosts) -> None:
@@ -269,9 +259,9 @@ async def test_apply_remote_changes_if_local_mapping_did_not_change(
     async with new_admin_session(adcm) as session_2:
         mapping_session2 = await (await session_2.clusters.get(name__contains="Awesome")).mapping
 
-        refreshed_entries = (await mapping_session2.refresh(strategy=apply_remote_changes)).all()
+        await mapping_session2.refresh(strategy=apply_remote_changes)
 
-        assert_mapping(refreshed_entries, [(c1, h1), (c1, h2)])
+        assert_mapping(mapping_session2.all(), [(c1, h1), (c1, h2)])
 
 
 async def test_full_mapping_update_with_apply_local_changes(
@@ -296,9 +286,9 @@ async def test_full_mapping_update_with_apply_local_changes(
         await mapping_session2.add(c2, h1)
         await mapping_session2.save()
 
-        refreshed_entries = (await mapping_session_1.refresh(strategy=apply_local_changes)).all()
+        await mapping_session_1.refresh(strategy=apply_local_changes)
 
-        assert_mapping(refreshed_entries, [(c1, h1), (c1, h2), (c1, h3), (c2, h1), (c3, h1), (c3, h2), (c3, h3)])
+        assert_mapping(mapping_session_1.all(), [(c1, h2), (c1, h3), (c2, h1), (c3, h1), (c3, h2), (c3, h3)])
 
 
 async def test_full_mapping_update_with_apply_remote_changes(
@@ -323,9 +313,9 @@ async def test_full_mapping_update_with_apply_remote_changes(
         await mapping_session2.add(c2, h1)
         await mapping_session2.save()
 
-        refreshed_entries = (await mapping_session_1.refresh(strategy=apply_remote_changes)).all()
+        await mapping_session_1.refresh(strategy=apply_remote_changes)
 
-        assert_mapping(refreshed_entries, [(c1, h1), (c2, h1), (c3, h1), (c3, h2), (c1, h2), (c1, h3), (c3, h3)])
+        assert_mapping(mapping_session_1.all(), [(c1, h1), (c2, h1), (c3, h1), (c3, h2), (c1, h2), (c1, h3), (c3, h3)])
 
 
 async def test_mapping_with_hosts_in_mm(adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts) -> None:
@@ -343,18 +333,18 @@ async def test_mapping_with_hosts_in_mm(adcm: ADCMContainer, cluster: Cluster, h
     with suppress(ConflictError):
         await mapping_session_1.save()
 
-    refreshed_entries = (await mapping_session_1.refresh()).all()
+    await mapping_session_1.refresh()
 
-    assert_mapping(refreshed_entries, [(c1, h1)])
+    assert_mapping(mapping_session_1.all(), [(c1, h1)])
 
     async with new_admin_session(adcm) as session_2:
         mapping_session_2 = await (await session_2.clusters.get(name__contains="Awesome")).mapping
         await mapping_session_2.add(c1, h2)
         await mapping_session_2.save()
 
-        refreshed_entries = (await mapping_session_1.refresh()).all()
+        await mapping_session_1.refresh()
 
-        assert_mapping(refreshed_entries, [(c1, h2)])
+        assert_mapping(mapping_session_1.all(), [(c1, h1), (c1, h2)])
 
 
 async def test_partial_mapping_update_with_apply_local_changes(
@@ -377,9 +367,9 @@ async def test_partial_mapping_update_with_apply_local_changes(
         await mapping_session2.add(c1, (h1, h2))
         await mapping_session2.save()
 
-        refreshed_entries = (await mapping_session_1.refresh(strategy=apply_local_changes)).all()
+        await mapping_session_1.refresh(strategy=apply_local_changes)
 
-        assert_mapping(refreshed_entries, [(c1, h2), (c2, h1), (c1, h1)])
+        assert_mapping(mapping_session_1.all(), [(c1, h2), (c2, h1), (c1, h1)])
 
 
 async def test_partial_mapping_update_with_apply_remote_changes(
@@ -402,9 +392,9 @@ async def test_partial_mapping_update_with_apply_remote_changes(
         await mapping_session2.add(c1, (h1, h2))
         await mapping_session2.save()
 
-        refreshed_entries = (await mapping_session_1.refresh(strategy=apply_remote_changes)).all()
+        await mapping_session_1.refresh(strategy=apply_remote_changes)
 
-        assert_mapping(refreshed_entries, [(c1, h2), (c2, h1), (c1, h1)])
+        assert_mapping(mapping_session_1.all(), [(c1, h2), (c2, h1), (c1, h1)])
 
 
 async def test_remapping_host_with_mm(adcm: ADCMContainer, cluster: Cluster, hosts: FiveHosts) -> None:
@@ -422,17 +412,17 @@ async def test_remapping_host_with_mm(adcm: ADCMContainer, cluster: Cluster, hos
     with suppress(ConflictError):
         await mapping_session_1.save()
 
-    refreshed_entries = (await mapping_session_1.refresh(strategy=apply_remote_changes)).all()
+    await mapping_session_1.refresh(strategy=apply_remote_changes)
 
-    assert_mapping(refreshed_entries, [(c1, h1)])
+    assert_mapping(mapping_session_1.all(), [(c1, h1)])
 
     async with new_admin_session(adcm) as session_2:
         mapping_session2 = await (await session_2.clusters.get(name__contains="Awesome")).mapping
         await mapping_session2.remove(c1, h1)
 
-        refreshed_entries = (await mapping_session_1.refresh(strategy=apply_remote_changes)).all()
+        await mapping_session_1.refresh(strategy=apply_remote_changes)
 
-        assert_mapping(refreshed_entries, [])
+        assert_mapping(mapping_session_1.all(), [])
 
 
 async def test_mapping_service_with_dependency_from_another_service(
@@ -451,9 +441,9 @@ async def test_mapping_service_with_dependency_from_another_service(
     with suppress(ConflictError):
         await mapping.save()
 
-    refreshed_entries = (await mapping.refresh(strategy=apply_remote_changes)).all()
+    await mapping.refresh(strategy=apply_remote_changes)
 
-    assert_mapping(refreshed_entries, [(c1, h1)])
+    assert_mapping(mapping.all(), [(c1, h1)])
 
     service_2 = (await cluster.services.add(filter_=Filter(attr="name", op="eq", value="first_service")))[0]
 
@@ -463,9 +453,9 @@ async def test_mapping_service_with_dependency_from_another_service(
     await mapping.add(c2, h1)
     await mapping.save()
 
-    refreshed_entries = (await mapping.refresh(strategy=apply_remote_changes)).all()
+    await mapping.refresh(strategy=apply_remote_changes)
 
-    assert_mapping(refreshed_entries, [(c1, h1), (c2, h1)])
+    assert_mapping(mapping.all(), [(c1, h1), (c2, h1)])
 
 
 async def test_mapping_component_with_dependency_from_another_service(
@@ -484,9 +474,9 @@ async def test_mapping_component_with_dependency_from_another_service(
     with suppress(ConflictError):
         await mapping.save()
 
-    refreshed_entries = (await mapping.refresh(strategy=apply_remote_changes)).all()
+    await mapping.refresh(strategy=apply_remote_changes)
 
-    assert_mapping(refreshed_entries, [(c1, h1)])
+    assert_mapping(mapping.all(), [(c1, h1)])
 
     service_2 = (await cluster.services.add(filter_=Filter(attr="name", op="eq", value="first_service")))[0]
 
@@ -496,6 +486,6 @@ async def test_mapping_component_with_dependency_from_another_service(
     await mapping.add(c2, h1)
     await mapping.save()
 
-    refreshed_entries = (await mapping.refresh(strategy=apply_remote_changes)).all()
+    await mapping.refresh(strategy=apply_remote_changes)
 
-    assert_mapping(refreshed_entries, [(c1, h1), (c2, h1)])
+    assert_mapping(mapping.all(), [(c1, h1), (c2, h1)])
