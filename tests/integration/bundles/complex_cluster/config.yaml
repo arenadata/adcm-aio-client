@@ -202,6 +202,16 @@
       type: float
       required: true
 
+    - name: int_field
+      display_name: Integer Field
+      type: integer
+      required: false
+
+    - name: int_field2
+      display_name: Integer Field 2
+      type: integer
+      required: false
+
     - name: cant_find
       type: string
       default: "cantCme"
@@ -302,12 +312,18 @@
         - name: justhere
           type: integer
           required: false
+        - name: field2
+          type: integer
+          required: false
     - name: more
       type: group
       subs:
         - name: strange
           type: json
           default: []
+
+  components:
+    component1:
 
 
 - type: service
