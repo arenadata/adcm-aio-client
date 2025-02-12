@@ -267,7 +267,7 @@ class _Activatable(_Group):
 class ActivatableParameterGroup(_Activatable, ParameterGroup): ...
 
 
-class ActivatableParameterGroupHG(_Desyncable, _Activatable, ParameterGroup):
+class ActivatableParameterGroupHG(_Desyncable, _Activatable, ParameterGroupHG):
     def activate(self: Self) -> Self:
         super().activate()
         self.desync()
