@@ -134,6 +134,24 @@ async def adcm_client(
         yield client
 
 
+@pytest_asyncio.fixture(scope="function")
+async def second_adcm_client(
+    request: pytest.FixtureRequest, adcm: ADCMContainer, ssl_certs_dir: Path
+) -> AsyncGenerator[ADCMClient, None]:
+    credentials = Credentials(username="admin", password="admin")  # noqa: S106
+    url = adcm.ssl_url
+    extra_kwargs = getattr(request, "param", {})
+
+    kwargs: dict = {
+        "verify": str(ssl_certs_dir / "cert.pem"),
+        "timeout": 10,
+        "retry_interval": 1,
+        "retry_attempts": 1,
+    } | extra_kwargs
+    async with ADCMSession(url=url, credentials=credentials, **kwargs) as client:
+        yield client
+
+
 @pytest_asyncio.fixture()
 async def httpx_client(adcm: ADCMContainer) -> AsyncGenerator[AsyncClient, None]:
     client = AsyncClient(base_url=urljoin(adcm.url, "api/v2/"))

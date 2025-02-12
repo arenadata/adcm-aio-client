@@ -489,3 +489,37 @@ async def test_mapping_component_with_dependency_from_another_service(
     await mapping.refresh(strategy=apply_remote_changes)
 
     assert_mapping(mapping.all(), [(c1, h1), (c2, h1)])
+
+
+async def test_mapping_and_ahg(cluster: Cluster, second_adcm_client: ADCMClient, hosts: FiveHosts) -> None:
+    """
+    cluster with service, component, host mapped to component, service AHG with host
+    user 1: remove host from component, save mapping, check service AHG has no hosts;
+    user 2: create new service AHG, map host to this AHG, get error
+    """
+
+    # prepare
+    service = await cluster.services.get(name__eq="example_1")
+    component = await service.components.get(name__eq="first")
+    host, *_ = hosts
+    await cluster.hosts.add(host=host)
+
+    mapping = await cluster.mapping
+    await mapping.add(component=component, host=host)
+    await mapping.save()
+
+    ahg = await service.action_host_groups.create(name="Service AHG 1", hosts=[host])
+
+    # user 1
+    await mapping.remove(component=component, host=host)
+    await mapping.save()
+
+    assert not await ahg.hosts.all()
+
+    # user 2
+    cluster2 = await second_adcm_client.clusters.get(name__eq=cluster.name)
+    service2 = await cluster2.services.get(name__eq=service.name)
+
+    with pytest.raises(ExceptionGroup) as exc:
+        await service2.action_host_groups.create(name="Service AHG 2", hosts=[host])
+    assert exc.group_contains(ConflictError, match="HOST_GROUP_CONFLICT")
