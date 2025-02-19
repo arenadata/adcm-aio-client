@@ -270,27 +270,29 @@ class Service(
     or a group of related `Component`s that are expected to be mapped on some hosts.
 
     Adding services is available via `Cluster` API:
-    ```python
-    cluster: Cluster
-    adbcc = await cluster.services.add(Filter(attr="display_name", op="ieq", value="adb control"))
-    ```
+        
+    .. code-block:: python
+
+       cluster: Cluster
+       adbcc = await cluster.services.add(Filter(attr="display_name", op="ieq", value="adb control"))
 
     Components doesn't require explicit addition/creation, 
     so they can be acquired with filters like other objects:
-    ```python
-    service: Service
-    await service.components.get_or_none(name__eq="master")
-    ```
+
+    .. code-block:: python
+
+       service: Service
+       await service.components.get_or_none(name__eq="master")
 
     Working with services may include interactions such as:
-    - imports management
-    - config management
-    - action/config host groups
+    * imports management
+    * config management
+    * action/config host groups
     """
 
     PATH_PREFIX = "services"
     """
-    @private
+    :meta private:
     """
 
     @property

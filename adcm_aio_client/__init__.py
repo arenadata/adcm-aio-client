@@ -18,14 +18,14 @@ By entering it as a contextmanager you'll get `adcm_aio_client.client.ADCMClient
 Use it to get objects that you want to interact with
 or create the ones you're missing.
 
-```python
-creds = Credentials("admin", "admin")
-async with ADCMSession(creds) as client:
-    # Same as `*.filter(Filter(attr="name", op="contains", value="internal"))`
-    internal_hosts = await client.hosts.filter(name__contains="internal")
-    adb = await client.clusters.get(name__eq="ADB Dev Stand")
-    await adb.hosts.add(internal_hosts)
-```
+.. code-block:: python
+
+    creds = Credentials("admin", "admin")
+    async with ADCMSession(creds) as client:
+        # Same as `*.filter(Filter(attr="name", op="contains", value="internal"))`
+        internal_hosts = await client.hosts.filter(name__contains="internal")
+        adb = await client.clusters.get(name__eq="ADB Dev Stand")
+        await adb.hosts.add(internal_hosts)
 """
     
 
