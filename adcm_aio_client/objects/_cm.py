@@ -263,7 +263,37 @@ class Service(
     WithMaintenanceMode,
     InteractiveChildObject[Cluster],
 ):
+    """
+    Represents part of `Cluster` named `Service` in ADCM terminology.
+
+    Can be "standalone" entity (like `Spark Client`)
+    or a group of related `Component`s that are expected to be mapped on some hosts.
+
+    Adding services is available via `Cluster` API:
+        
+    .. code-block:: python
+
+       cluster: Cluster
+       adbcc = await cluster.services.add(Filter(attr="display_name", op="ieq", value="adb control"))
+
+    Components doesn't require explicit addition/creation, 
+    so they can be acquired with filters like other objects:
+
+    .. code-block:: python
+
+       service: Service
+       await service.components.get_or_none(name__eq="master")
+
+    Working with services may include interactions such as:
+    * imports management
+    * config management
+    * action/config host groups
+    """
+
     PATH_PREFIX = "services"
+    """
+    :meta private:
+    """
 
     @property
     def name(self: Self) -> str:
@@ -275,6 +305,9 @@ class Service(
 
     @cached_property
     def cluster(self: Self) -> Cluster:
+        """
+        Cluster to which this service belongs
+        """
         return self._parent
 
     @cached_property

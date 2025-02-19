@@ -54,6 +54,13 @@ pytest-timeout = "^2.3.1"
 docker = "^7.1.0"
 pytest-xdist = "^3.6.1"
 
+
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+sphinx = "^8.2.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

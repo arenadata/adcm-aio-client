@@ -10,6 +10,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+To start using ADCM AIO Client initialize `ADCMSession` with `Credentials`.
+
+By entering it as a contextmanager you'll get `adcm_aio_client.client.ADCMClient` instance.
+
+Use it to get objects that you want to interact with
+or create the ones you're missing.
+
+.. code-block:: python
+
+    creds = Credentials("admin", "admin")
+    async with ADCMSession(creds) as client:
+        # Same as `*.filter(Filter(attr="name", op="contains", value="internal"))`
+        internal_hosts = await client.hosts.filter(name__contains="internal")
+        adb = await client.clusters.get(name__eq="ADB Dev Stand")
+        await adb.hosts.add(internal_hosts)
+"""
+    
+
 from adcm_aio_client._filters import Filter
 from adcm_aio_client._session import ADCMSession
 from adcm_aio_client._types import Credentials
