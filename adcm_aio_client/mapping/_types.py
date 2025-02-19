@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from adcm_aio_client.objects import Component, Host
 
 
-type MappingPair = tuple[Component, Host]
+type MappingPair = tuple["Component", "Host"]
 
 
 class MappingEntry(NamedTuple):
