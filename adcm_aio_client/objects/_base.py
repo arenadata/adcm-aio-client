@@ -13,7 +13,7 @@
 from collections import deque
 from contextlib import suppress
 from functools import cached_property
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 from asyncstdlib.functools import CachedProperty
 
@@ -28,7 +28,7 @@ from adcm_aio_client._types import (
 
 
 class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOwnPath):
-    PATH_PREFIX: str
+    PATH_PREFIX: ClassVar[str]
     _delete_on_refresh: deque[str]
 
     def __init_subclass__(cls: type[Self]) -> None:
