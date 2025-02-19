@@ -14,7 +14,7 @@
 from collections import deque
 from collections.abc import Generator, Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Self, Union
 
 from adcm_aio_client._types import QueryParameters
 from adcm_aio_client.errors import InvalidFilterError
@@ -31,7 +31,7 @@ COMMON_OPERATIONS = frozenset(("eq", "ne", "in", "exclude"))
 STATUS_OPERATIONS = frozenset((*COMMON_OPERATIONS, *tuple(f"i{op}" for op in COMMON_OPERATIONS)))
 ALL_OPERATIONS = frozenset(("contains", "icontains", *STATUS_OPERATIONS))
 
-type FilterSingleValue = str | int | InteractiveObject
+type FilterSingleValue = Union[str , int , "InteractiveObject"]
 type FilterValue = FilterSingleValue | Iterable[FilterSingleValue]
 type SimplifiedValue = str | int | tuple[str | int, ...]
 
