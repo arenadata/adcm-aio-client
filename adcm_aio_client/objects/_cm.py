@@ -275,7 +275,7 @@ class Service(
     adbcc = await cluster.services.add(Filter(attr="display_name", op="ieq", value="adb control"))
     ```
 
-    Components doesn't require explicit addition/creation, 
+    Components doesn't require explicit addition/creation,
     so they can be acquired with filters like other objects:
     ```python
     service: Service
