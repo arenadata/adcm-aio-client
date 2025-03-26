@@ -31,7 +31,7 @@ COMMON_OPERATIONS = frozenset(("eq", "ne", "in", "exclude"))
 STATUS_OPERATIONS = frozenset((*COMMON_OPERATIONS, *tuple(f"i{op}" for op in COMMON_OPERATIONS)))
 ALL_OPERATIONS = frozenset(("contains", "icontains", *STATUS_OPERATIONS))
 
-type FilterSingleValue = Union[str , int , "InteractiveObject"]
+type FilterSingleValue = Union[str, int, "InteractiveObject"]  # noqa: UP007, fixed for generate docs
 type FilterValue = FilterSingleValue | Iterable[FilterSingleValue]
 type SimplifiedValue = str | int | tuple[str | int, ...]
 

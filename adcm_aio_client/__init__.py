@@ -27,7 +27,6 @@ async with ADCMSession(creds) as client:
     await adb.hosts.add(internal_hosts)
 ```
 """
-    
 
 from adcm_aio_client._filters import Filter
 from adcm_aio_client._session import ADCMSession
