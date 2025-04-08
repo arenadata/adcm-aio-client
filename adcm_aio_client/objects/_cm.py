@@ -479,17 +479,41 @@ class Component(
     InteractiveChildObject[Service],
 ):
     PATH_PREFIX = "components"
+    """
+    @private
+    """
 
     @property
     def name(self: Self) -> str:
+        """
+        `Component`'s name.
+        :return: str
+        """
         return self._data["name"]
 
     @property
     def display_name(self: Self) -> str:
+        """
+        `Component`'s name displayed in UI.
+        :return: str
+        """
         return self._data["displayName"]
 
     @async_cached_property
     async def constraint(self: Self) -> list[int | str]:
+        """
+        `Component`'s constraints on hosts mapping as list of `int` and/or `str` constraint tokens. Possible values:
+        [1] — exactly one component should be installed.
+        [0,1] — one or zero components should be installed.
+        [1,2] — one or two components should be installed.
+        [0,+] — zero or any more components should be installed (default value).
+        [1,odd] — one or more components should be installed; the total amount should be odd.
+        [0,odd] — zero or more components should be installed; if more than zero, the total amount should be odd.
+        [odd] — same as [1,odd].
+        [1,+] — one or more components should be installed.
+        [+] — component should be installed on all hosts of a cluster.
+        :return: list of `int` and/or `str`
+        """
         response = (await self._requester.get(*self.cluster.get_own_path(), "mapping", "components")).as_list()
         for component in response:
             if component["id"] == self.id:
@@ -499,14 +523,26 @@ class Component(
 
     @cached_property
     def service(self: Self) -> Service:
+        """
+        `Component`'s parent `Service` it belongs to.
+        :return: str
+        """
         return self._parent
 
     @cached_property
     def cluster(self: Self) -> Cluster:
+        """
+        `Component`'s parent `Cluster` it belongs to.
+        :return: str
+        """
         return self.service.cluster
 
     @cached_property
     def hosts(self: Self) -> "HostsAccessor":
+        """
+        `HostsAccessor` for `Component`'s hosts.
+        :return: `HostsAccessor`
+        """
         return HostsAccessor(
             path=(*self.cluster.get_own_path(), "hosts"),
             requester=self._requester,
@@ -515,8 +551,28 @@ class Component(
 
 
 class ComponentsNode(PaginatedChildAccessor[Service, Component]):
+    """
+    Node responsible for accessing `Components` objects.<br>
+    Supports filtering by `name`, `display_name` or `status` component's attribute.
+
+    Examples:
+    ```python
+    # get components which display name is equal to `DataNode` or `None`, if such component does not exist.
+    component: Component | None = await service.components.get_or_none(display_name__eq="DataNode", status="up")
+
+    # get list of components whose status is not equal to `up` or `down`.
+    components: list[Component] = await service.components.filter(status__exclude=["up", "down"])
+    ```
+    """
+
     class_type = Component
+    """
+    @private
+    """
     filtering = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
+    """
+    @private
+    """
 
 
 class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, WithConfigHostGroups, RootInteractiveObject):
