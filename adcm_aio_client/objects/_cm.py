@@ -190,9 +190,7 @@ class Cluster(
     """
 
     PATH_PREFIX = "clusters"
-    """
-    @private
-    """
+    """@private"""
 
     # data-based properties
 
@@ -269,9 +267,7 @@ class Cluster(
 
 
 FilterByBundle = FilterBy("bundle", COMMON_OPERATIONS, Bundle)
-"""
-@private
-"""
+"""@private"""
 
 
 class ClustersNode(PaginatedAccessor[Cluster]):
@@ -293,14 +289,9 @@ class ClustersNode(PaginatedAccessor[Cluster]):
     """
 
     class_type = Cluster
-    """
-    @private
-    """
-
+    """@private"""
     filtering = Filtering(FilterByName, FilterByBundle, FilterByStatus)
-    """
-    @private
-    """
+    """@private"""
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
         """
@@ -359,9 +350,7 @@ class Service(
     """
 
     PATH_PREFIX = "services"
-    """
-    @private
-    """
+    """@private"""
 
     @property
     def name(self: Self) -> str:
@@ -520,33 +509,78 @@ class ComponentsNode(PaginatedChildAccessor[Service, Component]):
 
 
 class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, WithConfigHostGroups, RootInteractiveObject):
+    """
+    Represents `HostProvider` entity in ADCM terminology.
+    """
+
     PATH_PREFIX = "hostproviders"
+    """@private"""
     filtering = Filtering(FilterByName, FilterByBundle)
+    """@private"""
 
     # data-based properties
 
     @property
     def name(self: Self) -> str:
+        """
+        `HostProvider`'s name.
+        :return: str
+        """
         return str(self._data["name"])
 
     @property
     def description(self: Self) -> str:
+        """
+        `HostProvider`'s description.
+        :return: str
+        """
         return str(self._data["description"])
 
     @property
     def display_name(self: Self) -> str:
+        """
+        `HostProvider`'s display name.
+        :return: str
+        """
         return str(self._data["prototype"]["displayName"])
 
     @cached_property
     def hosts(self: Self) -> "HostsAccessor":
+        """
+        Group of related `Host`s.
+        :return: `HostsAccessor` object
+        """
         return HostsAccessor(path=("hosts",), requester=self._requester, default_query={"hostproviderName": self.name})
 
 
 class HostProvidersNode(PaginatedAccessor[HostProvider]):
+    """
+    Node responsible for accessing `HostProvider` objects.<br>
+    Supports filtering by `name` and `bundle` hostprovider's attribute.
+
+    Examples:
+    ```python
+    # get hostprovider which name contains substring `yandex` or `None`, if such hostprovider does not exist.
+    hostprovider: HostProvider | None = await adcm_client.hostproviders.get_or_none(name__icontains="yandex")
+
+    # get list of hostproviders which bundle is not equal to `bundle_object`.
+    hostproviders: list[HostProvider] = await adcm_client.hostproviders.filter(Filter(attr="bundle", op="ne", value=bundle_object))
+    ```
+    """  # noqa: E501
+
     class_type = HostProvider
+    """@private"""
     filtering = Filtering(FilterByName, FilterByBundle)
+    """@private"""
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
+        """
+        Create new `HostProvider` object
+        :param bundle: `Bundle` object in which hostprovider is defined
+        :param name: str, hostprovider's name
+        :param description: str, hostprovider's description. Defaults to empty string
+        :return: `HostProvider`
+        """
         response = await self._requester.post(
             "hostproviders",
             data={
