@@ -365,30 +365,64 @@ class Service(
 
     @property
     def name(self: Self) -> str:
+        """
+        `Service`'s name.
+        :return: str
+        """
         return self._data["name"]
 
     @property
     def display_name(self: Self) -> str:
+        """
+        `Service`'s name displayed in UI.
+        :return: str
+        """
         return self._data["displayName"]
 
     @cached_property
     def cluster(self: Self) -> Cluster:
         """
-        `Cluster` to which this service belongs
+        Cluster to which this service belongs
+        :return: Cluster
         """
         return self._parent
 
     @cached_property
     def components(self: Self) -> "ComponentsNode":
+        """
+        Components Node for accessing components of this service
+        :return `ComponentsNode`
+        """
         return ComponentsNode(parent=self, path=(*self.get_own_path(), "components"), requester=self._requester)
 
     @async_cached_property
     async def license(self: Self) -> License:
+        """
+        License object for this service
+        :return `License`
+        """
         prototype_data = (await self.requester.get("prototypes", self._data["prototype"]["id"])).as_dict()
         return License(self._requester, prototype_data)
 
 
 class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
+    """
+    Node for accessing `Service` objects and managing them.
+
+    Example of using:
+    ```python
+    # Add service with name containing "yarn"
+    service: Service = await cluster.services.add(Filter(attr="name", op="contains", value="yarn"))
+
+    # Get service by name
+    service: Service = await cluster.services.get(name__eq="yarn")
+
+    # List all services
+    services: list[Service] = await cluster.services.list()
+
+    ```
+    """
+
     class_type = Service
     filtering = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
     service_add_filtering = Filtering(FilterByName, FilterByDisplayName)
@@ -396,6 +430,13 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
     async def add(
         self: Self, filter_: Filter, *, accept_license: bool = False, with_dependencies: bool = False
     ) -> list[Service]:
+        """
+        Create new `Service` object
+        :param filter_: `Filter` instance to retrieve required service candidates from the others
+        :param accept_license: Accept license for the service
+        :param with_dependencies: Retrieve dependencies for the service
+        :return: Created `Service` instance
+        """
         candidates = await self._retrieve_service_candidates(filter_=filter_)
 
         if not candidates:
@@ -412,11 +453,22 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
         return await self._add_services(candidates)
 
     async def _retrieve_service_candidates(self: Self, filter_: Filter) -> list[dict]:
+        """
+        Retrieve service candidates
+        :param filter_: `Filter` instance to retrieve required service candidate from the others
+        :return: list of service candidates as dicts
+        """
         query = self.service_add_filtering.to_query(filters=(filter_,))
         response = await self._requester.get(*self._parent.get_own_path(), "service-candidates", query=query)
         return response.as_list()
 
     async def _find_missing_service_dependencies(self: Self, candidates: list[dict]) -> list[dict]:
+        """
+        Find missing service dependencies which are still required to have in order to create new `Service` instance
+        :param candidates: list of service candidates as dicts.
+        Candidates should be obtained by `_retrieve_service_candidates`
+        :return: list of service dependencies prototypes as dicts
+        """
         response = await self._requester.get(*self._parent.get_own_path(), "service-prototypes")
         all_service_prototypes = response.as_list()
 
@@ -437,6 +489,13 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
     def _detect_missing_dependencies(
         self: Self, dependencies: dict[int, set[int]], to_add: set[int], processed: set[int]
     ) -> set[int]:
+        """
+        Locate missing dependencies
+        :param dependencies: the dict consists of prototype id and its dependent prototypes as a set of ids
+        :param to_add: the set of prototype ids to be added
+        :param processed: the set of prototype ids already processed so there is no need to do it second time
+        :return: the set of prototype ids of missing dependencies
+        """
         unprocessed = to_add - processed
         if not unprocessed:
             return to_add
@@ -450,6 +509,12 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
         )
 
     async def _accept_licenses_safe(self: Self, candidates: list[dict]) -> None:
+        """
+        For each unaccepted license of passed candidates accept it
+        :param candidates: list of service candidates as dicts.
+        Candidates should be obtained by `_retrieve_service_candidates`
+        :return: None
+        """
         unaccepted: deque[int] = deque()
 
         for candidate in candidates:
@@ -464,6 +529,11 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
             await asyncio.gather(*tasks)
 
     async def _add_services(self: Self, candidates: list[dict]) -> list[Service]:
+        """
+        Add services
+        :param candidates: list of service candidates dicts obtained by `_retrieve_service_candidates`
+        :return: list of created `Service` objects
+        """
         data = [{"prototypeId": candidate["id"]} for candidate in candidates]
         response = await self._requester.post(*self._parent.get_own_path(), "services", data=data)
         return [Service(data=entry, parent=self._parent) for entry in response.as_list()]
