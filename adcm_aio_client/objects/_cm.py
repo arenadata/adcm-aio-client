@@ -200,7 +200,6 @@ class Cluster(
     def name(self: Self) -> str:
         """
         `Cluster`'s name.
-        :return: str
         """
         return str(self._data["name"])
 
@@ -208,7 +207,6 @@ class Cluster(
     def description(self: Self) -> str:
         """
         `Cluster`'s description.
-        :return: str
         """
         return str(self._data["description"])
 
@@ -218,7 +216,6 @@ class Cluster(
     async def bundle(self: Self) -> Bundle:
         """
         `Bundle` object in which `Cluster` is defined.
-        :return: `Bundle` object
         """
         prototype_id = self._data["prototype"]["id"]
         response = await self._requester.get("prototypes", prototype_id)
@@ -234,7 +231,6 @@ class Cluster(
         """
         Sets the `defaults.forks` parameter value for `Cluster`'s ansible config.
         :param value: integer
-        :return: `Cluster` object
         """
         await self._requester.post(
             *self.get_own_path(), "ansible-config", data={"config": {"defaults": {"forks": value}}, "adcmMeta": {}}
@@ -247,7 +243,6 @@ class Cluster(
     async def mapping(self: Self) -> ClusterMapping:
         """
         Through this node you can change `Cluster`'s mapping.
-        :return: `ClusterMapping` object
         """
         return await ClusterMapping.for_cluster(owner=self)
 
@@ -255,7 +250,6 @@ class Cluster(
     def services(self: Self) -> "ServicesNode":
         """
         Group of related `Service`s.
-        :return: `ServicesNode` object
         """
         return ServicesNode(parent=self, path=(*self.get_own_path(), "services"), requester=self._requester)
 
@@ -263,7 +257,6 @@ class Cluster(
     def hosts(self: Self) -> "HostsInClusterNode":
         """
         Group of `Host`s linked to this `Cluster`.
-        :return: `HostsInClusterNode`
         """
         return HostsInClusterNode(cluster=self)
 
@@ -487,7 +480,6 @@ class Component(
     def name(self: Self) -> str:
         """
         `Component`'s name.
-        :return: str
         """
         return self._data["name"]
 
@@ -495,7 +487,6 @@ class Component(
     def display_name(self: Self) -> str:
         """
         `Component`'s name displayed in UI.
-        :return: str
         """
         return self._data["displayName"]
 
@@ -525,7 +516,6 @@ class Component(
     def service(self: Self) -> Service:
         """
         `Component`'s parent `Service` it belongs to.
-        :return: str
         """
         return self._parent
 
@@ -533,7 +523,6 @@ class Component(
     def cluster(self: Self) -> Cluster:
         """
         `Component`'s parent `Cluster` it belongs to.
-        :return: str
         """
         return self.service.cluster
 
@@ -541,7 +530,6 @@ class Component(
     def hosts(self: Self) -> "HostsAccessor":
         """
         `HostsAccessor` for `Component`'s hosts.
-        :return: `HostsAccessor`
         """
         return HostsAccessor(
             path=(*self.cluster.get_own_path(), "hosts"),
