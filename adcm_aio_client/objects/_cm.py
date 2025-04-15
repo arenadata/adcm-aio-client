@@ -747,10 +747,10 @@ class HostsAccessor(PaginatedAccessor[Host]):
     Examples:
     ```python
     # get host mapped to `component` which name contains substring `ssh` or `None`, if such host does not exist.
-    host: Host | None = component.hosts.get_or_none(name__icontains="ssh")
+    host: Host | None = await component.hosts.get_or_none(name__icontains="ssh")
 
-    # get list of hosts that belongs to `hostprovider` which bundle is not equal to `bundle_object`.
-    hosts: list[Host] = hostprovider.filter(Filter(attr="bundle", op="ne", value=bundle_object))
+    # get list of hosts that belongs to `hostprovider` and their bundle is not equal to `bundle_object`.
+    hosts: list[Host] = await hostprovider.filter(Filter(attr="bundle", op="ne", value=bundle_object))
     ```
     """
 
@@ -768,10 +768,10 @@ class HostsNode(HostsAccessor):
     Examples:
     ```python
     # get host which name contains substring `ssh` or `None`, if such host does not exist.
-    host: Host | None = adcm_client.hosts.get_or_none(name__icontains="ssh")
+    host: Host | None = await adcm_client.hosts.get_or_none(name__icontains="ssh")
 
     # get list of hosts which status is not equal to `up`, case-insensitive.
-    hosts: list[Host] = adcm_client.filter(status__ine="up")
+    hosts: list[Host] = await adcm_client.filter(status__ine="up")
     ```
     """
 
@@ -802,7 +802,7 @@ class HostsInClusterNode(HostsAccessor):
     Example:
     ```python
     # get host in `cluster` which name equals to `host-1`
-    host: Host = cluster.hosts.get(name__eq="host-1")
+    host: Host = await cluster.hosts.get(name__eq="host-1")
     ```
     """
 
