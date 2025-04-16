@@ -105,35 +105,48 @@ class License(WithProtectedRequester):
 
 
 class Bundle(Deletable, RootInteractiveObject):
+    """
+    Represents `Bundle` entity in ADCM terminology.
+    """
+
     PATH_PREFIX = "bundles"
+    """@private"""
 
     @property
     def name(self: Self) -> str:
+        """`Bundle`'s name"""
         return str(self._data["name"])
 
     @property
     def display_name(self: Self) -> str:
+        """`Bundle`'s display_name"""
         return str(self._data["displayName"])
 
     @property
     def version(self: Self) -> str:
+        """`Bundle`'s version"""
         return str(self._data["version"])
 
     @property
     def edition(self: Self) -> Literal["community", "enterprise"]:
+        """`Bundle`'s version (community or enterprise)"""
         return self._data["edition"]
 
     @property
     def signature_status(self: Self) -> Literal["invalid", "valid", "absent"]:
+        """`Bundle`'s signature_status (invalid, valid or absent)"""
         return self._data["signatureStatus"]
+
+    @async_cached_property
+    async def license(self: Self) -> License:
+        """
+        `License` object of this bundle
+        """
+        return License(self._requester, self._data["mainPrototype"])
 
     @property
     def _type(self: Self) -> Literal["cluster", "provider"]:
         return self._data["mainPrototype"]["type"]
-
-    @async_cached_property
-    async def license(self: Self) -> License:
-        return License(self._requester, self._data["mainPrototype"])
 
     @cached_property
     def _main_prototype_id(self: Self) -> int:
@@ -141,19 +154,46 @@ class Bundle(Deletable, RootInteractiveObject):
 
 
 class BundlesNode(PaginatedAccessor[Bundle]):
+    """
+    Node responsible for accessing `Bundle` objects.<br>
+    Supports filtering by `name`, `display_name`, `version` or `edition` cluster's attribute.
+
+    Examples:
+    ```python
+    # get bundle which name contains substring `adh` or `None`, if such bundle does not exist.
+    bundle: Bundle | None = await adcm_client.bundles.get_or_none(name__contains="adh")
+
+    # get list of bundles with version `0.1-alpha`.
+    bundle: list[Bundle] = await adcm_client.bundles.filter(Filter(attr="version", op="eq", value="0.1-alpha"))
+
+    # get list of bundles with `edition` is `enterprise`.
+    bundle: list[Bundle] = await adcm_client.bundles.filter(edition__eq="enterprise")
+    ```
+    """
+
     class_type = Bundle
+    """@private"""
     filtering = Filtering(
         FilterByName,
         FilterByDisplayName,
         FilterBy("version", ALL_OPERATIONS, str),
         FilterBy("edition", ALL_OPERATIONS, str),
     )
+    """@private"""
 
     def __init__(self: Self, path: Endpoint, requester: Requester, retriever: BundleRetrieverInterface) -> None:
+        """@private"""
         super().__init__(path, requester)
         self._bundle_retriever = retriever
 
     async def create(self: Self, source: Path | URLStr, *, accept_license: bool = False) -> Bundle:
+        """
+        Create new `Bundle` object.
+        :param source: path to bundle archive or url to download bundle
+        :param accept_license: If set to `True`, bundle's license will be accepted on creation.
+                               It can be accepted later via bundle's `license` attribute
+        :return: `Bundle` object
+        """
         if isinstance(source, Path):
             file = Path(source).read_bytes()
         else:
@@ -171,6 +211,7 @@ class BundlesNode(PaginatedAccessor[Bundle]):
         return bundle
 
     def get_own_path(self: Self) -> Endpoint:
+        """@private"""
         return ("bundles",)
 
 
@@ -292,7 +333,7 @@ class ClustersNode(PaginatedAccessor[Cluster]):
         :param bundle: `Bundle` object in which cluster is defined
         :param name: str, cluster's name
         :param description: str, cluster's description. Defaults to empty string
-        :return: Freshly created `Cluster`
+        :return: `Cluster` object
         """
         response = await self._requester.post(
             "clusters",
@@ -380,7 +421,7 @@ class Service(
     @async_cached_property
     async def license(self: Self) -> License:
         """
-        License object for this service
+        `License` object for this service
         :return `License`
         """
         prototype_data = (await self.requester.get("prototypes", self._data["prototype"]["id"])).as_dict()
@@ -690,7 +731,7 @@ class HostProvidersNode(PaginatedAccessor[HostProvider]):
         :param bundle: `Bundle` object in which hostprovider is defined
         :param name: hostprovider's name
         :param description: hostprovider's description
-        :return: `HostProvider`
+        :return: `HostProvider` object
         """
         response = await self._requester.post(
             "hostproviders",
@@ -871,18 +912,26 @@ async def default_exit_condition(job: "Job") -> bool:
 
 
 class Job(WithStatus, RootInteractiveObject):
+    """
+    Represents `Job` entity in ADCM terminology.
+    """
+
     PATH_PREFIX = "tasks"
+    """@private"""
 
     @property
     def name(self: Self) -> str:
+        """`Job`'s name."""
         return str(self._data["name"])
 
     @property
     def display_name(self: Self) -> str:
+        """`Job`'s display_name."""
         return str(self._data["displayName"])
 
     @cached_property
     def start_time(self: Self) -> datetime | None:
+        """`Job`'s start_time."""
         time = self._data["startTime"]
         if time is None:
             return time
@@ -891,6 +940,7 @@ class Job(WithStatus, RootInteractiveObject):
 
     @cached_property
     def finish_time(self: Self) -> datetime | None:
+        """`Job`'s finish_time."""
         time = self._data["endTime"]
         if time is None:
             return time
@@ -899,11 +949,16 @@ class Job(WithStatus, RootInteractiveObject):
 
     @async_cached_property
     async def object(self: Self) -> InteractiveObject:
+        """
+        Object on which this `Job` is running.
+        Can be `Cluster`, `Service`, `Component`, `HostProvider`, `Host` or `ActionHostGroup`.
+        """
         objects_raw = self._parse_objects()
         return await self._retrieve_target(objects_raw)
 
     @async_cached_property
     async def action(self: Self) -> Action:
+        """Action in which this `Job` is defined."""
         target = await self.object
         return Action(parent=target, data=self._data["action"])
 
@@ -913,6 +968,13 @@ class Job(WithStatus, RootInteractiveObject):
         poll_interval: int = 10,
         exit_condition: Callable[[Self], Awaitable[bool]] = default_exit_condition,
     ) -> Self:
+        """
+        Wait for `Job` to complete.
+        :param timeout: If the Job is not completed after the `timeout`, the `WaitTimeoutError` is raised
+        :param poll_interval: The interval at which the `Job`'s exit condition is checked
+        :param exit_condition: Callable of one argument: self. Calls on each iteration to check if the `Job` can be
+                               considered completed, regardless of an actual `Job`'s status.
+        """
         timeout_condition = datetime.max if timeout is None else (datetime.now() + timedelta(seconds=timeout))  # noqa: DTZ005
 
         while datetime.now() < timeout_condition:  # noqa: DTZ005
@@ -928,6 +990,7 @@ class Job(WithStatus, RootInteractiveObject):
         raise WaitTimeoutError(message)
 
     async def terminate(self: Self) -> None:
+        """Stop execution of this `Job`."""
         await self._requester.post(*self.get_own_path(), "terminate", data={})
 
     def _parse_objects(self: Self) -> dict[str, int]:
@@ -974,7 +1037,13 @@ class Job(WithStatus, RootInteractiveObject):
 
 
 class JobsNode(PaginatedAccessor[Job]):
+    """
+    Node responsible for accessing `Job` objects.<br>
+    Supports filtering by `name`, `status` or `action`, `object` job's attributes.
+    """
+
     class_type = Job
+    """@private"""
     filtering = Filtering(
         FilterByName,
         FilterByDisplayName,
@@ -984,20 +1053,39 @@ class JobsNode(PaginatedAccessor[Job]):
         FilterBy("target_id", ("eq",), int),
         FilterBy("target_type", ("eq",), str),
     )
+    """@private"""
 
     # override accessor methods to allow passing object
 
     async def get(self: Self, *, object: InteractiveObject | None = None, **filters: FilterValue) -> Job:  # noqa: A002
+        """
+        Get single `Job`.
+        :param object: Special filter for object on which `Job` is running.
+               Can be `Cluster`, `Service`, `Component`, `Host`, `HostProvider` or `ActionHostGroup`
+        :param filters: other filters, such as `name`, `status` or `action`
+        """
         object_filter = self._prepare_filter_by_object(object)
         all_filters = filters | object_filter
         return await super().get(**all_filters)
 
     async def get_or_none(self: Self, *, object: InteractiveObject | None = None, **filters: FilterValue) -> Job | None:  # noqa: A002
+        """
+        Get single `Job`. Returns `None`, if there are none that match the filters.
+        :param object: Special filter for object on which `Job` is running.
+               Can be `Cluster`, `Service`, `Component`, `Host`, `HostProvider` or `ActionHostGroup`
+        :param filters: other filters, such as `name`, `status` or `action`
+        """
         object_filter = self._prepare_filter_by_object(object)
         all_filters = filters | object_filter
         return await super().get_or_none(**all_filters)
 
     async def filter(self: Self, *, object: InteractiveObject | None = None, **filters: FilterValue) -> list[Job]:  # noqa: A002
+        """
+        Get list of `Job`s, satisfying filters.
+        :param object: Special filter for object on which `Job` is running.
+               Can be `Cluster`, `Service`, `Component`, `Host`, `HostProvider` or `ActionHostGroup`
+        :param filters: other filters, such as `name`, `status` or `action`
+        """
         object_filter = self._prepare_filter_by_object(object)
         all_filters = filters | object_filter
         return await super().filter(**all_filters)
@@ -1008,6 +1096,12 @@ class JobsNode(PaginatedAccessor[Job]):
         object: InteractiveObject | None = None,  # noqa: A002
         **filters: FilterValue,
     ) -> AsyncGenerator[Job, None]:
+        """
+        Get generator of `Job`s, satisfying filters.
+        :param object: Special filter for object on which `Job` is running.
+               Can be `Cluster`, `Service`, `Component`, `Host`, `HostProvider` or `ActionHostGroup`
+        :param filters: other filters, such as `name`, `status` or `action`
+        """
         object_filter = self._prepare_filter_by_object(object)
         all_filters = filters | object_filter
         async for entry in super().iter(**all_filters):
