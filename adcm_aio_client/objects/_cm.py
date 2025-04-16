@@ -156,7 +156,7 @@ class Bundle(Deletable, RootInteractiveObject):
 class BundlesNode(PaginatedAccessor[Bundle]):
     """
     Node responsible for accessing `Bundle` objects.<br>
-    Supports filtering by `name`, `display_name`, `version` or `edition` cluster's attribute.
+    Supports filtering by `name`, `display_name`, `version` or `edition` bundle's attribute.
 
     Examples:
     ```python
