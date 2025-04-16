@@ -771,7 +771,7 @@ class HostsNode(HostsAccessor):
     host: Host | None = await adcm_client.hosts.get_or_none(name__icontains="ssh")
 
     # get list of hosts which status is not equal to `up`, case-insensitive.
-    hosts: list[Host] = await adcm_client.filter(status__ine="up")
+    hosts: list[Host] = await adcm_client.hosts.filter(status__ine="up")
     ```
     """
 
