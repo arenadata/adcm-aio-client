@@ -49,8 +49,21 @@ class HostsInActionHostGroupNode(HostsInHostGroupNode):
 
 
 class WithActionHostGroups(WithProtectedRequester, AwareOfOwnPath):
+    """
+    Mixin for accessing 'ActionHostGroup' objects
+    """
+
     @cached_property
     def action_host_groups(self: Self) -> ActionHostGroupNode:
+        """
+        Returns node responsible for accessing 'ActionHostGroup' objects
+
+        Examples:
+        ```python
+            cluster = await client.clusters.get(name__eq="example")
+            groups = await cluster.action_host_groups.all()
+        ```
+        """
         return ActionHostGroupNode(
             parent=self,  # pyright: ignore[reportArgumentType]  easier to ignore than fix this typing
             path=(*self.get_own_path(), "action-host-groups"),
