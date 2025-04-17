@@ -26,6 +26,17 @@ MIN_ADCM_VERSION = "2.5.0"
 
 
 class ADCMSession:
+    """
+    Context manager providing building of adcm object session running at `url` with `credentials`. Within context,
+    `ADCMClient` is available for further usage.
+
+    ```python
+        creds = Credentials("admin", "admin")
+        async with ADCMSession(creds) as client:
+            ...
+    ```
+    """
+
     def __init__(
         self: Self,
         # basics
@@ -54,6 +65,9 @@ class ADCMSession:
     # Context Manager
 
     async def __aenter__(self: Self) -> ADCMClient:
+        """
+        Constructs ADCMClient object for session running at `url` with `credentials`.
+        """
         self._http_client = await self._prepare_http_client_for_running_adcm()
         adcm_version_ = await _ensure_adcm_version_is_supported(client=self._http_client)
 
@@ -73,6 +87,16 @@ class ADCMSession:
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None,
     ) -> None:
+        """
+        Closes ADCM session. Parameters are identical to httpx __aexit__.
+
+        :param exc_type: This argument is the exception type if an exception caused the exit from the context,
+        or None if the context is being exited normally.
+        :param exc_value: The exception instance (or None). This is the actual exception object
+        if there was one, or None.
+        :param traceback: An instance of types.TracebackType (or None).
+        This is the traceback object associated with the exception, or None.
+        """
         await self.__close_requester_safe(exc_type, exc_value, traceback)
         await self.__close_http_client_safe(exc_type, exc_value, traceback)
 

@@ -31,6 +31,18 @@ if TYPE_CHECKING:
 
 
 class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
+    """
+    Node responsible for accessing mapping between `Component` objects and `Host` objects
+    Supports filtering by `name`, `display_name` or `status` component's attribute
+
+    Examples:
+    ```python
+        mapping = await (await adcm_client.clusters.get(name__eq="cluster")).mapping
+        await mapping.add(component, (host_1, host_2))
+        await mapping.save()
+    ```
+    """
+
     filtering = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
 
     def __new__(cls: type[Self], cluster: Cluster, requester: Requester) -> Self:
@@ -59,6 +71,18 @@ class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
 
 
 class ActionMapping:
+    """
+    Node responsible for accessing mapping between `Component` objects and `Host` objects targeted by actions
+
+    Examples:
+    ```python
+        host_action = await host_1.actions.get(name__eq="host_action_config_hc_acl")
+        action_mapping = await host_action.mapping
+        await action_mapping.remove(component=component_1, host=host_1)
+        await action_mapping.add(component=component_2, host=host_1)
+        await action_mapping.save()
+    """
+
     def __init__(
         self: Self, owner: Cluster | Service | Component | Host, cluster: Cluster, entries: Iterable[MappingPair]
     ) -> None:
@@ -79,17 +103,37 @@ class ActionMapping:
         self._current: set[MappingEntry] = copy(self._initial)
 
     def empty(self: Self) -> Self:
+        """Deletes all entries from current mapping"""
         self._current.clear()
         return self
 
     def all(self: Self) -> list[MappingPair]:
+        """Returns all entries from current mapping"""
         return list(self.iter())
 
     def iter(self: Self) -> Generator[MappingPair, None, None]:
+        """Iterates over all entries from current mapping"""
         for entry in self._current:
             yield self._components[entry.component_id], self._hosts[entry.host_id]
 
     async def add(self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter) -> Self:
+        """adds component/components to host/hosts in current mapping
+
+        Examples:
+        ```python
+            host_action = await host_1.actions.get(name__eq="host_action_config_hc_acl")
+            mapping = await host_action.mapping
+
+            await mapping.add(component=component_1, host=host_1) # one component to one host
+            await mapping.save()
+
+            await mapping.add(component, (host_1, host_2)) # one component to two hosts
+            await mapping.save()
+
+            await mapping.add((component_1, component_2), host) # two components to one host
+            await mapping.save()
+        ```
+        """
         components, hosts = await self._resolve_components_and_hosts(component=component, host=host)
         self._cache_components_and_hosts(components, hosts)
 
@@ -102,6 +146,24 @@ class ActionMapping:
     async def remove(
         self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter
     ) -> Self:
+        """
+        removes component/components from host/hosts in current mapping
+
+        Examples:
+        ```python
+            host_action = await host_1.actions.get(name__eq="host_action_config_hc_acl")
+            mapping = await host_action.mapping
+
+            await mapping.remove(component=component_1, host=host_1) # one component from one host
+            await mapping.save()
+
+            await mapping.remove(component, (host_1, host_2)) # one component from two hosts
+            await mapping.save()
+
+            await mapping.remove((component_1, component_2), host) # two components from one host
+            await mapping.save()
+        ```
+        """
         components, hosts = await self._resolve_components_and_hosts(component=component, host=host)
         self._cache_components_and_hosts(components, hosts)
 
@@ -113,10 +175,12 @@ class ActionMapping:
 
     @cached_property
     def components(self: Self) -> ComponentsMappingNode:
+        """Accessor to 'ComponentsMappingNode'"""
         return ComponentsMappingNode(cluster=self._cluster, requester=self._owner.requester)
 
     @cached_property
     def hosts(self: Self) -> HostsAccessor:
+        """Accessor to 'HostsAccessor'"""
         from adcm_aio_client.objects._cm import HostsAccessor
 
         cluster_hosts_path = (*self._cluster.get_own_path(), "hosts")
@@ -151,16 +215,34 @@ class ActionMapping:
 
 
 class ClusterMapping(ActionMapping):
+    """
+    Node responsible for accessing mapping between `Component` objects and `Host` objects of specific cluster
+
+    Examples:
+        ```python
+            mapping = await (await adcm_client.clusters.get(name__eq="cluster")).mapping
+            for component, host in mapping.iter():
+                print(component, host)
+        ```
+    """
+
     def __init__(self: Self, owner: Cluster, entries: Iterable[MappingPair]) -> None:
         super().__init__(owner=owner, cluster=owner, entries=entries)
 
     @classmethod
     async def for_cluster(cls: type[Self], owner: Cluster) -> Self:
+        """
+        Refreshes mapping of specified cluster
+        :param owner: 'Cluster' object for which mapping will be refreshed
+        """
         instance = cls(owner=owner, entries=())
         await instance.refresh(strategy=apply_remote_changes)
         return instance
 
     async def save(self: Self) -> Self:
+        """
+        saves current mapping
+        """
         data = self._to_payload()
 
         await self._requester.post(*self._cluster.get_own_path(), "mapping", data=data)
@@ -170,6 +252,12 @@ class ClusterMapping(ActionMapping):
         return self
 
     async def refresh(self: Self, strategy: MappingRefreshStrategy = apply_local_changes) -> Self:
+        """
+        refreshes current mapping according to specified strategy
+        :param strategy: MappingRefreshStrategy. Can have two values: apply_local_changes and apply_remote_changes.
+        If strategy is apply_local_changes, current mapping will be updated according to local changes.
+        If strategy is apply_remote_changes, current mapping will be updated according to remote changes
+        """
         response = await self._requester.get(*self._cluster.get_own_path(), "mapping")
         remote = {
             MappingEntry(component_id=entry["componentId"], host_id=entry["hostId"]) for entry in response.as_list()
