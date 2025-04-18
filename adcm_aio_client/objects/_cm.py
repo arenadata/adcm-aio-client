@@ -907,7 +907,7 @@ class HostsInClusterNode(HostsAccessor):
 
 
 async def default_exit_condition(job: "Job") -> bool:
-    """@private"""
+    """Returns `True` if the `Job` has terminal status (`broken`, `aborted`, `failed` or `success`)"""
     return await job.get_status() in DEFAULT_JOB_TERMINAL_STATUSES
 
 
