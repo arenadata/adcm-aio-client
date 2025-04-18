@@ -972,8 +972,8 @@ class Job(WithStatus, RootInteractiveObject):
         Wait for `Job` to complete.
         :param timeout: If the Job is not completed after the `timeout`, the `WaitTimeoutError` is raised
         :param poll_interval: The interval at which the `Job`'s exit condition is checked
-        :param exit_condition: Callable of one argument: self. Calls on each iteration to check if the `Job` can be
-                               considered completed, regardless of an actual `Job`'s status.
+        :param exit_condition: Callable of one argument - `self`. Calls on each iteration to check if the `Job`
+                               reached desired condition. Check `self._data` to see `Job`'s attributes
         """
         timeout_condition = datetime.max if timeout is None else (datetime.now() + timedelta(seconds=timeout))  # noqa: DTZ005
 
