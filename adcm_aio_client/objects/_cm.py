@@ -971,7 +971,7 @@ class Job(WithStatus, RootInteractiveObject):
         """
         Wait for `Job` to reach `exit_condition` (evaluates to `True`).
         :param timeout: If the Job is not reached `exit_condition` after the `timeout`, the `WaitTimeoutError` is raised
-        :param poll_interval: The interval at which the `Job`'s exit condition is checked
+        :param poll_interval: The interval at which the `Job`'s `exit_condition` is checked
         :param exit_condition: Callable of one argument - `self`. Calls on each iteration to check if the `Job`
                                reached desired condition. Check `self._data` to see `Job`'s attributes
         """
