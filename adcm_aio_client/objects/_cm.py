@@ -600,7 +600,7 @@ class Component(
 class ComponentsNode(PaginatedChildAccessor[Service, Component]):
     """
     Node responsible for accessing `Components` objects.<br>
-    Supports filtering by `name`, `display_name` or `status` component's attribute.
+    Supports filtering by `name`, `display_name` or `status` component's attributes.
 
     Examples:
     ```python
@@ -638,7 +638,6 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, WithConfigH
     def name(self: Self) -> str:
         """
         `HostProvider`'s name.
-        :return: str
         """
         return str(self._data["name"])
 
@@ -646,7 +645,6 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, WithConfigH
     def description(self: Self) -> str:
         """
         `HostProvider`'s description.
-        :return: str
         """
         return str(self._data["description"])
 
@@ -654,7 +652,6 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, WithConfigH
     def display_name(self: Self) -> str:
         """
         `HostProvider`'s display name.
-        :return: str
         """
         return str(self._data["prototype"]["displayName"])
 
@@ -670,7 +667,7 @@ class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, WithConfigH
 class HostProvidersNode(PaginatedAccessor[HostProvider]):
     """
     Node responsible for accessing `HostProvider` objects.<br>
-    Supports filtering by `name` and `bundle` hostprovider's attribute.
+    Supports filtering by `name` and `bundle` hostprovider's attributes.
 
     Examples:
     ```python
@@ -691,8 +688,8 @@ class HostProvidersNode(PaginatedAccessor[HostProvider]):
         """
         Create new `HostProvider` object
         :param bundle: `Bundle` object in which hostprovider is defined
-        :param name: str, hostprovider's name
-        :param description: str, hostprovider's description. Defaults to empty string
+        :param name: hostprovider's name
+        :param description: hostprovider's description
         :return: `HostProvider`
         """
         response = await self._requester.post(
@@ -708,18 +705,29 @@ class HostProvidersNode(PaginatedAccessor[HostProvider]):
 
 
 class Host(Deletable, WithActions, WithConfig, WithStatus, WithMaintenanceMode, RootInteractiveObject):
+    """
+    Represents `Host` entity in ADCM terminology.
+    """
+
     PATH_PREFIX = "hosts"
+    """@private"""
 
     @property
     def name(self: Self) -> str:
+        """`Host`'s name"""
         return str(self._data["name"])
 
     @property
     def description(self: Self) -> str:
+        """`Host`'s description"""
         return str(self._data["description"])
 
     @async_cached_property
     async def cluster(self: Self) -> Cluster | None:
+        """
+        `Cluster` to which the host is linked
+        :return: `Cluster` or `None` if host is not linked to any cluster
+        """
         if not self._data["cluster"]:
             return None
 
@@ -727,18 +735,57 @@ class Host(Deletable, WithActions, WithConfig, WithStatus, WithMaintenanceMode, 
 
     @async_cached_property
     async def hostprovider(self: Self) -> HostProvider:
+        """`HostProvider` from which the host was created"""
         return await HostProvider.with_id(requester=self._requester, object_id=self._data["hostprovider"]["id"])
 
 
 class HostsAccessor(PaginatedAccessor[Host]):
+    """
+    Node responsible for accessing `Host` objects.<br>
+    Supports filtering by `name`, `status` and `bundle` host's attributes.
+
+    Examples:
+    ```python
+    # get host mapped to `component` which name contains substring `ssh` or `None`, if such host does not exist.
+    host: Host | None = await component.hosts.get_or_none(name__icontains="ssh")
+
+    # get list of hosts that belongs to `hostprovider` and their bundle is not equal to `bundle_object`.
+    hosts: list[Host] = await hostprovider.filter(Filter(attr="bundle", op="ne", value=bundle_object))
+    ```
+    """
+
     class_type = Host
+    """@private"""
     filtering = Filtering(FilterByName, FilterByStatus, FilterBy("hostprovider", COMMON_OPERATIONS, HostProvider))
+    """@private"""
 
 
 class HostsNode(HostsAccessor):
+    """
+    Node responsible for accessing `Host` objects.<br>
+    Supports filtering by `name`, `status` and `bundle` host's attributes.
+
+    Examples:
+    ```python
+    # get host which name contains substring `ssh` or `None`, if such host does not exist.
+    host: Host | None = await adcm_client.hosts.get_or_none(name__icontains="ssh")
+
+    # get list of hosts which status is not equal to `up`, case-insensitive.
+    hosts: list[Host] = await adcm_client.hosts.filter(status__ine="up")
+    ```
+    """
+
     async def create(
         self: Self, hostprovider: HostProvider, name: str, description: str = "", cluster: Cluster | None = None
     ) -> Host:
+        """
+        Create new `Host` object
+        :param hostprovider: `Hostprovider` object, to which created host will belong
+        :param name: host's name
+        :param description: host's description
+        :param cluster: `Cluster` object or None. If specified, links created host to `cluster`
+        :return: `Host` object
+        """
         data = {"hostproviderId": hostprovider.id, "name": name, "description": description}
         if cluster:
             data["clusterId"] = cluster.id
@@ -748,18 +795,52 @@ class HostsNode(HostsAccessor):
 
 
 class HostsInClusterNode(HostsAccessor):
+    """
+    Node responsible for accessing `Host` objects linked to specific `Cluster`.<br>
+    Supports filtering by `name`, `status` and `bundle` host's attributes.
+
+    Example:
+    ```python
+    # get host in `cluster` which name equals to `host-1`
+    host: Host = await cluster.hosts.get(name__eq="host-1")
+    ```
+    """
+
     def __init__(self: Self, cluster: Cluster) -> None:
+        """@private"""
         path = (*cluster.get_own_path(), "hosts")
         super().__init__(path=path, requester=cluster.requester)
 
         self._root_host_filter = HostsAccessor(path=("hosts",), requester=cluster.requester).filter
 
     async def add(self: Self, host: Host | Iterable[Host] | Filter) -> None:
+        """
+        Link specified `host` to `cluster`.
+        :param host: `Host` object, iterable of `Host` objects or `Filter` object that describes desired set of `Host`s
+
+        Examples:
+        ```python
+        await cluster.hosts.add(host=host)
+        await cluster.hosts.add(host=[host1, host2, host3])
+        await cluster.hosts.add(host=Filter(attr="name", op="eq", value="host-2"))
+        ```
+        """
         hosts = await self._get_hosts(host=host, filter_func=self._root_host_filter)
 
         await self._requester.post(*self._path, data=[{"hostId": host.id} for host in hosts])
 
     async def remove(self: Self, host: Host | Iterable[Host] | Filter) -> None:
+        """
+        Unlink specified `host` from `cluster`.
+        :param host: `Host` object, iterable of `Host` objects or `Filter` object that describes desired set of `Host`s
+
+        Examples:
+        ```python
+        await cluster.hosts.remove(host=host)
+        await cluster.hosts.remove(host=[host1, host2, host3])
+        await cluster.hosts.remove(host=Filter(attr="name", op="eq", value="host-2"))
+        ```
+        """
         hosts = await self._get_hosts(host=host, filter_func=self.filter)
 
         error = await safe_gather(
@@ -785,6 +866,7 @@ class HostsInClusterNode(HostsAccessor):
 
 
 async def default_exit_condition(job: "Job") -> bool:
+    """@private"""
     return await job.get_status() in DEFAULT_JOB_TERMINAL_STATUSES
 
 
