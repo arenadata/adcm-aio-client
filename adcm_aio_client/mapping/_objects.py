@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
     """
-    Node responsible for accessing mapping between `Component` objects and `Host` objects
+    Node responsible for changing mapping between `Component` objects and `Host` objects
     Supports filtering by `name`, `display_name` or `status` component's attribute
 
     Examples:
@@ -72,7 +72,7 @@ class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
 
 class ActionMapping:
     """
-    Node responsible for accessing mapping between `Component` objects and `Host` objects targeted by actions
+    Node responsible for changing mapping between `Component` objects and `Host` objects targeted by actions
 
     Examples:
     ```python
@@ -216,7 +216,7 @@ class ActionMapping:
 
 class ClusterMapping(ActionMapping):
     """
-    Node responsible for accessing mapping between `Component` objects and `Host` objects of specific cluster
+    Node responsible for changing mapping between `Component` objects and `Host` objects of specific cluster
 
     Examples:
         ```python

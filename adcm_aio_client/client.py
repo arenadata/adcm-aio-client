@@ -29,7 +29,8 @@ class ADCMClient:
 
     ```python
         async with ADCMSession(url=url, credentials=credentials, **kwargs) as client:
-        yield client
+            yield client
+    ```
     """
 
     def __init__(

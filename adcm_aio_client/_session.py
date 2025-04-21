@@ -88,14 +88,7 @@ class ADCMSession:
         traceback: TracebackType | None = None,
     ) -> None:
         """
-        Closes ADCM session. Parameters are identical to httpx __aexit__.
-
-        :param exc_type: This argument is the exception type if an exception caused the exit from the context,
-        or None if the context is being exited normally.
-        :param exc_value: The exception instance (or None). This is the actual exception object
-        if there was one, or None.
-        :param traceback: An instance of types.TracebackType (or None).
-        This is the traceback object associated with the exception, or None.
+        Closes ADCM session.
         """
         await self.__close_requester_safe(exc_type, exc_value, traceback)
         await self.__close_http_client_safe(exc_type, exc_value, traceback)
