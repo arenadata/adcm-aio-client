@@ -56,7 +56,7 @@ class WithActionHostGroups(WithProtectedRequester, AwareOfOwnPath):
     @cached_property
     def action_host_groups(self: Self) -> ActionHostGroupNode:
         """
-        Returns node responsible for accessing 'ActionHostGroup' objects
+        Returns access to available 'ActionHostGroup' objects
 
         Examples:
         ```python

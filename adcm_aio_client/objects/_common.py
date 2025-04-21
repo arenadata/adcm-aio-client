@@ -28,7 +28,7 @@ class Deletable(WithProtectedRequester, AwareOfOwnPath):
 
     async def delete(self: Self) -> None:
         """
-        Delete object from ADCM. Object can't be restored and it's node accessor must have 'Deletable' mixin
+        Delete object from ADCM. Object can't be restored
 
         Examples:
         ```python
@@ -46,7 +46,7 @@ class WithStatus(WithProtectedRequester, AwareOfOwnPath):
 
     async def get_status(self: Self) -> str:
         """
-        Returns current status of object whose node accessor has 'WithStatus' mixin
+        Returns current status of object like if it is up or down
 
         Examples:
         ```python
@@ -66,8 +66,7 @@ class WithActions(WithProtectedRequester, AwareOfOwnPath):
     @cached_property
     def actions(self: Self) -> ActionsAccessor:
         """
-        Returns actions accessor for object whose node accessor ('ActionsAccessor', 'ActionHostGroupNode',
-        'HostsInActionHostGroupNode') has 'WithActions' mixin
+        Returns access of available actions for object
 
         Examples:
         ```python
@@ -88,7 +87,7 @@ class WithConfig(ConfigOwner):
     @async_cached_property
     async def config(self: Self) -> ObjectConfig:
         """
-        Returns current config of object whose node accessor has 'WithConfig' mixin. (like 'ConfigHistoryNode')
+        Returns current config of object
 
         Examples:
         ```python
@@ -101,7 +100,7 @@ class WithConfig(ConfigOwner):
     @cached_property
     def config_history(self: Self) -> ConfigHistoryNode[ObjectConfig]:
         """
-        Returns config history of object whose node accessor has 'WithConfig' mixin
+        Returns config history of object
 
         Examples:
         ```python
@@ -122,8 +121,7 @@ class WithConfigOfHostGroup(ConfigOwner):
     @async_cached_property
     async def config(self: Self) -> HostGroupConfig:
         """
-        Returns current config of object whose node accessor
-        has 'WithConfigOfHostGroup' mixin. (like 'ConfigHistoryNode')
+        Returns current config for the host group
 
         Examples:
         ```python
@@ -137,7 +135,7 @@ class WithConfigOfHostGroup(ConfigOwner):
     @cached_property
     def config_history(self: Self) -> ConfigHistoryNode[HostGroupConfig]:
         """
-        Returns config history of object whose node accessor has 'WithConfigOfHostGroup' mixin
+        Returns config history for the host group
 
         Examples:
         ```python
@@ -160,7 +158,6 @@ class WithUpgrades(WithProtectedRequester, AwareOfOwnPath):
     def upgrades(self: Self) -> UpgradeNode:
         """
         Node responsible for accessing 'Upgrade' objects.<br>
-        Returns 'UpgradeNode' for object whose node accessor has 'WithUpgrades' mixin
 
         Examples:
         ```python
@@ -180,7 +177,6 @@ class WithMaintenanceMode(WithProtectedRequester, AwareOfOwnPath):
     async def maintenance_mode(self: Self) -> MaintenanceMode:
         """
         Returns current maintenance mode ('MaintenanceMode')
-        of object whose node accessor has 'WithMaintenanceMode' mixin
 
         Examples:
         ```python
@@ -200,7 +196,7 @@ class WithJobStatus(WithProtectedRequester, AwareOfOwnPath):
 
     async def get_job_status(self: Self) -> str:
         """
-        Returns current job status of object whose node accessor has 'WithJobStatus' mixin
+        Returns current job status
 
         Examples:
         ```python
@@ -222,7 +218,7 @@ class WithImports(WithProtectedRequester, AwareOfOwnPath):
     @async_cached_property
     async def imports(self: Self) -> Imports:
         """
-        Returns: 'Imports' node for object whose node accessor has 'WithImports' mixin
+        Returns: available 'Imports' for object
 
         Examples:
         ```python
