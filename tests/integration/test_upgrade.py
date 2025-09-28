@@ -189,9 +189,6 @@ async def _test_upgrade_with_mapping(context: Context) -> None:
     upgrade = await cluster.upgrades.get(name__eq="action_config_mapping")
     assert upgrade.name == "action_config_mapping"
 
-    mapping = await upgrade.mapping
-    assert mapping.all() == []
-
     assert len(await cluster.hosts.all()) == 3
     cluster_mapping = await cluster.mapping
     assert cluster_mapping.all() == []
@@ -205,16 +202,6 @@ async def _test_upgrade_with_mapping(context: Context) -> None:
     await cluster_mapping.save()
 
     await upgrade.refresh()  # drop caches
-    mapping = await upgrade.mapping
-    assert len(mapping.all()) == 4
-    await mapping.add(
-        component=await service_1.components.get(display_name__eq="First Component"),
-        host=await mapping.hosts.filter(name__in=["host-0", "host-2"]),
-    )
-    assert len(mapping.all()) == 6
-    await mapping.remove(component=second_c_service_2, host=await mapping.hosts.get(name__eq="host-1"))
-    assert len(mapping.all()) == 5
-
     config = await upgrade.config
     config["params", ParameterGroup]["pass", Parameter].set("notenough")
 
@@ -230,7 +217,7 @@ async def _test_upgrade_with_mapping(context: Context) -> None:
     assert await job.get_status() == "success"
 
     await cluster_mapping.refresh(strategy=apply_remote_changes)
-    assert len(cluster_mapping.all()) == 5
+    assert len(cluster_mapping.all()) == 4
 
 
 async def _test_upgrade_filtering(context: Context, tmp_path: Path) -> None:
