@@ -58,7 +58,7 @@ def pytest_addoption(parser: Parser) -> None:
 
 @pytest.fixture(scope="session")
 def adcm_tag(request: FixtureRequest) -> str:
-    return request.config.getoption(CMDOptions.ADCM_TAG)  # pyright: ignore [reportReturnType]
+    return request.config.getoption(CMDOptions.ADCM_TAG)
 
 
 ################

@@ -23,7 +23,7 @@ REQUEST_KWARGS: dict = {"timeout": 10, "retry_interval": 1, "retry_attempts": 1}
 CREDENTIALS = Credentials(username="admin", password="admin")  # noqa: S106
 
 
-@pytest_asyncio.fixture()
+@pytest_asyncio.fixture()  # pyright: ignore [reportArgumentType]
 def adcm(
     adcm: ADCMContainer,
     simple_cluster_bundle: Bundle,
