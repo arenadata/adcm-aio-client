@@ -119,5 +119,5 @@ poetry run pytest tests/unit
 To run the integration tests:
 
 ```shell
-poetry run pytest tests/integration
+poetry run pytest/integration
 ```

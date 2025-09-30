@@ -75,6 +75,13 @@
       display_name: With action, config and mapping
       scripts: *upgrade_scripts
       config: *upgrade_config
+      hc_acl: &hc_acl
+        - action: add
+          service: example_1
+          component: first
+        - action: remove
+          service: example_2
+          component: second
 
   actions: &actions
     success: &job
@@ -119,13 +126,7 @@
     with_mapping:
       <<: *job
       display_name: "I will change the cluster"
-      hc_acl: &hc_acl
-        - action: add
-          service: example_1
-          component: first
-        - action: remove
-          service: example_2
-          component: second
+      hc_acl: *hc_acl
 
     with_config_and_mapping:
       <<: *job
