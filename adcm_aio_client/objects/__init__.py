@@ -24,6 +24,7 @@ from adcm_aio_client.objects._cm import (
     License,
     Service,
 )
+from adcm_aio_client.objects._rbac import LDAPUser, LocalUser
 
 __all__ = [
     "ADCM",
@@ -39,4 +40,6 @@ __all__ = [
     "Service",
     "Upgrade",
     "ConfigHostGroup",
+    "LocalUser",
+    "LDAPUser",
 ]

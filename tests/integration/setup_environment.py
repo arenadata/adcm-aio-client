@@ -59,8 +59,8 @@ class ADCMPostgresContainer(PostgresContainer):
         self.with_name(self.name)
         self.with_network(network)
 
-    def execute_statement(self: Self, statement: str) -> None:
-        exit_code, out = self.exec(f'psql --username test --dbname test -c "{statement}"')
+    def execute_statement(self: Self, statement: str, db_user: str = "test", db_name: str = "test") -> None:
+        exit_code, out = self.exec(f'psql --username {db_user} --dbname {db_name} -c "{statement}"')
         if exit_code != 0:
             output = out.decode("utf-8")
             message = f"Failed to execute psql statement: {output}"
