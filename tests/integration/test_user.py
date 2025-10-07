@@ -23,24 +23,19 @@ async def get_all_users(httpx_client: AsyncClient) -> list[dict]:
     return response.json()["results"]
 
 
-async def create_51_users_delete_others_except_admin(
-    httpx_client: AsyncClient, adcm: ADCMContainer, postgres: ADCMPostgresContainer, two_groups: list[dict]
-) -> None:
+async def create_51_users(httpx_client: AsyncClient, two_groups: list[dict]) -> None:
     """
     Creates 51 LocalUsers named User_1, ..., User_51
     Add users to groups:
       User_1, _10, ..., _19 - Group_1
       User_2, _20, ..., _29 - Group_2
-    Deletes all users except just created and admin
     """
 
     groups = {group["displayName"]: group["id"] for group in two_groups}
-    usernames = {"admin"}
     requests = []
 
     for i in range(1, 52, 1):
         username = f"User_{i}"
-        usernames.add(username)
 
         data = {"username": username, "password": f"user_{i}_password"}
         if group_id := groups.get(f"Group_{str(i)[0]}"):
@@ -49,16 +44,6 @@ async def create_51_users_delete_others_except_admin(
         requests.append(httpx_client.post(url="rbac/users/", data=data, timeout=Timeout(15.0, read=None)))
 
     await asyncio.gather(*requests, return_exceptions=False)
-
-    usernames = ", ".join(f"'{username}'" for username in usernames)
-    sql = f"""
-    WITH ids AS (
-        SELECT id FROM auth_user WHERE username NOT IN ({usernames})
-    )
-    DELETE FROM rbac_user WHERE user_ptr_id IN (SELECT id FROM ids);
-    DELETE FROM auth_user WHERE username NOT IN ({usernames});
-    """  # noqa: S608
-    postgres.execute_statement(sql, db_user=DB_USER, db_name=adcm._db.name)
 
 
 @pytest_asyncio.fixture()
@@ -99,15 +84,13 @@ async def test_user(
     httpx_client: AsyncClient,
     ldap_user: LDAPUser,
     two_groups: list[dict],
-    adcm: ADCMContainer,
-    postgres: ADCMPostgresContainer,
 ) -> None:
     await _test_user_object_api(
         adcm_client=adcm_client, httpx_client=httpx_client, ldap_user=ldap_user, two_groups=two_groups
     )
 
-    await create_51_users_delete_others_except_admin(httpx_client, adcm, postgres, two_groups)
-    await _test_users_accessor(adcm_client=adcm_client, two_groups=two_groups)
+    await create_51_users(httpx_client=httpx_client, two_groups=two_groups)
+    await _test_users_accessor(adcm_client=adcm_client, httpx_client=httpx_client, two_groups=two_groups)
 
 
 async def _test_user_object_api(
@@ -282,7 +265,7 @@ async def _test_update(
     assert ldap_user.groups == []
 
 
-async def _test_users_accessor(adcm_client: ADCMClient, two_groups: list[dict]) -> None:
+async def _test_users_accessor(adcm_client: ADCMClient, httpx_client: AsyncClient, two_groups: list[dict]) -> None:
     groups = {group["displayName"]: group["id"] for group in two_groups}
     no_objects_msg = "^No objects found with the given filter.$"
     multiple_objects_msg = "^More than one object found.$"
@@ -304,7 +287,8 @@ async def _test_users_accessor(adcm_client: ADCMClient, two_groups: list[dict]) 
     with pytest.raises(MultipleObjectsReturnedError, match=multiple_objects_msg):
         await adcm_client.users.get_or_none(username__in=["User_1", "User_2"])
 
-    num_users = 52
+    response = await httpx_client.get("rbac/users/")
+    num_users = response.json()["count"]
 
     # all
     all_users = await adcm_client.users.all()
@@ -338,7 +322,7 @@ async def _test_users_accessor(adcm_client: ADCMClient, two_groups: list[dict]) 
         ("username__ine", ("UseR_1", num_users - 1)),
         ("username__iin", (["USER_6", "UsEr_7", "User_8"], 3)),
         ("username__iexclude", (["USER_6", "UsEr_7", "User_8"], num_users - 3)),
-        ("username__contains", ("_", num_users - 1)),  # except admin
+        ("username__contains", ("r_3", 11)),
         ("username__icontains", ("USER", num_users - 1)),
         ("group__eq", (groups["Group_1"], 11)),
         ("group__ne", (groups["Group_2"], num_users - 11)),
