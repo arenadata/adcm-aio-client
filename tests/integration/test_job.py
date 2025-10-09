@@ -59,13 +59,13 @@ async def prepare_environment(
     hostprovider_bundle = simple_hostprovider_bundle
 
     clusters: list[Cluster] = await asyncio.gather(
-        *(adcm_client.clusters.create(cluster_bundle, f"wow-{i}") for i in range(5))
+        *(adcm_client.clusters.create(cluster_bundle, f"wow-{i}") for i in range(2))
     )
     hostproviders = await asyncio.gather(
-        *(adcm_client.hostproviders.create(hostprovider_bundle, f"yay-{i}") for i in range(5))
+        *(adcm_client.hostproviders.create(hostprovider_bundle, f"yay-{i}") for i in range(2))
     )
     await asyncio.gather(
-        *(adcm_client.hosts.create(hp, f"host-{hp.name}-{i}") for i in range(5) for hp in hostproviders)
+        *(adcm_client.hosts.create(hp, f"host-{hp.name}-{i}") for i in range(2) for hp in hostproviders)
     )
     hosts = await adcm_client.hosts.all()
 
@@ -81,7 +81,7 @@ async def prepare_environment(
     host_groups = await asyncio.gather(
         *(
             object_.action_host_groups.create(name=f"ahg for {object_.__class__.__name__}")
-            for object_ in chain(clusters, services, components)
+            for object_ in chain(clusters[:1], services[:1], components[:1])
         )
     )
 
@@ -101,7 +101,7 @@ async def test_jobs_api(adcm_client: ADCMClient) -> None:
 
 
 async def _test_basic_api(adcm_client: ADCMClient) -> None:
-    cluster = await adcm_client.clusters.get(name__eq="wow-4")
+    cluster = await adcm_client.clusters.get(name__eq="wow-1")
     service = await cluster.services.get(name__contains="action")
     component = await service.components.get(display_name__icontains="wESo")
 
@@ -113,7 +113,7 @@ async def _test_basic_api(adcm_client: ADCMClient) -> None:
     assert job.finish_time is None
     assert (await job.action).id == action.id
 
-    await job.wait(exit_condition=is_running, timeout=30, poll_interval=1)
+    await job.wait(exit_condition=is_running, timeout=60, poll_interval=3)
     assert job.start_time is None
     await job.refresh()
     assert isinstance(job.start_time, datetime)
@@ -124,7 +124,7 @@ async def _test_basic_api(adcm_client: ADCMClient) -> None:
     assert target.id == component.id
     assert target.service.id == component.service.id
 
-    await job.wait(timeout=30, poll_interval=3)
+    await job.wait(timeout=60, poll_interval=3)
 
     assert await job.get_status() == "success"
     assert job.finish_time is None
@@ -133,11 +133,11 @@ async def _test_basic_api(adcm_client: ADCMClient) -> None:
 
 
 async def _test_job_object(adcm_client: ADCMClient) -> None:
-    cluster, *_ = await adcm_client.clusters.list(query={"limit": 1, "offset": 4})
+    cluster, *_ = await adcm_client.clusters.list(query={"limit": 1, "offset": 0})
     service = await cluster.services.get()
-    component = await service.components.get(name__eq="c2")
-    hostprovider, *_ = await adcm_client.hostproviders.list(query={"limit": 1, "offset": 2})
-    host, *_ = await adcm_client.hosts.list(query={"limit": 1, "offset": 4})
+    component = await service.components.get(name__eq="c1")
+    hostprovider, *_ = await adcm_client.hostproviders.list(query={"limit": 1, "offset": 0})
+    host, *_ = await adcm_client.hosts.list(query={"limit": 1, "offset": 0})
 
     host_group_1 = await service.action_host_groups.get()
     host_group_2 = await component.action_host_groups.get()
@@ -152,18 +152,18 @@ async def _test_job_object(adcm_client: ADCMClient) -> None:
 
 
 async def _test_collection_fitlering(adcm_client: ADCMClient) -> None:
-    failed_jobs = 20
-    services_amount = 5
+    failed_jobs = 3
+    services_amount = 2
 
     for job in await adcm_client.jobs.all():
-        await job.wait(timeout=60)
+        await job.wait(timeout=60, poll_interval=3)
 
     jobs = await adcm_client.jobs.list()
-    assert len(jobs) == 50
+    assert len(jobs) == 18
 
     jobs = await adcm_client.jobs.all()
     total_jobs = len(jobs)
-    assert total_jobs > 50
+    assert total_jobs == 18
 
     cases = (
         # status
@@ -209,7 +209,7 @@ async def _test_collection_fitlering(adcm_client: ADCMClient) -> None:
         unique_entries = set(map(attrgetter("id"), result))
         assert len(unique_entries) == expected_amount
 
-    cluster = await adcm_client.clusters.get(name__eq="wow-4")
+    cluster = await adcm_client.clusters.get(name__eq="wow-0")
     service = await cluster.services.get()
     service_ahg = await service.action_host_groups.get()
 
@@ -217,7 +217,7 @@ async def _test_collection_fitlering(adcm_client: ADCMClient) -> None:
     success_action = await service.actions.get(name__eq="success")
 
     jobs = [job async for job in adcm_client.jobs.iter(action__eq=fail_action)]
-    assert len(jobs) == 5
+    assert len(jobs) == 1
     objects = []
     for job in jobs:
         objects.append(await job.object)

@@ -11,6 +11,7 @@
 # limitations under the License.
 
 from collections.abc import AsyncGenerator, Generator
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urljoin
@@ -19,6 +20,8 @@ import random
 import string
 import tarfile
 
+from _pytest.config.argparsing import Parser
+from _pytest.fixtures import FixtureRequest
 from httpx import AsyncClient
 from testcontainers.core.network import Network
 import pytest
@@ -37,6 +40,25 @@ from tests.integration.setup_environment import (
 )
 
 BUNDLES = Path(__file__).parent / "bundles"
+
+
+##############
+# Command Line
+##############
+
+
+@dataclass(slots=True, frozen=True)
+class CMDOptions:
+    ADCM_TAG = "--adcm-image-tag"
+
+
+def pytest_addoption(parser: Parser) -> None:
+    parser.addoption(CMDOptions.ADCM_TAG, action="store", default="develop", help="ADCM version to run tests on")
+
+
+@pytest.fixture(scope="session")
+def adcm_tag(request: FixtureRequest) -> str:
+    return request.config.getoption(CMDOptions.ADCM_TAG)
 
 
 ################
@@ -73,12 +95,11 @@ def ssl_certs_dir(tmp_path_factory: pytest.TempdirFactory) -> Path:
 
 
 @pytest.fixture(scope="session")
-def adcm_image(network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir: Path) -> str:
+def adcm_image(network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir: Path, adcm_tag: str) -> str:
     suffix = "".join(random.sample(string.ascii_letters, k=6)).lower()
     base_repo = "hub.adsw.io/adcm/adcm"
-    base_tag = "develop"
     new_repo = "local/adcm"
-    new_tag = f"{base_tag}-ssl-{suffix}"
+    new_tag = f"{adcm_tag}-ssl-{suffix}"
 
     db = DatabaseInfo(name=f"adcm_{suffix}_migration", host=postgres.name)
     postgres.execute_statement(f"CREATE DATABASE {db.name} OWNER {DB_USER}")
@@ -87,7 +108,7 @@ def adcm_image(network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir:
     with tarfile.open(mode="w:gz", fileobj=file) as tar:
         tar.add(ssl_certs_dir, "")
     file.seek(0)
-    adcm = ADCMContainer(image=f"{base_repo}:{base_tag}", network=network, db=db, migration_mode=True)
+    adcm = ADCMContainer(image=f"{base_repo}:{adcm_tag}", network=network, db=db, migration_mode=True)
 
     with adcm:
         container = adcm.get_wrapped_container()
