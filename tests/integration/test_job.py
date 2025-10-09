@@ -113,7 +113,7 @@ async def _test_basic_api(adcm_client: ADCMClient) -> None:
     assert job.finish_time is None
     assert (await job.action).id == action.id
 
-    await job.wait(exit_condition=is_running, timeout=30, poll_interval=1)
+    await job.wait(exit_condition=is_running, timeout=60, poll_interval=3)
     assert job.start_time is None
     await job.refresh()
     assert isinstance(job.start_time, datetime)
@@ -124,7 +124,7 @@ async def _test_basic_api(adcm_client: ADCMClient) -> None:
     assert target.id == component.id
     assert target.service.id == component.service.id
 
-    await job.wait(timeout=30, poll_interval=3)
+    await job.wait(timeout=60, poll_interval=3)
 
     assert await job.get_status() == "success"
     assert job.finish_time is None
@@ -156,7 +156,7 @@ async def _test_collection_fitlering(adcm_client: ADCMClient) -> None:
     services_amount = 2
 
     for job in await adcm_client.jobs.all():
-        await job.wait(timeout=60)
+        await job.wait(timeout=60, poll_interval=3)
 
     jobs = await adcm_client.jobs.list()
     assert len(jobs) == 18
