@@ -1,21 +1,36 @@
-from typing import TYPE_CHECKING, Any, Optional, Self
+from collections.abc import Collection
+from typing import TYPE_CHECKING, Any, Literal, Optional, Self, Union
 
-from adcm_aio_client._filters import ALL_OPERATIONS, COMMON_OPERATIONS, FilterBy, Filtering
-from adcm_aio_client._types import Requester, UserStatus, UserType
+from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
+
+from adcm_aio_client._filters import ALL_OPERATIONS, COMMON_OPERATIONS, FilterBy, FilterByDisplayName, Filtering
+from adcm_aio_client._types import EntitySourceType, Requester, UserStatus
 from adcm_aio_client.objects._accessors import PaginatedAccessor
 from adcm_aio_client.objects._base import RootInteractiveObject
-from adcm_aio_client.objects._common import Deletable
+from adcm_aio_client.objects._common import ConfigurableSetAttrMixin, Deletable, LazyObject
 
 if TYPE_CHECKING:
     from adcm_aio_client.client import ADCMClient
 
 
-class User(RootInteractiveObject):
-    PATH_PREFIX = "rbac/users"
+def _raise(exc: type[Exception] = AttributeError, msg: str = "") -> None:
+    raise exc(msg)
 
-    def __init__(self: Self, requester: Requester | None, data: dict[str, Any]) -> None:
-        super().__init__(requester=requester, data=data)  # pyright: ignore[reportArgumentType]
-        self._manually_set: set[str] = set()
+
+def _setattr_user_groups(self: "User", key: str, value: Collection[Union["LocalGroup", "LDAPGroup"]]) -> None:
+    if errors := [type(group) for group in value if not isinstance(group, LocalGroup | LDAPGroup)]:
+        raise ValueError(f"All groups must be {LocalGroup.__name__} or {LDAPGroup.__name__}, got {errors}")
+
+    if not all(group.id for group in value):
+        raise ValueError("All groups must be saved before assigning them to user")
+
+    self._data[key] = [{"id": group.id} for group in value]
+    self._manually_set.add(key)
+
+
+class User(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
+    PATH_PREFIX = "rbac/users"
+    _custom_setattr = {"groups": _setattr_user_groups}  # noqa: ARG005
 
     @property
     def id(self: Self) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
@@ -46,15 +61,14 @@ class User(RootInteractiveObject):
     def is_super_user(self: Self) -> bool:
         return self._data["isSuperUser"]
 
-    @property
-    def groups(self: Self) -> list:  # TODO
-        return self._data["groups"]
-
-    @groups.setter
-    def groups(self: Self, group_ids: list[int]) -> None:
-        key = "groups"
-        self._data[key] = group_ids
-        self._manually_set.add(key)
+    @async_cached_property
+    async def groups(self: Self) -> list[Union["LocalGroup", "LDAPGroup"]]:
+        group_ids = ",".join(str(group["id"]) for group in self._data["groups"]) or "-1"
+        return list(
+            await GroupsNode(
+                path=("rbac", "groups"), requester=self._requester, default_query={"id__in": group_ids}
+            ).all()
+        )
 
     @property
     def status(self: Self) -> UserStatus:
@@ -66,23 +80,19 @@ class User(RootInteractiveObject):
 
         return UserStatus.ACTIVE
 
-    async def save(self: Self) -> None:
-        if self.id is None:  # create
-            url = (self.PATH_PREFIX,)
-            method = self.requester.post
-            data = self._data
-        else:  # update
-            url = self.get_own_path()
-            method = self.requester.patch
-            data = {key: value for key, value in self._data.items() if key in self._manually_set}
+    def _prepare_data_for_save(self: Self, mode: Literal["create", "update"]) -> dict:
+        match mode:
+            case "create":
+                data = self._data
+            case "update":
+                data = {key: value for key, value in self._data.items() if key in self._manually_set}
+            case _:
+                raise ValueError(f"Unknown mode {mode}")
 
-        response = await method(*url, data=data)
-        self._data = response.as_dict()
-        self._manually_set.clear()
+        if "groups" in data:
+            data["groups"] = [group["id"] for group in data["groups"]]
 
-    async def refresh(self: Self) -> Self:
-        self._manually_set.clear()
-        return await super().refresh()
+        return data
 
     @property
     def _repr(self: Self) -> str:
@@ -124,7 +134,7 @@ class LocalUser(Deletable, User):
             else:
                 raise RuntimeError("`client`, `username` and `password` are mandatory to create a local user")
 
-        super().__init__(requester=requester, data=data)  # pyright: ignore[reportArgumentType]
+        super().__init__(requester=requester, data=data)
 
     @User.password.setter
     def password(self: Self, password: str) -> None:
@@ -162,9 +172,10 @@ class LDAPUser(User):
         self: Self,
         requester: Requester | None = None,
         data: dict[str, Any] | None = None,
+        *args: Any,  # noqa: ANN401
         **kwargs: Any,  # noqa: ANN401
     ) -> None:
-        _ = kwargs
+        _ = args, kwargs
         if data is None:
             raise NotImplementedError("Can't manually create a LDAP user")
 
@@ -176,11 +187,123 @@ class UsersNode(PaginatedAccessor[LocalUser | LDAPUser]):
 
     def _create_object(self: Self, data: dict[str, Any]) -> LocalUser | LDAPUser:
         match data["type"]:
-            case UserType.LOCAL:
+            case EntitySourceType.LOCAL:
                 cls_ = LocalUser
-            case UserType.LDAP:
+            case EntitySourceType.LDAP:
                 cls_ = LDAPUser
             case _:
                 raise NotImplementedError(f"Unexpected user type: {data['type']}")
+
+        return cls_(requester=self._requester, data=data)
+
+
+class Group(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
+    PATH_PREFIX = "rbac/groups"
+    _custom_setattr = {"users": lambda *args: _raise(msg="`users` attribute is not mutable")}  # noqa: ARG005
+
+    @property
+    def id(self: Self) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        return self._data.get("id")
+
+    @property
+    def display_name(self: Self) -> str:
+        return self._data["displayName"]
+
+    @property
+    def description(self: Self) -> str:
+        return self._data["description"]
+
+    @async_cached_property
+    async def users(self: Self) -> list[LocalUser | LDAPUser]:
+        user_ids = ",".join(str(user["id"]) for user in self._data["users"]) or "-1"
+        return list(
+            await UsersNode(path=("rbac", "users"), requester=self._requester, default_query={"id__in": user_ids}).all()
+        )
+
+    def _prepare_data_for_save(self: Self, mode: Literal["create", "update"]) -> dict:
+        match mode:
+            case "create":
+                data = self._data
+            case "update":
+                data = {key: value for key, value in self._data.items() if key in self._manually_set}
+            case _:
+                raise ValueError(f"Unknown mode {mode}")
+
+        if "users" in data:
+            data["users"] = [user["id"] for user in data["users"]]
+
+        return data
+
+
+def _setattr_group_users(self: "LocalGroup", key: str, value: Collection[LocalUser | LDAPUser]) -> None:
+    if errors := [type(user) for user in value if not isinstance(user, LocalUser | LDAPUser)]:
+        raise ValueError(f"All users must be {LocalUser.__name__} or {LDAPUser.__name__}, got {errors}")
+
+    if not all(user.id for user in value):
+        raise ValueError("All users must be saved before assigning them to group")
+
+    self._data[key] = [{"id": user.id} for user in value]
+    self._manually_set.add(key)
+
+
+class LocalGroup(Deletable, Group):
+    _custom_setattr = {"users": _setattr_group_users}
+
+    def __init__(
+        self: Self,
+        requester: Requester | None = None,
+        data: dict[str, Any] | None = None,
+        client: Optional["ADCMClient"] = None,
+        display_name: str | None = None,
+        description: str = "",
+    ) -> None:
+        if not data and not requester:
+            if client and display_name:
+                data = {"displayName": display_name, "description": description, "users": []}
+                requester = client._requester
+            else:
+                raise RuntimeError("`client` and `display_name` are mandatory to create a local group")
+
+        super().__init__(requester=requester, data=data)
+
+    @Group.display_name.setter
+    def display_name(self: Self, display_name: str) -> None:
+        key = "displayName"
+        self._data[key] = display_name
+        self._manually_set.add(key)
+
+    @Group.description.setter
+    def description(self: Self, description: str) -> None:
+        key = "description"
+        self._data[key] = description
+        self._manually_set.add(key)
+
+
+class LDAPGroup(Group):
+    def __init__(
+        self: Self,
+        requester: Requester | None = None,
+        data: dict[str, Any] | None = None,
+        *args: Any,  # noqa: ANN401
+        **kwargs: Any,  # noqa: ANN401
+    ) -> None:
+        _ = args, kwargs
+        if data is None:
+            raise NotImplementedError("Can't manually create a LDAP group")
+
+        super().__init__(requester=requester, data=data)
+
+
+class GroupsNode(PaginatedAccessor[LocalGroup | LDAPGroup]):
+    filtering = Filtering(FilterByDisplayName)
+
+    def _create_object(self: Self, data: dict[str, Any]) -> LocalGroup | LDAPGroup:
+        match data["type"]:
+            case EntitySourceType.LOCAL:
+                cls_ = LocalGroup
+            case EntitySourceType.LDAP:
+                cls_ = LDAPGroup
+            case _:
+                raise NotImplementedError(f"Unexpected group type: {data['type']}")
 
         return cls_(requester=self._requester, data=data)
