@@ -1,12 +1,21 @@
 from collections.abc import Collection
+from functools import cached_property
 from typing import TYPE_CHECKING, Any, Literal, Optional, Self, Union
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
-from adcm_aio_client._filters import ALL_OPERATIONS, COMMON_OPERATIONS, FilterBy, FilterByDisplayName, Filtering
+from adcm_aio_client._filters import (
+    ALL_OPERATIONS,
+    COMMON_OPERATIONS,
+    FilterBy,
+    FilterByDisplayName,
+    FilterByName,
+    Filtering,
+)
 from adcm_aio_client._types import EntitySourceType, Requester, UserStatus
 from adcm_aio_client.objects._accessors import PaginatedAccessor
 from adcm_aio_client.objects._base import RootInteractiveObject
+from adcm_aio_client.objects._cm import Cluster, Component, Host, HostProvider, Service
 from adcm_aio_client.objects._common import ConfigurableSetAttrMixin, Deletable, LazyObject
 
 if TYPE_CHECKING:
@@ -305,5 +314,121 @@ class GroupsNode(PaginatedAccessor[LocalGroup | LDAPGroup]):
                 cls_ = LDAPGroup
             case _:
                 raise NotImplementedError(f"Unexpected group type: {data['type']}")
+
+        return cls_(requester=self._requester, data=data)
+
+
+class _RoleBase(RootInteractiveObject):
+    PATH_PREFIX = "rbac/roles"
+
+    @property
+    def name(self: Self) -> str:
+        return self._data["name"]
+
+    @property
+    def display_name(self: Self) -> str:
+        return self._data["displayName"]
+
+    @property
+    def description(self: Self) -> str:
+        return self._data["description"]
+
+
+class Permission(_RoleBase):
+    """`business` type builtin roles"""
+
+    def __init__(
+        self: Self,
+        requester: Requester | None = None,
+        data: dict[str, Any] | None = None,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> None:
+        if kwargs or not (requester or data):
+            raise NotImplementedError(f"{self.__class__.__name__} can't be created manually")
+
+        super().__init__(requester=requester, data=data)  # pyright: ignore [reportArgumentType]
+
+
+class Role(_RoleBase):
+    @cached_property
+    def permissions(self: Self) -> list[Permission]:
+        return [Permission(requester=self.requester, data=child_data) for child_data in self._data["children"]]
+
+    @cached_property
+    def _parametrized_by_type(self: Self) -> list[type[Cluster | Service | Component | HostProvider | Host]]:
+        types_map = {
+            "cluster": Cluster,
+            "service": Service,
+            "component": Component,
+            "provider": HostProvider,
+            "host": Host,
+        }
+
+        return [types_map[type_] for type_ in self._data.get("parametrizedByType", [])]
+
+
+class BuiltInRole(Role):
+    def __init__(
+        self: Self,
+        requester: Requester | None = None,
+        data: dict[str, Any] | None = None,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> None:
+        if kwargs or not (requester or data):
+            raise NotImplementedError(f"{self.__class__.__name__} can't be created manually")
+
+        super().__init__(requester=requester, data=data)  # pyright: ignore [reportArgumentType]
+
+
+class CustomRole(Deletable, LazyObject, Role):
+    def __init__(
+        self: Self,
+        requester: Requester | None = None,
+        data: dict[str, Any] | None = None,
+        client: Optional["ADCMClient"] = None,
+        display_name: str | None = None,
+        permissions: list["Permission"] | None = None,
+        description: str = "",
+    ) -> None:
+        if not data and not requester:
+            if client and display_name and permissions:
+                if not all(isinstance(p, Permission) for p in permissions):
+                    raise ValueError("All permissions must be a `Permission` objects")
+
+                data = {"displayName": display_name, "description": description, "children": permissions}
+                requester = client._requester
+
+            else:
+                raise RuntimeError("`client`, `display_name` and `permissions` are mandatory to create a custom role")
+
+        super().__init__(requester=requester, data=data)
+
+    @property
+    def id(self: Self) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        return self._data.get("id")
+
+    @property
+    def name(self: Self) -> str | None:  # pyright: ignore[reportIncompatibleMethodOverride]
+        return self._data.get("name")
+
+    def _prepare_data_for_save(self: Self, mode: Literal["create", "update"]) -> dict:
+        _ = mode
+        return {"displayName": self.display_name, "children": [child.id for child in self._data["children"]]}
+
+
+class RolesNode(PaginatedAccessor[BuiltInRole | CustomRole | Permission]):
+    filtering = Filtering(FilterByName, FilterByDisplayName)
+
+    def _create_object(self: Self, data: dict[str, Any]) -> BuiltInRole | CustomRole | Permission:
+        if data["isBuiltIn"]:
+            match data["type"]:
+                case "role":
+                    cls_ = BuiltInRole
+                case "business":
+                    cls_ = Permission
+                case _:
+                    raise NotImplementedError(f"Unexpected builtin role type: {data['type']}")
+        else:
+            cls_ = CustomRole
 
         return cls_(requester=self._requester, data=data)
