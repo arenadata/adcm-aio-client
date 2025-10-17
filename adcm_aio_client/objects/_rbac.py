@@ -72,9 +72,6 @@ class User(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
 
     @property
     def status(self: Self) -> UserStatus:
-        if self.id is None:
-            return UserStatus.NOT_SAVED
-
         if self._data["blockingReason"] is not None:
             return UserStatus.INACTIVE
 
@@ -128,6 +125,7 @@ class LocalUser(Deletable, User):
                     "lastName": last_name,
                     "email": email,
                     "groups": [],
+                    "blockingReason": None,
                 }
                 requester = client._requester
 
