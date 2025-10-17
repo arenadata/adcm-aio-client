@@ -134,7 +134,6 @@ class MaintenanceModeStatus(str, Enum):
 class UserStatus(str, Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
-    NOT_SAVED = "not_saved"
 
 
 class UserType(str, Enum):
