@@ -161,7 +161,7 @@ async def _test_user_object_api(
     assert local_user.id is None
     assert local_user.password == "*****"  # noqa: S105
     assert await local_user.groups == []
-    assert local_user.status == UserStatus.NOT_SAVED
+    assert local_user.status == UserStatus.ACTIVE
     for field in {"username", "first_name", "last_name", "email", "is_super_user"}:
         assert getattr(local_user, field) == local_user_data[field]
 
