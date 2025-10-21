@@ -526,7 +526,7 @@ class Policy(Deletable, LazyObject, ConfigurableSetAttrMixin, RootInteractiveObj
             path=("rbac", "roles"), requester=self.requester, default_query={"id__eq": self._data["role"]["id"]}
         ).get()
 
-    @async_cached_property  # TODO:
+    @async_cached_property
     async def objects(self: Self) -> list[PolicyObject]:
         _obj_type_cls_map = {v: k for k, v in self._obj_cls_type_map.items()}
 
