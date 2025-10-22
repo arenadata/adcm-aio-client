@@ -293,8 +293,8 @@ async def _test_groups_node(adcm_client: ADCMClient, httpx_client: AsyncClient) 
 
     # iter
     iter_groups = []
-    async for user in adcm_client.groups.iter():
-        iter_groups.append(user)
+    async for group in adcm_client.groups.iter():
+        iter_groups.append(group)
     assert len(iter_groups) == num_groups
     assert len({group.id for group in iter_groups}) == num_groups
     assert len({id(group) for group in iter_groups}) == num_groups
