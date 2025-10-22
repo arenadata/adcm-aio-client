@@ -1,6 +1,8 @@
+from collections import defaultdict
 from collections.abc import Collection
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Literal, Optional, Self, Union
+import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
@@ -20,6 +22,12 @@ from adcm_aio_client.objects._common import ConfigurableSetAttrMixin, Deletable,
 
 if TYPE_CHECKING:
     from adcm_aio_client.client import ADCMClient
+
+
+type PolicyObject = Cluster | Service | Component | HostProvider | Host
+type PolicyGroupsInternalValue = list[dict[Literal["id"], int]]
+type PolicyRoleInternalValue = dict[Literal["id"], int]
+type PolicyObjectsInternalValue = list[dict[Literal["id", "type"], int | str]]
 
 
 def _raise(exc: type[Exception] = AttributeError, msg: str = "") -> None:
@@ -430,3 +438,180 @@ class RolesNode(PaginatedAccessor[BuiltInRole | CustomRole | Permission]):
             cls_ = CustomRole
 
         return cls_(requester=self._requester, data=data)
+
+
+def _setattr_policy_role(self: "Policy", key: Literal["role"], value: BuiltInRole | CustomRole) -> None:
+    self._data[key] = self._to_internal_value_role(value)
+    self._manually_set.add(key)
+
+
+def _setattr_policy_objects(self: "Policy", key: Literal["objects"], value: Collection[PolicyObject]) -> None:
+    self._data[key] = self._to_internal_value_objects(value)
+    self._manually_set.add(key)
+
+
+def _setattr_policy_groups(self: "Policy", key: Literal["groups"], value: Collection[LocalGroup | LDAPGroup]) -> None:
+    self._data[key] = self._to_internal_value_groups(value)
+    self._manually_set.add(key)
+
+
+class Policy(Deletable, LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
+    PATH_PREFIX = "rbac/policies"
+    _custom_setattr = {  # pyright: ignore[reportAssignmentType]
+        "role": _setattr_policy_role,
+        "objects": _setattr_policy_objects,
+        "groups": _setattr_policy_groups,
+    }
+    _obj_cls_type_map = {
+        Cluster: "cluster",
+        Service: "service",
+        Component: "component",
+        HostProvider: "provider",
+        Host: "host",
+    }
+
+    def __init__(
+        self: Self,
+        requester: Requester | None = None,
+        data: dict[str, Any] | None = None,
+        client: Optional["ADCMClient"] = None,
+        name: str | None = None,
+        role: CustomRole | BuiltInRole | None = None,
+        objects: Collection[PolicyObject] | None = None,
+        groups: Collection[LocalGroup | LDAPGroup] | None = None,
+        description: str = "",
+    ) -> None:
+        if not data and not requester:
+            if not (client and all((name, role, objects, groups))):
+                raise RuntimeError("`client`, `name`, `role`, `objects` and `groups` are mandatory to create a policy")
+
+            data = {
+                "name": name,
+                "description": description,
+                "role": self._to_internal_value_role(role=role),  # pyright: ignore[reportArgumentType]
+                "objects": self._to_internal_value_objects(objects=objects),  # pyright: ignore[reportArgumentType]
+                "groups": self._to_internal_value_groups(groups=groups),  # pyright: ignore[reportArgumentType]
+            }
+            requester = client._requester
+
+        super().__init__(requester=requester, data=data)
+
+    @property
+    def id(self: Self) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        return self._data.get("id")
+
+    @property
+    def name(self: Self) -> str:
+        return self._data["name"]
+
+    @name.setter
+    def name(self: Self, name: str) -> None:
+        key = "name"
+        self._data[key] = name
+        self._manually_set.add(key)
+
+    @property
+    def description(self: Self) -> str:
+        return self._data["description"]
+
+    @description.setter
+    def description(self: Self, description: str) -> None:
+        key = "description"
+        self._data[key] = description
+        self._manually_set.add(key)
+
+    @async_cached_property
+    async def role(self: Self) -> BuiltInRole | CustomRole:
+        return await RolesNode(  # pyright: ignore[reportReturnType]
+            path=("rbac", "roles"), requester=self.requester, default_query={"id__eq": self._data["role"]["id"]}
+        ).get()
+
+    @async_cached_property
+    async def objects(self: Self) -> list[PolicyObject]:
+        _obj_type_cls_map = {v: k for k, v in self._obj_cls_type_map.items()}
+
+        cls_ids_map = defaultdict(set)
+        for obj in self._data["objects"]:
+            if (obj_type := obj["type"]) in {"service", "component"}:
+                # TODO: now it is impossible to get service/somponent object from policy.objects
+                #  since there is no info about parent objects in policy.objects field
+                continue
+
+            obj_cls = _obj_type_cls_map[obj_type]
+            cls_ids_map[obj_cls].add(obj["id"])
+
+        coros = []
+        for cls_, ids in cls_ids_map.items():
+            coros.extend(cls_.with_id(requester=self.requester, object_id=id_) for id_ in ids)
+
+        return list(await asyncio.gather(*coros))
+
+    @async_cached_property
+    async def groups(self: Self) -> list[LocalGroup | LDAPGroup]:
+        group_ids = ",".join(str(group["id"]) for group in self._data["groups"]) or "-1"
+
+        return list(
+            await GroupsNode(
+                path=("rbac", "groups"), requester=self.requester, default_query={"id__in": group_ids}
+            ).all()
+        )
+
+    def _prepare_data_for_save(self: Self, mode: Literal["create", "update"]) -> dict:
+        match mode:
+            case "create":
+                data = self._data
+            case "update":
+                data = {key: value for key, value in self._data.items() if key in self._manually_set}
+            case _:
+                raise ValueError(f"Unknown mode {mode}")
+
+        if "groups" in data:
+            data["groups"] = [group["id"] for group in data["groups"]]
+
+        return data
+
+    def _to_internal_value_objects(self: Self, objects: Collection[PolicyObject]) -> PolicyObjectsInternalValue:
+        self._validate_objects(objects=objects)
+
+        return [{"id": obj_.id, "type": self._obj_cls_type_map[type(obj_)]} for obj_ in objects]
+
+    def _validate_objects(self: Self, objects: Collection[PolicyObject]) -> None:
+        valid_types = tuple(self._obj_cls_type_map.keys())
+        if errors := [type(obj) for obj in objects if not isinstance(obj, valid_types)]:
+            _valid_types_repr = ", ".join(f"{obj.__class__.__name__}" for obj in valid_types)
+            _valid_types_repr = " or ".join(_valid_types_repr.rsplit(", ", maxsplit=1))  # replace last `, ` with ` or `
+            raise ValueError(f"All objects must be {_valid_types_repr}, got {errors}")
+
+        if not all(obj.id for obj in objects):
+            raise ValueError("All objects must be saved before assigning them to policy")
+
+    def _to_internal_value_role(self: Self, role: BuiltInRole | CustomRole) -> PolicyRoleInternalValue:
+        self._validate_role(role=role)
+
+        return {"id": role.id}  # pyright: ignore[reportReturnType]
+
+    @staticmethod
+    def _validate_role(role: BuiltInRole | CustomRole) -> None:
+        if not isinstance(role, BuiltInRole | CustomRole):
+            raise ValueError(f"Role must be a {BuiltInRole.__name__} or {CustomRole.__name__}, got {type(role)}")  # noqa: TRY004
+
+        if not role.id:
+            raise ValueError("Role must be saved before assigning it to policy")
+
+    def _to_internal_value_groups(self: Self, groups: Collection[LocalGroup | LDAPGroup]) -> PolicyGroupsInternalValue:
+        self._validate_groups(groups=groups)
+
+        return [{"id": group.id} for group in groups]  # pyright: ignore[reportReturnType]
+
+    @staticmethod
+    def _validate_groups(groups: Collection[LocalGroup | LDAPGroup]) -> None:
+        if errors := [type(group) for group in groups if not isinstance(group, LocalGroup | LDAPGroup)]:
+            raise ValueError(f"All groups must be {LocalGroup.__name__} or {LDAPGroup.__name__}, got {errors}")
+
+        if not all(group.id for group in groups):
+            raise ValueError("All groups must be saved before assigning them to policy")
+
+
+class PoliciesNode(PaginatedAccessor[Policy]):
+    class_type = Policy
+    filtering = Filtering(FilterByName)

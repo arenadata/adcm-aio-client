@@ -100,6 +100,9 @@ async def _test_object_api(
         with pytest.raises(RuntimeError):
             CustomRole(**args)
 
+    await custom_role.delete()
+    assert await get_roles_count(httpx_client, type="role") == initial_roles_count
+
 
 async def _test_role_attributes(role: BuiltInRole | CustomRole | Permission, expected: dict[str, Any]) -> None:
     for attr, expected_ in expected.items():

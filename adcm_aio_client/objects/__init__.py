@@ -32,6 +32,7 @@ from adcm_aio_client.objects._rbac import (
     LocalGroup,
     LocalUser,
     Permission,
+    Policy,
 )
 
 __all__ = [
@@ -55,4 +56,5 @@ __all__ = [
     "BuiltInRole",
     "CustomRole",
     "Permission",
+    "Policy",
 ]
