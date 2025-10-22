@@ -24,6 +24,16 @@ from adcm_aio_client.objects._cm import (
     License,
     Service,
 )
+from adcm_aio_client.objects._rbac import (
+    BuiltInRole,
+    CustomRole,
+    LDAPGroup,
+    LDAPUser,
+    LocalGroup,
+    LocalUser,
+    Permission,
+    Policy,
+)
 
 __all__ = [
     "ADCM",
@@ -39,4 +49,12 @@ __all__ = [
     "Service",
     "Upgrade",
     "ConfigHostGroup",
+    "LocalUser",
+    "LDAPUser",
+    "LocalGroup",
+    "LDAPGroup",
+    "BuiltInRole",
+    "CustomRole",
+    "Permission",
+    "Policy",
 ]

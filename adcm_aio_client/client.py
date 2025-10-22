@@ -16,6 +16,7 @@ from typing import Self
 
 from adcm_aio_client.objects import ADCM
 from adcm_aio_client.objects._cm import BundlesNode, ClustersNode, HostProvidersNode, HostsNode, JobsNode
+from adcm_aio_client.objects._rbac import GroupsNode, PoliciesNode, RolesNode, UsersNode
 from adcm_aio_client.requesters import BundleRetrieverInterface, Requester
 
 MIN_ADCM_VERSION = "2.5.0"
@@ -54,3 +55,23 @@ class ADCMClient:
     @cached_property
     def jobs(self: Self) -> JobsNode:
         return JobsNode(path=("tasks",), requester=self._requester)
+
+    @cached_property
+    def users(self: Self) -> UsersNode:
+        return UsersNode(path=("rbac", "users"), requester=self._requester)
+
+    @cached_property
+    def groups(self: Self) -> GroupsNode:
+        return GroupsNode(path=("rbac", "groups"), requester=self._requester)
+
+    @cached_property
+    def roles(self: Self) -> RolesNode:
+        return RolesNode(path=("rbac", "roles"), requester=self._requester, default_query={"type": "role"})
+
+    @cached_property
+    def permissions(self: Self) -> RolesNode:
+        return RolesNode(path=("rbac", "roles"), requester=self._requester, default_query={"type": "business"})
+
+    @cached_property
+    def policies(self: Self) -> PoliciesNode:
+        return PoliciesNode(path=("rbac", "policies"), requester=self._requester)
