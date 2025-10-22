@@ -163,6 +163,7 @@ class Filtering:
         return str(value)
 
 
+FilterByID = FilterBy("id", COMMON_OPERATIONS, int)
 FilterByName = FilterBy("name", ALL_OPERATIONS, str)
 FilterByDisplayName = FilterBy("display_name", ALL_OPERATIONS, str)
 FilterByStatus = FilterBy("status", STATUS_OPERATIONS, str)

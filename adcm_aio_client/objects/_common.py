@@ -10,7 +10,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from abc import abstractmethod
 from collections.abc import Callable
 from functools import cached_property
 from typing import Any, Literal, Self
@@ -117,8 +116,22 @@ class LazyObject(WithRequesterProperty, AwareOfOwnPath, Refreshable):
         self._manually_set.clear()
         return await super().refresh()  # pyright: ignore[reportAbstractUsage]
 
-    @abstractmethod
-    def _prepare_data_for_save(self: Self, mode: Literal["create", "update"]) -> dict: ...
+    def _prepare_data_for_save(self: Self, mode: Literal["create", "update"]) -> dict:
+        match mode:
+            case "create":
+                data = self._data
+            case "update":
+                data = {key: value for key, value in self._data.items() if key in self._manually_set}
+            case _:
+                raise ValueError(f"Unknown mode {mode}")
+
+        return self._postprocess_save_data(data=data, mode=mode)
+
+    @staticmethod
+    def _postprocess_save_data(data: Any, mode: Literal["create", "update"]) -> Any:  # noqa: ANN401
+        """Override this in subclass to mutate data"""
+        _ = mode
+        return data
 
 
 class ConfigurableSetAttrMixin:

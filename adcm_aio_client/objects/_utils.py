@@ -14,35 +14,35 @@ if TYPE_CHECKING:
     )
 
 
-def _raise(exc: type[Exception] = AttributeError, msg: str = "") -> None:
+def raise_exc(exc: type[Exception] = AttributeError, msg: str = "") -> None:
     raise exc(msg)
 
 
-def _setattr_user_groups(
+def setattr_user_groups(
     self: "LocalUser", key: Literal["groups"], value: Collection[Union["LocalGroup", "LDAPGroup"]]
 ) -> None:
     self._data[key] = self._to_internal_value_groups(value)  # pyright: ignore[reportArgumentType]
     self._manually_set.add(key)
 
 
-def _setattr_group_users(
+def setattr_group_users(
     self: "LocalGroup", key: Literal["users"], value: Collection[Union["LocalUser", "LDAPUser"]]
 ) -> None:
     self._data[key] = self._to_internal_value_users(value)
     self._manually_set.add(key)
 
 
-def _setattr_policy_role(self: "Policy", key: Literal["role"], value: Union["BuiltInRole", "CustomRole"]) -> None:
+def setattr_policy_role(self: "Policy", key: Literal["role"], value: Union["BuiltInRole", "CustomRole"]) -> None:
     self._data[key] = self._to_internal_value_role(value)
     self._manually_set.add(key)
 
 
-def _setattr_policy_objects(self: "Policy", key: Literal["objects"], value: Collection["PolicyObject"]) -> None:
+def setattr_policy_objects(self: "Policy", key: Literal["objects"], value: Collection["PolicyObject"]) -> None:
     self._data[key] = self._to_internal_value_objects(value)
     self._manually_set.add(key)
 
 
-def _setattr_policy_groups(
+def setattr_policy_groups(
     self: "Policy", key: Literal["groups"], value: Collection[Union["LocalGroup", "LDAPGroup"]]
 ) -> None:
     self._data[key] = self._to_internal_value_groups(value)

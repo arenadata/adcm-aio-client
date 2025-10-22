@@ -11,6 +11,7 @@ from adcm_aio_client._filters import (
     COMMON_OPERATIONS,
     FilterBy,
     FilterByDisplayName,
+    FilterByID,
     FilterByName,
     Filtering,
 )
@@ -20,12 +21,12 @@ from adcm_aio_client.objects._base import RootInteractiveObject
 from adcm_aio_client.objects._cm import Cluster, Component, Host, HostProvider, Service
 from adcm_aio_client.objects._common import ConfigurableSetAttrMixin, Deletable, LazyObject
 from adcm_aio_client.objects._utils import (
-    _raise,
-    _setattr_group_users,
-    _setattr_policy_groups,
-    _setattr_policy_objects,
-    _setattr_policy_role,
-    _setattr_user_groups,
+    raise_exc,
+    setattr_group_users,
+    setattr_policy_groups,
+    setattr_policy_objects,
+    setattr_policy_role,
+    setattr_user_groups,
 )
 
 if TYPE_CHECKING:
@@ -41,11 +42,13 @@ type PolicyObjectsInternalValue = list[dict[Literal["id", "type"], int | str]]
 # pyright: reportOptionalMemberAccess=false
 # id -> int | None override
 # pyright: reportIncompatibleVariableOverride=false
+# Any type
+# ruff: noqa: ANN401
 
 
 class User(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
     PATH_PREFIX = "rbac/users"
-    _custom_setattr = {"groups": lambda *args: _raise(msg="`groups` attribute is not mutable")}  # noqa: ARG005
+    _custom_setattr = {"groups": lambda *args: raise_exc(msg="`groups` attribute is not mutable")}  # noqa: ARG005
 
     @property
     def username(self: Self) -> str:
@@ -73,29 +76,22 @@ class User(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
 
     @async_cached_property
     async def groups(self: Self) -> list[Union["LocalGroup", "LDAPGroup"]]:
-        group_ids = ",".join(str(group["id"]) for group in self._data["groups"]) or "-1"
-        return list(
-            await GroupsNode(
-                path=("rbac", "groups"), requester=self._requester, default_query={"id__in": group_ids}
-            ).all()
-        )
+        group_ids = [group["id"] for group in self._data["groups"]] or [-1]
+
+        return await GroupsNode(
+            path=("rbac", "groups"), requester=self._requester, default_query={"id__in": group_ids}
+        ).all()
 
     @property
     def status(self: Self) -> UserStatus:
-        if self._data["blockingReason"] is not None:
+        if self.id and self._data["blockingReason"] is not None:
             return UserStatus.INACTIVE
 
         return UserStatus.ACTIVE
 
-    def _prepare_data_for_save(self: Self, mode: Literal["create", "update"]) -> dict:
-        match mode:
-            case "create":
-                data = self._data
-            case "update":
-                data = {key: value for key, value in self._data.items() if key in self._manually_set}
-            case _:
-                raise ValueError(f"Unknown mode {mode}")
-
+    @staticmethod
+    def _postprocess_save_data(data: Any, mode: Literal["create", "update"]) -> Any:
+        _ = mode
         if "groups" in data:
             data["groups"] = [group["id"] for group in data["groups"]]
 
@@ -113,7 +109,7 @@ class User(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
 
 
 class LocalUser(Deletable, User):
-    _custom_setattr = {"groups": _setattr_user_groups}  # noqa: ARG005
+    _custom_setattr = {"groups": setattr_user_groups}  # noqa: ARG005
 
     def __init__(
         self: Self,
@@ -178,13 +174,12 @@ class LocalUser(Deletable, User):
         self._manually_set.add(key)
 
     def _to_internal_value_groups(self: Self, groups: Collection["LocalGroup"] | None) -> ListOfIDDictsInternalValue:
-        self._validate_groups(groups)
-        groups = cast(Collection["LocalGroup"], groups)
+        groups = self._validate_groups(groups)
         # id is present by this moment
         return cast(ListOfIDDictsInternalValue, [{"id": group.id} for group in groups])
 
     @staticmethod
-    def _validate_groups(groups: Collection["LocalGroup"] | None) -> None:
+    def _validate_groups(groups: Collection["LocalGroup"] | None) -> Collection["LocalGroup"]:
         if not groups:
             raise ValueError(f"All groups must be {LocalGroup.__name__}")
 
@@ -193,6 +188,8 @@ class LocalUser(Deletable, User):
 
         if not all(group.id for group in groups):
             raise ValueError("All groups must be saved before assigning them to user")
+
+        return groups
 
 
 class LDAPUser(User):
@@ -209,7 +206,9 @@ class LDAPUser(User):
 
 
 class UsersNode(PaginatedAccessor[LocalUser | LDAPUser]):
-    filtering = Filtering(FilterBy("username", ALL_OPERATIONS, str), FilterBy("group", COMMON_OPERATIONS, int))
+    filtering = Filtering(
+        FilterByID, FilterBy("username", ALL_OPERATIONS, str), FilterBy("group", COMMON_OPERATIONS, int)
+    )
 
     def _create_object(self: Self, data: dict[str, Any]) -> LocalUser | LDAPUser:
         match data["type"]:
@@ -225,7 +224,7 @@ class UsersNode(PaginatedAccessor[LocalUser | LDAPUser]):
 
 class Group(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
     PATH_PREFIX = "rbac/groups"
-    _custom_setattr = {"users": lambda *args: _raise(msg="`users` attribute is not mutable")}  # noqa: ARG005
+    _custom_setattr = {"users": lambda *args: raise_exc(msg="`users` attribute is not mutable")}  # noqa: ARG005
 
     @property
     def display_name(self: Self) -> str:
@@ -237,20 +236,13 @@ class Group(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
 
     @async_cached_property
     async def users(self: Self) -> list[LocalUser | LDAPUser]:
-        user_ids = ",".join(str(user["id"]) for user in self._data["users"]) or "-1"
-        return list(
-            await UsersNode(path=("rbac", "users"), requester=self._requester, default_query={"id__in": user_ids}).all()
-        )
+        user_ids = [user["id"] for user in self._data["users"]] or [-1]
 
-    def _prepare_data_for_save(self: Self, mode: Literal["create", "update"]) -> dict:
-        match mode:
-            case "create":
-                data = self._data
-            case "update":
-                data = {key: value for key, value in self._data.items() if key in self._manually_set}
-            case _:
-                raise ValueError(f"Unknown mode {mode}")
+        return await UsersNode(path=("rbac", "users"), requester=self._requester).filter(id__in=user_ids)
 
+    @staticmethod
+    def _postprocess_save_data(data: Any, mode: Literal["create", "update"]) -> Any:
+        _ = mode
         if "users" in data:
             data["users"] = [user["id"] for user in data["users"]]
 
@@ -258,7 +250,7 @@ class Group(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
 
 
 class LocalGroup(Deletable, Group):
-    _custom_setattr = {"users": _setattr_group_users}
+    _custom_setattr = {"users": setattr_group_users}
 
     def __init__(
         self: Self,
@@ -290,17 +282,19 @@ class LocalGroup(Deletable, Group):
         self._manually_set.add(key)
 
     def _to_internal_value_users(self: Self, users: Collection[LocalUser | LDAPUser]) -> ListOfIDDictsInternalValue:
-        self._validate_users(users=users)
+        users = self._validate_users(users=users)
         # id is present by this moment
         return cast(ListOfIDDictsInternalValue, [{"id": user.id} for user in users])
 
     @staticmethod
-    def _validate_users(users: Collection[LocalUser | LDAPUser]) -> None:
+    def _validate_users(users: Collection[LocalUser | LDAPUser]) -> Collection[LocalUser | LDAPUser]:
         if errors := [type(user) for user in users if not isinstance(user, LocalUser | LDAPUser)]:
             raise ValueError(f"All users must be {LocalUser.__name__} or {LDAPUser.__name__}, got {errors}")
 
         if not all(user.id for user in users):
             raise ValueError("All users must be saved before assigning them to group")
+
+        return users
 
 
 class LDAPGroup(Group):
@@ -317,7 +311,7 @@ class LDAPGroup(Group):
 
 
 class GroupsNode(PaginatedAccessor[LocalGroup | LDAPGroup]):
-    filtering = Filtering(FilterByDisplayName)
+    filtering = Filtering(FilterByID, FilterByDisplayName)
 
     def _create_object(self: Self, data: dict[str, Any]) -> LocalGroup | LDAPGroup:
         match data["type"]:
@@ -426,19 +420,20 @@ class CustomRole(Deletable, LazyObject, Role):
     def _to_internal_value_permissions(
         self: Self, permissions: Collection[Permission] | None
     ) -> ListOfIDDictsInternalValue:
-        self._validate_permissions(permissions=permissions)
-        permissions = cast(Collection[Permission], permissions)
+        permissions = self._validate_permissions(permissions=permissions)
 
         return [{"id": permission.id} for permission in permissions]
 
     @staticmethod
-    def _validate_permissions(permissions: Collection[Permission] | None) -> None:
+    def _validate_permissions(permissions: Collection[Permission] | None) -> Collection[Permission]:
         if not permissions or not all(isinstance(p, Permission) for p in permissions):
             raise ValueError("All permissions must be a `Permission` objects")
 
+        return permissions
+
 
 class RolesNode(PaginatedAccessor[BuiltInRole | CustomRole | Permission]):
-    filtering = Filtering(FilterByName, FilterByDisplayName)
+    filtering = Filtering(FilterByID, FilterByName, FilterByDisplayName)
 
     def _create_object(self: Self, data: dict[str, Any]) -> BuiltInRole | CustomRole | Permission:
         if data["isBuiltIn"]:
@@ -458,9 +453,9 @@ class RolesNode(PaginatedAccessor[BuiltInRole | CustomRole | Permission]):
 class Policy(Deletable, LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
     PATH_PREFIX = "rbac/policies"
     _custom_setattr = {  # pyright: ignore[reportAssignmentType]
-        "role": _setattr_policy_role,
-        "objects": _setattr_policy_objects,
-        "groups": _setattr_policy_groups,
+        "role": setattr_policy_role,
+        "objects": setattr_policy_objects,
+        "groups": setattr_policy_groups,
     }
     _obj_cls_type_map = {
         Cluster: "cluster",
@@ -521,9 +516,7 @@ class Policy(Deletable, LazyObject, ConfigurableSetAttrMixin, RootInteractiveObj
 
     @async_cached_property
     async def role(self: Self) -> BuiltInRole | CustomRole:
-        return await RolesNode(  # pyright: ignore[reportReturnType]
-            path=("rbac", "roles"), requester=self.requester, default_query={"id__eq": self._data["role"]["id"]}
-        ).get()
+        return await RolesNode(path=("rbac", "roles"), requester=self.requester).get(id__eq=self._data["role"]["id"])  # pyright: ignore[reportReturnType]
 
     @async_cached_property
     async def objects(self: Self) -> list[PolicyObject]:
@@ -532,7 +525,7 @@ class Policy(Deletable, LazyObject, ConfigurableSetAttrMixin, RootInteractiveObj
         cls_ids_map = defaultdict(set)
         for obj in self._data["objects"]:
             if (obj_type := obj["type"]) in {"service", "component"}:
-                # TODO: now it is impossible to get service/somponent object from policy.objects
+                # TODO: now it is impossible to get service/component object from policy.objects
                 #  since there is no info about parent objects in policy.objects field
                 continue
 
@@ -547,34 +540,24 @@ class Policy(Deletable, LazyObject, ConfigurableSetAttrMixin, RootInteractiveObj
 
     @async_cached_property
     async def groups(self: Self) -> list[LocalGroup | LDAPGroup]:
-        group_ids = ",".join(str(group["id"]) for group in self._data["groups"]) or "-1"
+        group_ids = [group["id"] for group in self._data["groups"]] or [-1]
 
-        return list(
-            await GroupsNode(
-                path=("rbac", "groups"), requester=self.requester, default_query={"id__in": group_ids}
-            ).all()
-        )
+        return await GroupsNode(path=("rbac", "groups"), requester=self.requester).filter(id__in=group_ids)
 
-    def _prepare_data_for_save(self: Self, mode: Literal["create", "update"]) -> dict:
-        match mode:
-            case "create":
-                data = self._data
-            case "update":
-                data = {key: value for key, value in self._data.items() if key in self._manually_set}
-            case _:
-                raise ValueError(f"Unknown mode {mode}")
-
+    @staticmethod
+    def _postprocess_save_data(data: Any, mode: Literal["create", "update"]) -> Any:
+        _ = mode
         if "groups" in data:
             data["groups"] = [group["id"] for group in data["groups"]]
 
         return data
 
     def _to_internal_value_objects(self: Self, objects: Collection[PolicyObject]) -> PolicyObjectsInternalValue:
-        self._validate_objects(objects=objects)
+        objects = self._validate_objects(objects=objects)
 
         return [{"id": obj_.id, "type": self._obj_cls_type_map[type(obj_)]} for obj_ in objects]
 
-    def _validate_objects(self: Self, objects: Collection[PolicyObject]) -> None:
+    def _validate_objects(self: Self, objects: Collection[PolicyObject]) -> Collection[PolicyObject]:
         valid_types = tuple(self._obj_cls_type_map.keys())
         if errors := [type(obj) for obj in objects if not isinstance(obj, valid_types)]:
             _valid_types_repr = ", ".join(f"{obj.__class__.__name__}" for obj in valid_types)
@@ -584,31 +567,37 @@ class Policy(Deletable, LazyObject, ConfigurableSetAttrMixin, RootInteractiveObj
         if not all(obj.id for obj in objects):
             raise ValueError("All objects must be saved before assigning them to policy")
 
+        return objects
+
     def _to_internal_value_role(self: Self, role: BuiltInRole | CustomRole) -> IDDictInternalValue:
-        self._validate_role(role=role)
+        role = self._validate_role(role=role)
 
         return {"id": role.id}  # pyright: ignore[reportReturnType]
 
     @staticmethod
-    def _validate_role(role: BuiltInRole | CustomRole) -> None:
+    def _validate_role(role: BuiltInRole | CustomRole) -> BuiltInRole | CustomRole:
         if not isinstance(role, BuiltInRole | CustomRole):
             raise ValueError(f"Role must be a {BuiltInRole.__name__} or {CustomRole.__name__}, got {type(role)}")  # noqa: TRY004
 
         if not role.id:
             raise ValueError("Role must be saved before assigning it to policy")
 
+        return role
+
     def _to_internal_value_groups(self: Self, groups: Collection[LocalGroup | LDAPGroup]) -> ListOfIDDictsInternalValue:
-        self._validate_groups(groups=groups)
+        groups = self._validate_groups(groups=groups)
 
         return [{"id": group.id} for group in groups]  # pyright: ignore[reportReturnType]
 
     @staticmethod
-    def _validate_groups(groups: Collection[LocalGroup | LDAPGroup]) -> None:
+    def _validate_groups(groups: Collection[LocalGroup | LDAPGroup]) -> Collection[LocalGroup | LDAPGroup]:
         if errors := [type(group) for group in groups if not isinstance(group, LocalGroup | LDAPGroup)]:
             raise ValueError(f"All groups must be {LocalGroup.__name__} or {LDAPGroup.__name__}, got {errors}")
 
         if not all(group.id for group in groups):
             raise ValueError("All groups must be saved before assigning them to policy")
+
+        return groups
 
 
 class PoliciesNode(PaginatedAccessor[Policy]):
