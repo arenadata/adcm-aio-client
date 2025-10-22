@@ -90,12 +90,14 @@ class WithImports(WithProtectedRequester, AwareOfOwnPath):
 
 
 class LazyObject(WithRequesterProperty, AwareOfOwnPath, Refreshable):
-    id: int | None
-    _manually_set: set
-
     def __init__(self: Self, *args: Any, **kwargs: Any) -> None:  # noqa: ANN401
         super().__init__(*args, **kwargs)
         self._manually_set = set()
+
+    @property
+    def id(self: Self) -> int | None:
+        """May be `None` if object was created manually and not saved yet"""
+        return self._data.get("id")
 
     async def save(self: Self) -> None:
         if self.id is None:  # create

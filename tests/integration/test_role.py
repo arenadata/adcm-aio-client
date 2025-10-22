@@ -65,7 +65,12 @@ async def _test_object_api(
 
     expected = (
         {"id": _is_int, "name": "Cluster Administrator", "display_name": "Cluster Administrator", "description": ""},
-        {"id": None, "name": None, "display_name": "Handmade role with create cluster permission", "description": ""},
+        {
+            "id": None,
+            "name": "Handmade role with create cluster permission",
+            "display_name": "Handmade role with create cluster permission",
+            "description": "",
+        },
         {
             "id": _is_int,
             "name": "Create cluster",

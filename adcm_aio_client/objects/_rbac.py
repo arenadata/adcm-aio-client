@@ -1,7 +1,7 @@
 from collections import defaultdict
 from collections.abc import Collection
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Literal, Optional, Self, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Self, Union, cast
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
@@ -19,40 +19,33 @@ from adcm_aio_client.objects._accessors import PaginatedAccessor
 from adcm_aio_client.objects._base import RootInteractiveObject
 from adcm_aio_client.objects._cm import Cluster, Component, Host, HostProvider, Service
 from adcm_aio_client.objects._common import ConfigurableSetAttrMixin, Deletable, LazyObject
+from adcm_aio_client.objects._utils import (
+    _raise,
+    _setattr_group_users,
+    _setattr_policy_groups,
+    _setattr_policy_objects,
+    _setattr_policy_role,
+    _setattr_user_groups,
+)
 
 if TYPE_CHECKING:
     from adcm_aio_client.client import ADCMClient
 
 
 type PolicyObject = Cluster | Service | Component | HostProvider | Host
-type PolicyGroupsInternalValue = list[dict[Literal["id"], int]]
-type PolicyRoleInternalValue = dict[Literal["id"], int]
+type IDDictInternalValue = dict[Literal["id"], int]
+type ListOfIDDictsInternalValue = list[IDDictInternalValue]
 type PolicyObjectsInternalValue = list[dict[Literal["id", "type"], int | str]]
 
-
-def _raise(exc: type[Exception] = AttributeError, msg: str = "") -> None:
-    raise exc(msg)
-
-
-def _setattr_user_groups(self: "User", key: str, value: Collection[Union["LocalGroup", "LDAPGroup"]]) -> None:
-    if errors := [type(group) for group in value if not isinstance(group, LocalGroup | LDAPGroup)]:
-        raise ValueError(f"All groups must be {LocalGroup.__name__} or {LDAPGroup.__name__}, got {errors}")
-
-    if not all(group.id for group in value):
-        raise ValueError("All groups must be saved before assigning them to user")
-
-    self._data[key] = [{"id": group.id} for group in value]
-    self._manually_set.add(key)
+# client._requester access
+# pyright: reportOptionalMemberAccess=false
+# id -> int | None override
+# pyright: reportIncompatibleVariableOverride=false
 
 
 class User(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
     PATH_PREFIX = "rbac/users"
-    _custom_setattr = {"groups": _setattr_user_groups}  # noqa: ARG005
-
-    @property
-    def id(self: Self) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
-        """May be `None` if User was created manually and not saved yet"""
-        return self._data.get("id")
+    _custom_setattr = {"groups": lambda *args: _raise(msg="`groups` attribute is not mutable")}  # noqa: ARG005
 
     @property
     def username(self: Self) -> str:
@@ -120,6 +113,8 @@ class User(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
 
 
 class LocalUser(Deletable, User):
+    _custom_setattr = {"groups": _setattr_user_groups}  # noqa: ARG005
+
     def __init__(
         self: Self,
         requester: Requester | None = None,
@@ -132,22 +127,23 @@ class LocalUser(Deletable, User):
         last_name: str = "",
         email: str = "",
     ) -> None:
-        if not data and not requester:
-            if all((username, password)) and client:
-                data = {
-                    "username": username,
-                    "password": password,
-                    "isSuperUser": is_super_user,
-                    "firstName": first_name,
-                    "lastName": last_name,
-                    "email": email,
-                    "groups": [],
-                    "blockingReason": None,
-                }
-                requester = client._requester
+        if not any((data, requester)):
+            if not all((client, username, password)):
+                raise RuntimeError(
+                    f"`client`, `username` and `password` are mandatory to create a {self.__class__.__name__}"
+                )
 
-            else:
-                raise RuntimeError("`client`, `username` and `password` are mandatory to create a local user")
+            data = {
+                "username": username,
+                "password": password,
+                "isSuperUser": is_super_user,
+                "firstName": first_name,
+                "lastName": last_name,
+                "email": email,
+                "groups": [],
+                "blockingReason": None,
+            }
+            requester = client._requester
 
         super().__init__(requester=requester, data=data)
 
@@ -181,18 +177,33 @@ class LocalUser(Deletable, User):
         self._data[key] = is_super_user
         self._manually_set.add(key)
 
+    def _to_internal_value_groups(self: Self, groups: Collection["LocalGroup"] | None) -> ListOfIDDictsInternalValue:
+        self._validate_groups(groups)
+        groups = cast(Collection["LocalGroup"], groups)
+        # id is present by this moment
+        return cast(ListOfIDDictsInternalValue, [{"id": group.id} for group in groups])
+
+    @staticmethod
+    def _validate_groups(groups: Collection["LocalGroup"] | None) -> None:
+        if not groups:
+            raise ValueError(f"All groups must be {LocalGroup.__name__}")
+
+        if errors := [type(group) for group in groups if not isinstance(group, LocalGroup)]:
+            raise ValueError(f"All groups must be {LocalGroup.__name__}, got {errors}")
+
+        if not all(group.id for group in groups):
+            raise ValueError("All groups must be saved before assigning them to user")
+
 
 class LDAPUser(User):
     def __init__(
         self: Self,
         requester: Requester | None = None,
         data: dict[str, Any] | None = None,
-        *args: Any,  # noqa: ANN401
         **kwargs: Any,  # noqa: ANN401
     ) -> None:
-        _ = args, kwargs
-        if data is None:
-            raise NotImplementedError("Can't manually create a LDAP user")
+        if kwargs or not (requester or data):
+            raise NotImplementedError(f"{self.__class__.__name__} can't be created manually")
 
         super().__init__(requester=requester, data=data)
 
@@ -215,10 +226,6 @@ class UsersNode(PaginatedAccessor[LocalUser | LDAPUser]):
 class Group(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
     PATH_PREFIX = "rbac/groups"
     _custom_setattr = {"users": lambda *args: _raise(msg="`users` attribute is not mutable")}  # noqa: ARG005
-
-    @property
-    def id(self: Self) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
-        return self._data.get("id")
 
     @property
     def display_name(self: Self) -> str:
@@ -250,17 +257,6 @@ class Group(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
         return data
 
 
-def _setattr_group_users(self: "LocalGroup", key: str, value: Collection[LocalUser | LDAPUser]) -> None:
-    if errors := [type(user) for user in value if not isinstance(user, LocalUser | LDAPUser)]:
-        raise ValueError(f"All users must be {LocalUser.__name__} or {LDAPUser.__name__}, got {errors}")
-
-    if not all(user.id for user in value):
-        raise ValueError("All users must be saved before assigning them to group")
-
-    self._data[key] = [{"id": user.id} for user in value]
-    self._manually_set.add(key)
-
-
 class LocalGroup(Deletable, Group):
     _custom_setattr = {"users": _setattr_group_users}
 
@@ -272,12 +268,12 @@ class LocalGroup(Deletable, Group):
         display_name: str | None = None,
         description: str = "",
     ) -> None:
-        if not data and not requester:
-            if client and display_name:
-                data = {"displayName": display_name, "description": description, "users": []}
-                requester = client._requester
-            else:
-                raise RuntimeError("`client` and `display_name` are mandatory to create a local group")
+        if not any((data, requester)):
+            if not all((client, display_name)):
+                raise RuntimeError(f"`client` and `display_name` are mandatory to create a {self.__class__.__name__}")
+
+            data = {"displayName": display_name, "description": description, "users": []}
+            requester = client._requester
 
         super().__init__(requester=requester, data=data)
 
@@ -293,18 +289,29 @@ class LocalGroup(Deletable, Group):
         self._data[key] = description
         self._manually_set.add(key)
 
+    def _to_internal_value_users(self: Self, users: Collection[LocalUser | LDAPUser]) -> ListOfIDDictsInternalValue:
+        self._validate_users(users=users)
+        # id is present by this moment
+        return cast(ListOfIDDictsInternalValue, [{"id": user.id} for user in users])
+
+    @staticmethod
+    def _validate_users(users: Collection[LocalUser | LDAPUser]) -> None:
+        if errors := [type(user) for user in users if not isinstance(user, LocalUser | LDAPUser)]:
+            raise ValueError(f"All users must be {LocalUser.__name__} or {LDAPUser.__name__}, got {errors}")
+
+        if not all(user.id for user in users):
+            raise ValueError("All users must be saved before assigning them to group")
+
 
 class LDAPGroup(Group):
     def __init__(
         self: Self,
         requester: Requester | None = None,
         data: dict[str, Any] | None = None,
-        *args: Any,  # noqa: ANN401
         **kwargs: Any,  # noqa: ANN401
     ) -> None:
-        _ = args, kwargs
-        if data is None:
-            raise NotImplementedError("Can't manually create a LDAP group")
+        if kwargs or not (requester or data):
+            raise NotImplementedError(f"{self.__class__.__name__} can't be created manually")
 
         super().__init__(requester=requester, data=data)
 
@@ -396,30 +403,38 @@ class CustomRole(Deletable, LazyObject, Role):
         permissions: list["Permission"] | None = None,
         description: str = "",
     ) -> None:
-        if not data and not requester:
-            if client and display_name and permissions:
-                if not all(isinstance(p, Permission) for p in permissions):
-                    raise ValueError("All permissions must be a `Permission` objects")
+        if not any((data, requester)):
+            if not all((client, display_name, permissions)):
+                raise RuntimeError(
+                    f"`client`, `display_name` and `permissions` are mandatory to create a {self.__class__.__name__}"
+                )
 
-                data = {"displayName": display_name, "description": description, "children": permissions}
-                requester = client._requester
-
-            else:
-                raise RuntimeError("`client`, `display_name` and `permissions` are mandatory to create a custom role")
+            data = {
+                "name": display_name,
+                "displayName": display_name,
+                "description": description,
+                "children": self._to_internal_value_permissions(permissions),
+            }
+            requester = client._requester
 
         super().__init__(requester=requester, data=data)
 
-    @property
-    def id(self: Self) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
-        return self._data.get("id")
-
-    @property
-    def name(self: Self) -> str | None:  # pyright: ignore[reportIncompatibleMethodOverride]
-        return self._data.get("name")
-
     def _prepare_data_for_save(self: Self, mode: Literal["create", "update"]) -> dict:
         _ = mode
-        return {"displayName": self.display_name, "children": [child.id for child in self._data["children"]]}
+        return {"displayName": self.display_name, "children": [child["id"] for child in self._data["children"]]}
+
+    def _to_internal_value_permissions(
+        self: Self, permissions: Collection[Permission] | None
+    ) -> ListOfIDDictsInternalValue:
+        self._validate_permissions(permissions=permissions)
+        permissions = cast(Collection[Permission], permissions)
+
+        return [{"id": permission.id} for permission in permissions]
+
+    @staticmethod
+    def _validate_permissions(permissions: Collection[Permission] | None) -> None:
+        if not permissions or not all(isinstance(p, Permission) for p in permissions):
+            raise ValueError("All permissions must be a `Permission` objects")
 
 
 class RolesNode(PaginatedAccessor[BuiltInRole | CustomRole | Permission]):
@@ -438,21 +453,6 @@ class RolesNode(PaginatedAccessor[BuiltInRole | CustomRole | Permission]):
             cls_ = CustomRole
 
         return cls_(requester=self._requester, data=data)
-
-
-def _setattr_policy_role(self: "Policy", key: Literal["role"], value: BuiltInRole | CustomRole) -> None:
-    self._data[key] = self._to_internal_value_role(value)
-    self._manually_set.add(key)
-
-
-def _setattr_policy_objects(self: "Policy", key: Literal["objects"], value: Collection[PolicyObject]) -> None:
-    self._data[key] = self._to_internal_value_objects(value)
-    self._manually_set.add(key)
-
-
-def _setattr_policy_groups(self: "Policy", key: Literal["groups"], value: Collection[LocalGroup | LDAPGroup]) -> None:
-    self._data[key] = self._to_internal_value_groups(value)
-    self._manually_set.add(key)
 
 
 class Policy(Deletable, LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
@@ -481,9 +481,12 @@ class Policy(Deletable, LazyObject, ConfigurableSetAttrMixin, RootInteractiveObj
         groups: Collection[LocalGroup | LDAPGroup] | None = None,
         description: str = "",
     ) -> None:
-        if not data and not requester:
-            if not (client and all((name, role, objects, groups))):
-                raise RuntimeError("`client`, `name`, `role`, `objects` and `groups` are mandatory to create a policy")
+        if not any((data, requester)):
+            if not all((client, name, role, objects, groups)):
+                raise RuntimeError(
+                    f"`client`, `name`, `role`, `objects` and `groups` "
+                    f"are mandatory to create a {self.__class__.__name__}"
+                )
 
             data = {
                 "name": name,
@@ -495,10 +498,6 @@ class Policy(Deletable, LazyObject, ConfigurableSetAttrMixin, RootInteractiveObj
             requester = client._requester
 
         super().__init__(requester=requester, data=data)
-
-    @property
-    def id(self: Self) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
-        return self._data.get("id")
 
     @property
     def name(self: Self) -> str:
@@ -585,7 +584,7 @@ class Policy(Deletable, LazyObject, ConfigurableSetAttrMixin, RootInteractiveObj
         if not all(obj.id for obj in objects):
             raise ValueError("All objects must be saved before assigning them to policy")
 
-    def _to_internal_value_role(self: Self, role: BuiltInRole | CustomRole) -> PolicyRoleInternalValue:
+    def _to_internal_value_role(self: Self, role: BuiltInRole | CustomRole) -> IDDictInternalValue:
         self._validate_role(role=role)
 
         return {"id": role.id}  # pyright: ignore[reportReturnType]
@@ -598,7 +597,7 @@ class Policy(Deletable, LazyObject, ConfigurableSetAttrMixin, RootInteractiveObj
         if not role.id:
             raise ValueError("Role must be saved before assigning it to policy")
 
-    def _to_internal_value_groups(self: Self, groups: Collection[LocalGroup | LDAPGroup]) -> PolicyGroupsInternalValue:
+    def _to_internal_value_groups(self: Self, groups: Collection[LocalGroup | LDAPGroup]) -> ListOfIDDictsInternalValue:
         self._validate_groups(groups=groups)
 
         return [{"id": group.id} for group in groups]  # pyright: ignore[reportReturnType]

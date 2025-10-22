@@ -233,7 +233,7 @@ async def _test_update(
             [local_group_saved, 7],
             (
                 ValueError,
-                re.escape(f"All groups must be {LocalGroup.__name__} or {LDAPGroup.__name__}, got [{int}]"),
+                re.escape(f"All groups must be {LocalGroup.__name__}, got {[int]}"),
             ),
         ),
     )
@@ -295,14 +295,13 @@ async def _test_update(
         ldap_user.email = "123"
     with pytest.raises(AttributeError):
         ldap_user.is_super_user = True
-
-    ldap_user.groups = [local_group_saved]  # TODO: it can't be changed now, but in SRS
-    assert ldap_user._manually_set == {"groups"}
+    with pytest.raises(AttributeError):
+        ldap_user.groups = [local_group_saved]
 
     with pytest.raises(ConflictError, match="USER_UPDATE_ERROR.*LDAP user's information can't be changed"):
         await ldap_user.save()
-    assert ldap_user._manually_set == {"groups"}
 
+    assert ldap_user._manually_set == set()
     await ldap_user.refresh()
     assert ldap_user._manually_set == set()
 
