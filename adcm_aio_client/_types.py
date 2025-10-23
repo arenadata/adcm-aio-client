@@ -114,6 +114,10 @@ class AwareOfOwnPath(Protocol):
     def get_own_path(self: Self) -> Endpoint: ...
 
 
+class Refreshable(Protocol):
+    async def refresh(self: Self) -> Self: ...
+
+
 class MappingOperation(str, Enum):
     ADD = "add"
     REMOVE = "remove"
@@ -129,3 +133,13 @@ class MaintenanceModeStatus(str, Enum):
     ON = "on"
     OFF = "off"
     CHANGING = "changing"
+
+
+class UserStatus(str, Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
+class EntitySourceType(str, Enum):
+    LOCAL = "local"
+    LDAP = "ldap"

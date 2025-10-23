@@ -87,7 +87,7 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
 
     @property
     def _repr(self: Self) -> str:
-        name = getattr(self, "name", None)
+        name = getattr(self, "display_name", None) or getattr(self, "name", None)
         name = f" {name}" if isinstance(name, str) else ""
         return f"<{self.__class__.__name__} #{self.id}{name}>"
 
