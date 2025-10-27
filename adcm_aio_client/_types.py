@@ -140,6 +140,6 @@ class UserStatus(str, Enum):
     INACTIVE = "inactive"
 
 
-class EntitySourceType(str, Enum):
+class SourceType(str, Enum):
     LOCAL = "local"
     LDAP = "ldap"

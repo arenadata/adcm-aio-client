@@ -1,14 +1,14 @@
-import re
 import asyncio
 
 from httpx import AsyncClient, Timeout
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client._types import EntitySourceType, UserStatus
+from adcm_aio_client._types import SourceType
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.errors import ConflictError, MultipleObjectsReturnedError, NotFoundError, ObjectDoesNotExistError
-from adcm_aio_client.objects import LDAPGroup, LDAPUser, LocalGroup, LocalUser
+from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.objects import LDAPGroup, LDAPUser, LocalGroup, LocalUser, LocalUserData, LocalUserLazy, new_user
+from adcm_aio_client.objects.rbac._types import UserKwargs
 from tests.integration.setup_environment import DB_USER, ADCMContainer, ADCMPostgresContainer
 
 pytestmark = [pytest.mark.asyncio]
@@ -17,11 +17,11 @@ pytestmark = [pytest.mark.asyncio]
 # pyright: reportAttributeAccessIssue=false
 
 
-async def get_all_users(httpx_client: AsyncClient) -> list[dict]:
+async def get_all_usernames(httpx_client: AsyncClient) -> list[dict]:
     response = await httpx_client.get(url="rbac/users/", params={"limit": 999})
     assert response.status_code == 200
 
-    return response.json()["results"]
+    return [user["username"] for user in response.json()["results"]]
 
 
 async def create_51_users(httpx_client: AsyncClient, groups: dict[str, int]) -> None:
@@ -66,7 +66,7 @@ async def three_groups(
 
     local_group_saved = await adcm_client.groups.get(display_name__eq=local_group_name)
     assert isinstance(local_group_saved, LocalGroup)
-    assert local_group_saved._data["type"] == EntitySourceType.LOCAL.value
+    assert local_group_saved._data["type"] == SourceType.LOCAL.value
 
     response = await httpx_client.post(
         url=url, data={"display_name": ldap_group_name}, timeout=Timeout(15.0, read=None)
@@ -74,12 +74,12 @@ async def three_groups(
     assert response.status_code == 201
     ldap_group_id = response.json()["id"]
 
-    sql = f"UPDATE rbac_group SET type = '{EntitySourceType.LDAP.value}' WHERE group_ptr_id = {ldap_group_id};"  # noqa: S608
+    sql = f"UPDATE rbac_group SET type = '{SourceType.LDAP.value}' WHERE group_ptr_id = {ldap_group_id};"  # noqa: S608
     postgres.execute_statement(sql, db_user=DB_USER, db_name=adcm._db.name)
 
     ldap_group_saved = await adcm_client.groups.get(display_name__eq=ldap_group_name)
     assert isinstance(ldap_group_saved, LDAPGroup)
-    assert ldap_group_saved._data["type"] == EntitySourceType.LDAP.value
+    assert ldap_group_saved._data["type"] == SourceType.LDAP.value
 
     local_group_unsaved = LocalGroup(client=adcm_client, display_name="Another test local group")
 
@@ -96,12 +96,12 @@ async def ldap_user(
     assert response.status_code == 201
     id_ = response.json()["id"]
 
-    sql = f"UPDATE rbac_user SET type = '{EntitySourceType.LDAP.value}' WHERE user_ptr_id = {id_};"  # noqa: S608
+    sql = f"UPDATE rbac_user SET type = '{SourceType.LDAP.value}' WHERE user_ptr_id = {id_};"  # noqa: S608
     postgres.execute_statement(sql, db_user=DB_USER, db_name=adcm._db.name)
 
     ldap_user = await adcm_client.users.get(username__eq=username)
     assert isinstance(ldap_user, LDAPUser)
-    assert ldap_user._data["type"] == EntitySourceType.LDAP.value
+    assert ldap_user._data["type"] == SourceType.LDAP.value
 
     return ldap_user
 
@@ -112,211 +112,149 @@ async def test_user(
     ldap_user: LDAPUser,
     three_groups: tuple[LocalGroup, LocalGroup, LDAPGroup],
 ) -> None:
-    await _test_user_object_api(
-        adcm_client=adcm_client, httpx_client=httpx_client, ldap_user=ldap_user, three_groups=three_groups
-    )
+    _test_misc()
+    # TODO: test update user.groups after groups refactor
+    await _test_local_user_data_api(adcm_client=adcm_client, httpx_client=httpx_client)
+    await _test_local_user_lazy_api(adcm_client=adcm_client, httpx_client=httpx_client)
+    await _test_ldap_user_api(user=ldap_user)
+    await _test_users_accessor(adcm_client=adcm_client, httpx_client=httpx_client, three_groups=three_groups)
 
+
+def _test_misc() -> None:
+    # check that UserKwargs fields match LocalUserData fields
+    localuserdata = LocalUserData.__annotations__
+    id_ann = localuserdata.pop("id")
+    assert id_ann.__args__ == (int | None,)
+
+    userkwargs = UserKwargs.__annotations__
+
+    expected_fields = {"username", "password", "is_super_user", "first_name", "last_name", "email"}
+    assert set(localuserdata.keys()) == set(userkwargs.keys()) == expected_fields
+
+    for field in expected_fields:
+        kwarg_type = userkwargs[field].__args__
+        localuserdata_type = localuserdata[field].__args__
+        assert kwarg_type == localuserdata_type, f"{field=}, {kwarg_type=}, {localuserdata_type=}"
+
+
+async def _test_local_user_data_api(adcm_client: ADCMClient, httpx_client: AsyncClient) -> None:
+    username = "New_test_user"
+    assert username not in await get_all_usernames(httpx_client)
+
+    for wrong_data in ({"username": username}, {"password": username * 2}):
+        with pytest.raises(ValueError, match=r"^\"username\" and \"password\" are mandatory to create a user$"):
+            new_user(**wrong_data)  # pyright: ignore[reportArgumentType]
+
+    user = new_user(username=username, password=username * 2)
+    lastname = "Last Name"
+    assert isinstance(user, LocalUserData)
+    user.last_name = lastname
+
+    with pytest.raises(AttributeError):
+        await user.save()
+
+    with pytest.raises(AttributeError):
+        await user.delete()
+
+    local_user = await adcm_client.users.init(user)
+    assert isinstance(local_user, LocalUser)
+    assert local_user.username in await get_all_usernames(httpx_client)
+
+    assert isinstance(local_user.id, int)
+    assert local_user.username == username
+    assert local_user.first_name == ""
+    assert local_user.last_name == lastname
+    assert not local_user.is_super_user
+    assert local_user.email == ""
+
+    email = "example@mail.com"
+    edited_user = local_user.edit(email=email)
+    assert isinstance(edited_user, LocalUserLazy)
+    with pytest.raises(AttributeError):
+        await edited_user.delete()
+
+    saved_user = await edited_user.save()
+    assert isinstance(saved_user, LocalUser)
+    assert saved_user.username in await get_all_usernames(httpx_client)
+
+    await saved_user.delete()
+    assert saved_user.username not in await get_all_usernames(httpx_client)
+
+
+async def _test_local_user_lazy_api(adcm_client: ADCMClient, httpx_client: AsyncClient) -> None:
+    username = "Test_user_from_node"
+    assert username not in await get_all_usernames(httpx_client)
+
+    for wrong_data in ({"username": username}, {"password": username * 2}):
+        with pytest.raises(ValueError, match=r"^\"username\" and \"password\" are mandatory to create a user$"):
+            # pyright somehow thinks that `is_super_user` field here is `str`, not `bool | None`
+            adcm_client.users.new(**wrong_data)  # pyright: ignore[reportArgumentType]
+
+    user = adcm_client.users.new(username=username, password=username * 2)
+    assert isinstance(user, LocalUserLazy)
+    assert username not in await get_all_usernames(httpx_client)
+
+    with pytest.raises(AttributeError):
+        await user.delete()
+
+    email = "naw_mail@mail.com"
+    user.email = email
+
+    saved_user = await user.save()
+    assert isinstance(saved_user, LocalUser)
+    assert saved_user.username in await get_all_usernames(httpx_client)
+
+    assert isinstance(saved_user.id, int)
+    assert saved_user.username == username
+    assert saved_user.first_name == ""
+    assert saved_user.last_name == ""
+    assert not saved_user.is_super_user
+    assert saved_user.email == email
+
+    firstname = "First_name"
+    edited_user = saved_user.edit(first_name=firstname)
+    assert isinstance(edited_user, LocalUserLazy)
+    with pytest.raises(AttributeError):
+        await edited_user.delete()
+
+    saved_user = await edited_user.save()
+    assert isinstance(saved_user, LocalUser)
+    assert saved_user.username in await get_all_usernames(httpx_client)
+
+    await saved_user.delete()
+    assert saved_user.username not in await get_all_usernames(httpx_client)
+
+
+async def _test_ldap_user_api(user: LDAPUser) -> None:
+    assert isinstance(user, LDAPUser)
+    assert isinstance(user.id, int)
+    assert isinstance(user.username, str)
+    assert isinstance(user.first_name, str)
+    assert isinstance(user.last_name, str)
+    assert isinstance(user.email, str)
+    assert isinstance(user.is_super_user, bool)
+
+    with pytest.raises(AttributeError):
+        user.edit()
+
+    with pytest.raises(AttributeError):
+        user.delete()
+
+    with pytest.raises(AttributeError):
+        user.save()
+
+
+async def _test_users_accessor(
+    adcm_client: ADCMClient, httpx_client: AsyncClient, three_groups: tuple[LocalGroup, LocalGroup, LDAPGroup]
+) -> None:
+    # prepare groups, create users
     local_group_saved, local_group_unsaved, *_ = three_groups
     await local_group_unsaved.save()  # create group
     assert isinstance(local_group_unsaved.id, int)
     groups: dict[str, int] = {group.display_name: group.id for group in (local_group_saved, local_group_unsaved)}  # pyright: ignore[reportAssignmentType]
 
     await create_51_users(httpx_client=httpx_client, groups=groups)
-    await _test_users_accessor(adcm_client=adcm_client, httpx_client=httpx_client, groups=groups)
 
-
-async def _test_user_object_api(
-    adcm_client: ADCMClient,
-    httpx_client: AsyncClient,
-    ldap_user: LDAPUser,
-    three_groups: tuple[LocalGroup, LocalGroup, LDAPGroup],
-) -> None:
-    # ldap user api
-    assert isinstance(ldap_user.id, int)
-    assert ldap_user.username == "LDAPUser"
-    assert ldap_user.password == "*****"  # noqa: S105
-    assert ldap_user.first_name == ""
-    assert ldap_user.last_name == ""
-    assert ldap_user.email == ""
-    assert not ldap_user.is_super_user
-    assert await ldap_user.groups == []
-    assert ldap_user.status == UserStatus.ACTIVE
-
-    # create
-    local_user_data = {
-        "username": "test_user",
-        "password": "test_user_password",
-        "is_super_user": False,
-        "first_name": "First name",
-        "last_name": "Last name",
-        "email": "test_user@example.com",
-    }
-    all_users = await get_all_users(httpx_client=httpx_client)
-    assert local_user_data["username"] not in (user["username"] for user in all_users)
-
-    with pytest.raises(NotImplementedError):
-        LDAPUser(client=adcm_client, **local_user_data)
-
-    local_user = LocalUser(client=adcm_client, **local_user_data)
-    assert local_user.id is None
-    assert local_user.password == "*****"  # noqa: S105
-    assert await local_user.groups == []
-    assert local_user.status == UserStatus.ACTIVE
-    for field in {"username", "first_name", "last_name", "email", "is_super_user"}:
-        assert getattr(local_user, field) == local_user_data[field]
-
-    await local_user.save()
-
-    assert isinstance(local_user.id, int)
-    assert local_user.password == "*****"  # noqa: S105
-    assert await local_user.groups == []
-    assert local_user.status == UserStatus.ACTIVE
-    for field in {"username", "first_name", "last_name", "email", "is_super_user"}:
-        assert getattr(local_user, field) == local_user_data[field]
-
-    remote_local_user = [u for u in await get_all_users(httpx_client) if u["username"] == local_user.username][0]
-    assert remote_local_user["id"] == local_user.id
-    assert remote_local_user["username"] == local_user.username
-    assert remote_local_user["firstName"] == local_user.first_name
-    assert remote_local_user["lastName"] == local_user.last_name
-    assert remote_local_user["email"] == local_user.email
-    assert remote_local_user["isSuperUser"] == local_user.is_super_user
-    assert remote_local_user["groups"] == await local_user.groups
-
-    await _test_update(
-        local_user=local_user,
-        ldap_user=ldap_user,
-        three_groups=three_groups,
-        httpx_client=httpx_client,
-    )
-
-    local_user._data["id"] = remote_local_user["id"]  # return original id; refresh
-    await local_user.refresh()
-
-    # delete
-    await local_user.delete()
-    all_users = await get_all_users(httpx_client=httpx_client)
-    assert local_user_data["username"] not in (user["username"] for user in all_users)
-
-    # delete non-existent
-    local_user._data["id"] = 9999
-    with pytest.raises(NotFoundError, match="API_ERROR.*404"):
-        await local_user.delete()
-
-    # delete ldap user
-    with pytest.raises(AttributeError):
-        ldap_user.delete()
-
-
-async def _test_update(
-    local_user: LocalUser,
-    ldap_user: LDAPUser,
-    three_groups: tuple[LocalGroup, LocalGroup, LDAPGroup],
-    httpx_client: AsyncClient,
-) -> None:
-    local_group_saved, local_group_unsaved, ldap_group_saved = three_groups
-    # update LocalUser
-    expected_update_data = {
-        "password": "new_test_user_password",
-        "firstName": "New First name",
-        "lastName": "New Last name",
-        "email": "new_test_user@example.com",
-        "isSuperUser": True,
-    }
-    groups_correct = [local_group_saved]
-    groups_incorrect = (
-        (
-            [local_group_saved, local_group_unsaved],
-            (ValueError, "All groups must be saved before assigning them to user"),
-        ),
-        (
-            [local_group_saved, 7],
-            (
-                ValueError,
-                re.escape(f"All groups must be {LocalGroup.__name__}, got {[int]}"),
-            ),
-        ),
-    )
-
-    with pytest.raises(AttributeError):
-        local_user.id = 100
-    with pytest.raises(AttributeError):
-        local_user.username = "newusername"
-    local_user.password = expected_update_data["password"]
-    local_user.first_name = expected_update_data["firstName"]
-    local_user.last_name = expected_update_data["lastName"]
-    local_user.email = expected_update_data["email"]
-    local_user.is_super_user = expected_update_data["isSuperUser"]
-
-    for value, (err_cls, err_msg) in groups_incorrect:
-        with pytest.raises(err_cls, match=err_msg):
-            local_user.groups = value
-
-    assert local_user._manually_set == {"password", "firstName", "lastName", "email", "isSuperUser"}
-
-    local_user.groups = groups_correct
-    assert local_user._manually_set == {"password", "firstName", "lastName", "email", "isSuperUser", "groups"}
-
-    await local_user.save()
-    assert await local_user.groups == []  # value is cached, refresh needed
-
-    await local_user.refresh()
-    assert local_user._manually_set == set()
-    remote_local_user = [u for u in await get_all_users(httpx_client) if u["username"] == local_user.username][0]
-
-    assert local_user._manually_set == set()
-    remote_groups = {g["id"] for g in remote_local_user["groups"]}
-    retrieved_groups = {g.id for g in await local_user.groups}
-    expected_groups = {g.id for g in groups_correct}
-    assert remote_groups == retrieved_groups == expected_groups
-    assert local_user.password == "*****"  # noqa: S105
-    assert remote_local_user["firstName"] == local_user.first_name == expected_update_data["firstName"]
-    assert remote_local_user["lastName"] == local_user.last_name == expected_update_data["lastName"]
-    assert remote_local_user["email"] == local_user.email == expected_update_data["email"]
-    assert remote_local_user["isSuperUser"] == local_user.is_super_user == expected_update_data["isSuperUser"]
-
-    # wrong id
-    local_user._data["id"] = 9999
-    with pytest.raises(NotFoundError, match="API_ERROR.*User not found"):
-        await local_user.save()
-
-    # LDAPUser
-    with pytest.raises(AttributeError):
-        ldap_user.id = 100
-    with pytest.raises(AttributeError):
-        ldap_user.username = "123"
-    with pytest.raises(AttributeError):
-        ldap_user.password = "123"  # noqa: S105
-    with pytest.raises(AttributeError):
-        ldap_user.first_name = "123"
-    with pytest.raises(AttributeError):
-        ldap_user.last_name = "123"
-    with pytest.raises(AttributeError):
-        ldap_user.email = "123"
-    with pytest.raises(AttributeError):
-        ldap_user.is_super_user = True
-    with pytest.raises(AttributeError):
-        ldap_user.groups = [local_group_saved]
-
-    with pytest.raises(ConflictError, match="USER_UPDATE_ERROR.*LDAP user's information can't be changed"):
-        await ldap_user.save()
-
-    assert ldap_user._manually_set == set()
-    await ldap_user.refresh()
-    assert ldap_user._manually_set == set()
-
-    remote_ldap_user = [u for u in await get_all_users(httpx_client) if u["username"] == ldap_user.username][0]
-    assert ldap_user.id == remote_ldap_user["id"]
-    assert ldap_user.username == remote_ldap_user["username"]
-    assert ldap_user.password == "*****"  # noqa: S105
-    assert ldap_user.first_name == remote_ldap_user["firstName"]
-    assert ldap_user.last_name == remote_ldap_user["lastName"]
-    assert ldap_user.email == remote_ldap_user["email"]
-    assert not ldap_user.is_super_user
-    assert await ldap_user.groups == []
-
-
-async def _test_users_accessor(adcm_client: ADCMClient, httpx_client: AsyncClient, groups: dict[str, int]) -> None:
     no_objects_msg = "^No objects found with the given filter.$"
     multiple_objects_msg = "^More than one object found.$"
 

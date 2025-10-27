@@ -1,21 +1,18 @@
 from collections import defaultdict
 from collections.abc import Collection
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Literal, Optional, Self, Union, cast
+from typing import TYPE_CHECKING, Any, Literal, Optional, Self
 import asyncio
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client._filters import (
-    ALL_OPERATIONS,
-    COMMON_OPERATIONS,
-    FilterBy,
     FilterByDisplayName,
     FilterByID,
     FilterByName,
     Filtering,
 )
-from adcm_aio_client._types import EntitySourceType, Requester, UserStatus
+from adcm_aio_client._types import Requester, SourceType
 from adcm_aio_client.objects._accessors import PaginatedAccessor
 from adcm_aio_client.objects._base import RootInteractiveObject
 from adcm_aio_client.objects._cm import Cluster, Component, Host, HostProvider, Service
@@ -26,7 +23,6 @@ from adcm_aio_client.objects._utils import (
     setattr_policy_groups,
     setattr_policy_objects,
     setattr_policy_role,
-    setattr_user_groups,
 )
 
 if TYPE_CHECKING:
@@ -46,182 +42,6 @@ type PolicyObjectsInternalValue = list[dict[Literal["id", "type"], int | str]]
 # ruff: noqa: ANN401
 
 
-class User(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
-    PATH_PREFIX = "rbac/users"
-    _custom_setattr = {"groups": lambda *args: raise_exc(msg="`groups` attribute is not mutable")}  # noqa: ARG005
-
-    @property
-    def username(self: Self) -> str:
-        return self._data["username"]
-
-    @property
-    def password(self: Self) -> str:
-        return "*" * 5
-
-    @property
-    def first_name(self: Self) -> str:
-        return self._data["firstName"]
-
-    @property
-    def last_name(self: Self) -> str:
-        return self._data["lastName"]
-
-    @property
-    def email(self: Self) -> str:
-        return self._data["email"]
-
-    @property
-    def is_super_user(self: Self) -> bool:
-        return self._data["isSuperUser"]
-
-    @async_cached_property
-    async def groups(self: Self) -> list[Union["LocalGroup", "LDAPGroup"]]:
-        group_ids = [group["id"] for group in self._data["groups"]] or [-1]
-
-        return await GroupsNode(
-            path=("rbac", "groups"), requester=self._requester, default_query={"id__in": group_ids}
-        ).all()
-
-    @property
-    def status(self: Self) -> UserStatus:
-        if self.id and self._data["blockingReason"] is not None:
-            return UserStatus.INACTIVE
-
-        return UserStatus.ACTIVE
-
-    @staticmethod
-    def _postprocess_save_data(data: Any, mode: Literal["create", "update"]) -> Any:
-        _ = mode
-        if "groups" in data:
-            data["groups"] = [group["id"] for group in data["groups"]]
-
-        return data
-
-    @property
-    def _repr(self: Self) -> str:
-        return f"<{self.__class__.__name__} #{self.id} {self.username}>"
-
-    def __str__(self: Self) -> str:
-        return self._repr
-
-    def __repr__(self: Self) -> str:
-        return self._repr
-
-
-class LocalUser(Deletable, User):
-    _custom_setattr = {"groups": setattr_user_groups}  # noqa: ARG005
-
-    def __init__(
-        self: Self,
-        requester: Requester | None = None,
-        client: Optional["ADCMClient"] = None,
-        data: dict[str, Any] | None = None,
-        username: str | None = None,
-        password: str | None = None,
-        is_super_user: bool = False,  # noqa: FBT001, FBT002
-        first_name: str = "",
-        last_name: str = "",
-        email: str = "",
-    ) -> None:
-        if not any((data, requester)):
-            if not all((client, username, password)):
-                raise RuntimeError(
-                    f"`client`, `username` and `password` are mandatory to create a {self.__class__.__name__}"
-                )
-
-            data = {
-                "username": username,
-                "password": password,
-                "isSuperUser": is_super_user,
-                "firstName": first_name,
-                "lastName": last_name,
-                "email": email,
-                "groups": [],
-                "blockingReason": None,
-            }
-            requester = client._requester
-
-        super().__init__(requester=requester, data=data)
-
-    @User.password.setter
-    def password(self: Self, password: str) -> None:
-        key = "password"
-        self._data[key] = password
-        self._manually_set.add(key)
-
-    @User.first_name.setter
-    def first_name(self: Self, first_name: str) -> None:
-        key = "firstName"
-        self._data[key] = first_name
-        self._manually_set.add(key)
-
-    @User.last_name.setter
-    def last_name(self: Self, last_name: str) -> None:
-        key = "lastName"
-        self._data[key] = last_name
-        self._manually_set.add(key)
-
-    @User.email.setter
-    def email(self: Self, email: str) -> None:
-        key = "email"
-        self._data[key] = email
-        self._manually_set.add(key)
-
-    @User.is_super_user.setter
-    def is_super_user(self: Self, is_super_user: bool) -> None:  # noqa: FBT001
-        key = "isSuperUser"
-        self._data[key] = is_super_user
-        self._manually_set.add(key)
-
-    def _to_internal_value_groups(self: Self, groups: Collection["LocalGroup"] | None) -> ListOfIDDictsInternalValue:
-        groups = self._validate_groups(groups)
-        # id is present by this moment
-        return cast(ListOfIDDictsInternalValue, [{"id": group.id} for group in groups])
-
-    @staticmethod
-    def _validate_groups(groups: Collection["LocalGroup"] | None) -> Collection["LocalGroup"]:
-        if not groups:
-            raise ValueError(f"All groups must be {LocalGroup.__name__}")
-
-        if errors := [type(group) for group in groups if not isinstance(group, LocalGroup)]:
-            raise ValueError(f"All groups must be {LocalGroup.__name__}, got {errors}")
-
-        if not all(group.id for group in groups):
-            raise ValueError("All groups must be saved before assigning them to user")
-
-        return groups
-
-
-class LDAPUser(User):
-    def __init__(
-        self: Self,
-        requester: Requester | None = None,
-        data: dict[str, Any] | None = None,
-        **kwargs: Any,  # noqa: ANN401
-    ) -> None:
-        if kwargs or not (requester or data):
-            raise NotImplementedError(f"{self.__class__.__name__} can't be created manually")
-
-        super().__init__(requester=requester, data=data)
-
-
-class UsersNode(PaginatedAccessor[LocalUser | LDAPUser]):
-    filtering = Filtering(
-        FilterByID, FilterBy("username", ALL_OPERATIONS, str), FilterBy("group", COMMON_OPERATIONS, int)
-    )
-
-    def _create_object(self: Self, data: dict[str, Any]) -> LocalUser | LDAPUser:
-        match data["type"]:
-            case EntitySourceType.LOCAL:
-                cls_ = LocalUser
-            case EntitySourceType.LDAP:
-                cls_ = LDAPUser
-            case _:
-                raise NotImplementedError(f"Unexpected user type: {data['type']}")
-
-        return cls_(requester=self._requester, data=data)
-
-
 class Group(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
     PATH_PREFIX = "rbac/groups"
     _custom_setattr = {"users": lambda *args: raise_exc(msg="`users` attribute is not mutable")}  # noqa: ARG005
@@ -235,10 +55,11 @@ class Group(LazyObject, ConfigurableSetAttrMixin, RootInteractiveObject):
         return self._data["description"]
 
     @async_cached_property
-    async def users(self: Self) -> list[LocalUser | LDAPUser]:
-        user_ids = [user["id"] for user in self._data["users"]] or [-1]
-
-        return await UsersNode(path=("rbac", "users"), requester=self._requester).filter(id__in=user_ids)
+    async def users(self: Self) -> list:  # TODO: list[LocalUser | LDAPUser]
+        return []
+        # user_ids = [user["id"] for user in self._data["users"]] or [-1]
+        #
+        # return await UsersNode(path=("rbac", "users"), requester=self._requester).filter(id__in=user_ids)
 
     @staticmethod
     def _postprocess_save_data(data: Any, mode: Literal["create", "update"]) -> Any:
@@ -281,20 +102,21 @@ class LocalGroup(Deletable, Group):
         self._data[key] = description
         self._manually_set.add(key)
 
-    def _to_internal_value_users(self: Self, users: Collection[LocalUser | LDAPUser]) -> ListOfIDDictsInternalValue:
+    def _to_internal_value_users(self: Self, users: Any) -> Any:
+        return users
         users = self._validate_users(users=users)
         # id is present by this moment
-        return cast(ListOfIDDictsInternalValue, [{"id": user.id} for user in users])
+        return [{"id": user.id} for user in users]
 
-    @staticmethod
-    def _validate_users(users: Collection[LocalUser | LDAPUser]) -> Collection[LocalUser | LDAPUser]:
-        if errors := [type(user) for user in users if not isinstance(user, LocalUser | LDAPUser)]:
-            raise ValueError(f"All users must be {LocalUser.__name__} or {LDAPUser.__name__}, got {errors}")
-
-        if not all(user.id for user in users):
-            raise ValueError("All users must be saved before assigning them to group")
-
-        return users
+    # @staticmethod
+    # def _validate_users(users: Collection[LocalUser | LDAPUser]) -> Collection[LocalUser | LDAPUser]:
+    #     if errors := [type(user) for user in users if not isinstance(user, LocalUser | LDAPUser)]:
+    #         raise ValueError(f"All users must be {LocalUser.__name__} or {LDAPUser.__name__}, got {errors}")
+    #
+    #     if not all(user.id for user in users):
+    #         raise ValueError("All users must be saved before assigning them to group")
+    #
+    #     return users
 
 
 class LDAPGroup(Group):
@@ -315,9 +137,9 @@ class GroupsNode(PaginatedAccessor[LocalGroup | LDAPGroup]):
 
     def _create_object(self: Self, data: dict[str, Any]) -> LocalGroup | LDAPGroup:
         match data["type"]:
-            case EntitySourceType.LOCAL:
+            case SourceType.LOCAL:
                 cls_ = LocalGroup
-            case EntitySourceType.LDAP:
+            case SourceType.LDAP:
                 cls_ = LDAPGroup
             case _:
                 raise NotImplementedError(f"Unexpected group type: {data['type']}")

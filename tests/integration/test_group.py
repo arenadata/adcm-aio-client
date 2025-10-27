@@ -5,7 +5,7 @@ from httpx import AsyncClient, Timeout
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client._types import EntitySourceType
+from adcm_aio_client._types import SourceType
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
 from adcm_aio_client.objects import LDAPGroup, LDAPUser, LocalGroup, LocalUser
@@ -57,12 +57,12 @@ async def ldap_group(
     assert response.status_code == 201
     id_ = response.json()["id"]
 
-    sql = f"UPDATE rbac_group SET type = '{EntitySourceType.LDAP.value}' WHERE group_ptr_id = {id_};"  # noqa: S608
+    sql = f"UPDATE rbac_group SET type = '{SourceType.LDAP.value}' WHERE group_ptr_id = {id_};"  # noqa: S608
     postgres.execute_statement(sql, db_user=DB_USER, db_name=adcm._db.name)
 
     ldap_group = await adcm_client.groups.get(display_name__eq=group_name)
     assert isinstance(ldap_group, LDAPGroup)
-    assert ldap_group._data["type"] == EntitySourceType.LDAP.value
+    assert ldap_group._data["type"] == SourceType.LDAP.value
 
     return ldap_group
 
@@ -90,16 +90,16 @@ async def three_users(
     assert response.status_code == 201
     ldap_user_id = response.json()["id"]
 
-    sql = f"UPDATE rbac_user SET type = '{EntitySourceType.LDAP.value}' WHERE user_ptr_id = {ldap_user_id};"  # noqa: S608
+    sql = f"UPDATE rbac_user SET type = '{SourceType.LDAP.value}' WHERE user_ptr_id = {ldap_user_id};"  # noqa: S608
     postgres.execute_statement(sql, db_user=DB_USER, db_name=adcm._db.name)
 
     local_user_saved = await adcm_client.users.get(username__eq=username_local)
     assert isinstance(local_user_saved, LocalUser)
-    assert local_user_saved._data["type"] == EntitySourceType.LOCAL.value
+    assert local_user_saved._data["type"] == SourceType.LOCAL.value
 
     ldap_user_saved = await adcm_client.users.get(username__eq=username_ldap)
     assert isinstance(ldap_user_saved, LDAPUser)
-    assert ldap_user_saved._data["type"] == EntitySourceType.LDAP.value
+    assert ldap_user_saved._data["type"] == SourceType.LDAP.value
 
     local_user_unsaved = LocalUser(client=adcm_client, username="local_user_unsaved", password="<PASSWORD>")  # noqa: S106
 

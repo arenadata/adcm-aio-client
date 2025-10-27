@@ -1,14 +1,12 @@
 from collections.abc import Collection
-from typing import TYPE_CHECKING, Literal, Union
+from typing import TYPE_CHECKING, Any, Literal, Union
 
 if TYPE_CHECKING:
     from adcm_aio_client.objects._rbac import (
         BuiltInRole,
         CustomRole,
         LDAPGroup,
-        LDAPUser,
         LocalGroup,
-        LocalUser,
         Policy,
         PolicyObject,
     )
@@ -18,16 +16,12 @@ def raise_exc(exc: type[Exception] = AttributeError, msg: str = "") -> None:
     raise exc(msg)
 
 
-def setattr_user_groups(
-    self: "LocalUser", key: Literal["groups"], value: Collection[Union["LocalGroup", "LDAPGroup"]]
-) -> None:
-    self._data[key] = self._to_internal_value_groups(value)  # pyright: ignore[reportArgumentType]
+def setattr_user_groups(self: Any, key: Literal["groups"], value: Collection[Union["LocalGroup", "LDAPGroup"]]) -> None:  # noqa: ANN401
+    self._data[key] = self._to_internal_value_groups(value)
     self._manually_set.add(key)
 
 
-def setattr_group_users(
-    self: "LocalGroup", key: Literal["users"], value: Collection[Union["LocalUser", "LDAPUser"]]
-) -> None:
+def setattr_group_users(self: "LocalGroup", key: Literal["users"], value: Collection[Any]) -> None:
     self._data[key] = self._to_internal_value_users(value)
     self._manually_set.add(key)
 
