@@ -18,7 +18,6 @@ from adcm_aio_client.objects import ADCM
 from adcm_aio_client.objects._cm import BundlesNode, ClustersNode, HostProvidersNode, HostsNode, JobsNode
 from adcm_aio_client.objects._rbac import GroupsNode, PoliciesNode, RolesNode  # , UsersNode
 
-# from adcm_aio_client.objects._rbac_new_lazy import UsersNode
 from adcm_aio_client.objects.rbac._user import UsersNode
 from adcm_aio_client.requesters import BundleRetrieverInterface, Requester
 
