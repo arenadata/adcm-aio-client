@@ -13,7 +13,7 @@
 
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Protocol, Self
+from typing import Any, Protocol, Self
 
 # Init / Authorization
 
@@ -98,6 +98,10 @@ type HostID = int
 
 class WithID(Protocol):
     id: int
+
+
+class WithPrivateData(Protocol):
+    _data: dict[str, Any]
 
 
 class WithProtectedRequester(Protocol):

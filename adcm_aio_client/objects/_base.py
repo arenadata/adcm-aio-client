@@ -22,12 +22,20 @@ from adcm_aio_client._types import (
     Endpoint,
     MaintenanceModeStatus,
     Requester,
+    WithPrivateData,
     WithProtectedRequester,
     WithRequesterProperty,
 )
 
 
-class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOwnPath):
+class WithCachedID(WithPrivateData):
+    @cached_property
+    def id(self: Self) -> int:
+        # it's the default behavior, without id many things can't be done
+        return int(self._data["id"])
+
+
+class InteractiveObject(WithCachedID, WithProtectedRequester, WithRequesterProperty, AwareOfOwnPath):
     PATH_PREFIX: str
     _delete_on_refresh: deque[str]
 
@@ -49,11 +57,6 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
     @property
     def requester(self: Self) -> Requester:
         return self._requester
-
-    @cached_property
-    def id(self: Self) -> int:
-        # it's the default behavior, without id many things can't be done
-        return int(self._data["id"])
 
     async def refresh(self: Self) -> Self:
         self._data = await self._retrieve_data()

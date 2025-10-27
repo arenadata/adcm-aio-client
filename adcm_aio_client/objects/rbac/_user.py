@@ -1,11 +1,10 @@
-from functools import cached_property
 from typing import Any, Self, Unpack
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
 from adcm_aio_client._filters import ALL_OPERATIONS, COMMON_OPERATIONS, FilterBy, FilterByID, Filtering
 from adcm_aio_client.objects._accessors import PaginatedAccessor
-from adcm_aio_client.objects._base import RootInteractiveObject
+from adcm_aio_client.objects._base import RootInteractiveObject, WithCachedID
 from adcm_aio_client.objects._common import Deletable
 from adcm_aio_client.objects.rbac._types import LocalUserData, LocalUserLazy, SourceType, UserKwargs, UserStatus
 
@@ -17,14 +16,8 @@ def new_user(**kwargs: Unpack[UserKwargs]) -> LocalUserData:
     return LocalUserData.model_validate(kwargs)
 
 
-class _UserBase:
+class _UserBase(WithCachedID):
     PATH_PREFIX = "rbac/users"
-    _data: dict
-
-    @cached_property
-    def id(self: Self) -> int:
-        # it's the default behavior, without id many things can't be done
-        return int(self._data["id"])
 
     @property
     def username(self: Self) -> str:
