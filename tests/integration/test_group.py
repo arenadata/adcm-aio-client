@@ -1,4 +1,5 @@
-import re
+from collections.abc import Collection
+from typing import ForwardRef, Optional
 import asyncio
 
 from httpx import AsyncClient, Timeout
@@ -8,20 +9,22 @@ import pytest_asyncio
 from adcm_aio_client._types import SourceType
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
-from adcm_aio_client.objects import LDAPGroup, LDAPUser, LocalGroup, LocalUser
+from adcm_aio_client.objects.rbac import group as group_module
+from adcm_aio_client.objects.rbac import user as user_module
+from adcm_aio_client.objects.rbac._group import _GroupKwargs
+from adcm_aio_client.objects.rbac._types import LocalGroupData, LocalUserData
 from tests.integration.setup_environment import DB_USER, ADCMContainer, ADCMPostgresContainer
+
+# pyright: reportAttributeAccessIssue=false
 
 pytestmark = [pytest.mark.asyncio]
 
 
-# pyright: reportAttributeAccessIssue=false, reportArgumentType=false, reportCallIssue=false
-
-
-async def get_all_groups(httpx_client: AsyncClient) -> list[dict]:
+async def get_all_group_names(httpx_client: AsyncClient) -> list[dict]:
     response = await httpx_client.get(url="rbac/groups/", params={"limit": 999})
     assert response.status_code == 200
 
-    return response.json()["results"]
+    return [group["displayName"] for group in response.json()["results"]]
 
 
 async def get_groups_count(httpx_client: AsyncClient) -> int:
@@ -46,7 +49,7 @@ async def create_51_groups(httpx_client: AsyncClient) -> None:
 @pytest_asyncio.fixture()
 async def ldap_group(
     adcm_client: ADCMClient, httpx_client: AsyncClient, adcm: ADCMContainer, postgres: ADCMPostgresContainer
-) -> LDAPGroup:
+) -> group_module.LDAPGroup:
     """Creates a LDAP group with `admin` user"""
     group_name = "LDAP_Group"
 
@@ -61,7 +64,7 @@ async def ldap_group(
     postgres.execute_statement(sql, db_user=DB_USER, db_name=adcm._db.name)
 
     ldap_group = await adcm_client.groups.get(display_name__eq=group_name)
-    assert isinstance(ldap_group, LDAPGroup)
+    assert isinstance(ldap_group, group_module.LDAPGroup)
     assert ldap_group._data["type"] == SourceType.LDAP.value
 
     return ldap_group
@@ -73,7 +76,7 @@ async def three_users(
     httpx_client: AsyncClient,
     adcm: ADCMContainer,
     postgres: ADCMPostgresContainer,
-) -> tuple[LocalUser, LocalUser, LDAPUser]:
+) -> tuple[user_module.LocalUser, LocalUserData, user_module.LDAPUser]:
     """Creates three users: local saved, local unsaved, ldap saved (unsaved ldap user can't be instantiated)"""
 
     url = "rbac/users/"
@@ -94,14 +97,14 @@ async def three_users(
     postgres.execute_statement(sql, db_user=DB_USER, db_name=adcm._db.name)
 
     local_user_saved = await adcm_client.users.get(username__eq=username_local)
-    assert isinstance(local_user_saved, LocalUser)
+    assert isinstance(local_user_saved, user_module.LocalUser)
     assert local_user_saved._data["type"] == SourceType.LOCAL.value
 
     ldap_user_saved = await adcm_client.users.get(username__eq=username_ldap)
-    assert isinstance(ldap_user_saved, LDAPUser)
+    assert isinstance(ldap_user_saved, user_module.LDAPUser)
     assert ldap_user_saved._data["type"] == SourceType.LDAP.value
 
-    local_user_unsaved = LocalUser(client=adcm_client, username="local_user_unsaved", password="<PASSWORD>")  # noqa: S106
+    local_user_unsaved = user_module.new(username="local_user_unsaved", password="<PASSWORD>")  # noqa: S106
 
     return local_user_saved, local_user_unsaved, ldap_user_saved
 
@@ -109,159 +112,180 @@ async def three_users(
 async def test_group(
     adcm_client: ADCMClient,
     httpx_client: AsyncClient,
-    ldap_group: LDAPGroup,
-    three_users: tuple[LocalUser, LocalUser, LDAPUser],
+    ldap_group: group_module.LDAPGroup,
+    three_users: tuple[user_module.LocalUser, LocalUserData, user_module.LDAPUser],
 ) -> None:
-    await _test_object_api(
-        adcm_client=adcm_client, httpx_client=httpx_client, ldap_group=ldap_group, three_users=three_users
-    )
-
-    await create_51_groups(httpx_client=httpx_client)
+    _test_misc()
+    await _test_local_group_data_api(adcm_client=adcm_client, httpx_client=httpx_client, three_users=three_users)
+    await _test_local_group_lazy_api(adcm_client=adcm_client, httpx_client=httpx_client, three_users=three_users)
+    await _test_ldap_group_api(group=ldap_group)
     await _test_groups_node(adcm_client=adcm_client, httpx_client=httpx_client)
 
 
-async def _test_object_api(
+def _test_misc() -> None:
+    # check _GroupKwargs and LocalGroupData fields
+    localgroupdata = group_module.LocalGroupData.__annotations__
+    groupkwargs = _GroupKwargs.__annotations__
+
+    assert localgroupdata.pop("id").__args__ == (int | None,)
+
+    expected_fields = {"display_name", "description", "users"}
+    assert set(localgroupdata.keys()) == set(groupkwargs.keys()) == expected_fields
+
+    assert localgroupdata.pop("users").__args__ == (Optional[list[int]],)  # noqa: UP007
+    assert groupkwargs.pop("users").__args__ == (
+        Optional[Collection[ForwardRef(user_module.LocalUser.__name__) | ForwardRef(user_module.LDAPUser.__name__)]],  # noqa: UP007
+    )
+
+    for field in localgroupdata:
+        kwarg_type = groupkwargs[field].__args__
+        localgroupdata_type = localgroupdata[field].__args__
+        assert kwarg_type == localgroupdata_type, f"{field=}, {kwarg_type=}, {localgroupdata_type=}"
+
+
+async def _test_local_group_data_api(
     adcm_client: ADCMClient,
     httpx_client: AsyncClient,
-    ldap_group: LDAPGroup,
-    three_users: tuple[LocalUser, LocalUser, LDAPUser],
+    three_users: tuple[user_module.LocalUser, LocalUserData, user_module.LDAPUser],
 ) -> None:
-    group_name = "New group"
-    assert group_name not in (g["displayName"] for g in await get_all_groups(httpx_client))
+    local_user, local_user_data, ldap_user = three_users
+    group_name = "Test local group"
+    assert group_name not in await get_all_group_names(httpx_client)
 
-    create_data = {"display_name": group_name, "description": "description"}
+    with pytest.raises(ValueError, match=r"\"display_name\" is mandatory to create a group"):
+        group_module.new(description="desc")
 
-    with pytest.raises(NotImplementedError):
-        LDAPGroup(client=adcm_client, **create_data)
+    group = group_module.new(display_name=group_name)
+    description = "New description"
+    assert isinstance(group, LocalGroupData)
+    group.description = description
+    group.users = [local_user.id, ldap_user.id]
 
     with pytest.raises(AttributeError):
-        await ldap_group.delete()
+        await group.save()
 
-    assert isinstance(ldap_group.id, int)
-    assert ldap_group.display_name == "LDAP_Group"
-    assert ldap_group.description == "ldapgrdesc"
-    ldap_group_users = await ldap_group.users
-    assert len(ldap_group_users) == 1
-    assert isinstance(ldap_group_users[0], LocalUser)
-    assert ldap_group_users[0].username == "admin"
+    with pytest.raises(AttributeError):
+        await group.delete()
 
-    local_group = LocalGroup(client=adcm_client, **create_data)
+    local_group = await adcm_client.groups.init(group)
 
-    assert local_group.id is None
-    assert local_group.display_name == group_name
-    assert local_group.description == create_data["description"]
-    local_group_users = await local_group.users
-    assert isinstance(local_group_users, list)
-    assert len(local_group_users) == 0
-
-    await local_group.save()
-    await local_group.refresh()
+    assert isinstance(local_group, group_module.LocalGroup)
+    assert local_group.display_name in await get_all_group_names(httpx_client)
 
     assert isinstance(local_group.id, int)
     assert local_group.display_name == group_name
-    assert local_group.description == create_data["description"]
-    local_group_users = await local_group.users
-    assert isinstance(local_group_users, list)
-    assert len(local_group_users) == 0
-    assert group_name in (g["displayName"] for g in await get_all_groups(httpx_client))
+    assert local_group.description == description
+    users = await local_group.users
+    assert isinstance(users, list)
+    assert len(users) == 2
+    assert {u.__class__ for u in users} == {user_module.LocalUser, user_module.LDAPUser}
+    assert {u.id for u in users} == {local_user.id, ldap_user.id}
 
-    await _test_group_update(
-        local_group=local_group, ldap_group=ldap_group, three_users=three_users, httpx_client=httpx_client
-    )
+    new_name = "New group name"
+    with pytest.raises(ValueError, match='"users" must be of type LocalUser | LDAPUser'):
+        local_group.edit(display_name=new_name, users=[local_user_data])  # pyright: ignore[reportArgumentType]
 
-    local_group_id = local_group.id
-    await local_group.delete()
-    assert local_group_id not in (g["id"] for g in await get_all_groups(httpx_client))
+    edited_group = local_group.edit(display_name=new_name, users=[local_user])
+    assert isinstance(edited_group, group_module.LocalGroupLazy)
+    with pytest.raises(AttributeError):
+        await edited_group.delete()
+
+    saved_group = await edited_group.save()
+    assert isinstance(saved_group, group_module.LocalGroup)
+    assert saved_group.display_name in await get_all_group_names(httpx_client)
+    users = await saved_group.users
+    assert isinstance(users, list)
+    assert len(users) == 1
+    assert isinstance(users[0], user_module.LocalUser)
+    assert users[0].id == local_user.id
+
+    await saved_group.delete()
+    assert saved_group.display_name not in await get_all_group_names(httpx_client)
 
 
-async def _test_group_update(
-    local_group: LocalGroup,
-    ldap_group: LDAPGroup,
-    three_users: tuple[LocalUser, LocalUser, LDAPUser],
+async def _test_local_group_lazy_api(
+    adcm_client: ADCMClient,
     httpx_client: AsyncClient,
+    three_users: tuple[user_module.LocalUser, LocalUserData, user_module.LDAPUser],
 ) -> None:
-    user_local_saved, user_local_unsaved, user_ldap_saved = three_users
-    initial_groups_count = await get_groups_count(httpx_client=httpx_client)
+    local_user, local_user_data, ldap_user = three_users
+    group_name = "Test_local_group_from_node"
+    assert group_name not in await get_all_group_names(httpx_client)
 
-    # update ldap group
-    with pytest.raises(AttributeError):
-        ldap_group.id = 9
+    with pytest.raises(ValueError, match='"display_name" is mandatory to create a group'):
+        adcm_client.groups.new(description="desc")
 
-    with pytest.raises(AttributeError):
-        ldap_group.display_name = "new name"
+    with pytest.raises(ValueError, match='"users" must be of type LocalUser | LDAPUser'):
+        adcm_client.groups.new(display_name=group_name, users=[local_user_data])  # pyright: ignore[reportArgumentType]
 
-    with pytest.raises(AttributeError):
-        ldap_group.description = "new description"
-
-    with pytest.raises(AttributeError, match="`users` attribute is not mutable"):
-        ldap_group.users = [user_local_saved]
-
-    # update local group
-    remote_local_group = [
-        group for group in await get_all_groups(httpx_client) if group["displayName"] == local_group.display_name
-    ][0]
-    assert remote_local_group["users"] == [] == await local_group.users
+    group = adcm_client.groups.new(display_name=group_name, users=[local_user, ldap_user])
+    assert isinstance(group, group_module.LocalGroupLazy)
+    assert group_name not in await get_all_group_names(httpx_client)
 
     with pytest.raises(AttributeError):
-        local_group.id = 9
+        await group.delete()
 
-    new_display_name, new_description = "new_display_name", "new_description"
-    assert local_group._manually_set == set()
+    description = "aaaaaaa!"
+    group.description = description
 
-    local_group.display_name = new_display_name
-    local_group.description = new_description
+    saved_group = await group.save()
+    assert isinstance(saved_group, group_module.LocalGroup)
+    assert saved_group.display_name in await get_all_group_names(httpx_client)
 
-    assert local_group._manually_set == {"displayName", "description"}
-    assert local_group._data["displayName"] == new_display_name
-    assert local_group._data["description"] == new_description
+    assert isinstance(saved_group.id, int)
+    assert saved_group.display_name == group_name
+    assert saved_group.description == description
+    users = await saved_group.users
+    assert isinstance(users, list)
+    assert len(users) == 2
+    assert {u.__class__ for u in users} == {user_module.LocalUser, user_module.LDAPUser}
+    assert {u.id for u in users} == {local_user.id, ldap_user.id}
 
-    with pytest.raises(ValueError, match="All users must be saved before assigning them to group"):
-        local_group.users = [user_local_saved, user_local_unsaved]
+    new_name = "New group name"
+    edited_group = saved_group.edit(display_name=new_name, users=[ldap_user])
+    assert isinstance(edited_group, group_module.LocalGroupLazy)
+    with pytest.raises(AttributeError):
+        await edited_group.delete()
 
-    with pytest.raises(
-        ValueError, match=re.escape(f"All users must be {LocalUser.__name__} or {LDAPUser.__name__}, got [{int}]")
-    ):
-        local_group.users = [user_local_saved, 8]
+    saved_group = await edited_group.save()
+    assert isinstance(saved_group, group_module.LocalGroup)
+    assert saved_group.display_name == new_name
+    assert new_name in await get_all_group_names(httpx_client)
+    users = await saved_group.users
+    assert isinstance(users, list)
+    assert len(users) == 1
+    assert isinstance(users[0], user_module.LDAPUser)
+    assert users[0].id == ldap_user.id
 
-    assert local_group._manually_set == {"displayName", "description"}
+    await saved_group.delete()
+    assert saved_group.display_name not in await get_all_group_names(httpx_client)
 
-    local_group.users = [user_local_saved, user_ldap_saved]
-    assert local_group._manually_set == {"displayName", "description", "users"}
-    assert local_group._data["users"] == [{"id": u.id} for u in [user_local_saved, user_ldap_saved]]
 
-    await local_group.save()
-    assert local_group._manually_set == set()
+async def _test_ldap_group_api(group: group_module.LDAPGroup) -> None:
+    assert isinstance(group, group_module.LDAPGroup)
+    assert isinstance(group.id, int)
+    assert isinstance(group.display_name, str)
+    assert isinstance(group.description, str)
+    assert isinstance(await group.users, list)
 
-    remote_local_group = [
-        group for group in await get_all_groups(httpx_client) if group["displayName"] == new_display_name
-    ][0]
-    remote_user_ids = {u["id"] for u in remote_local_group["users"]}
-    expected_user_ids = {user_local_saved.id, user_ldap_saved.id}
-    retrieved_user_ids = {u.id for u in await local_group.users}
+    with pytest.raises(AttributeError):
+        group.edit()
 
-    assert remote_user_ids == expected_user_ids
-    assert retrieved_user_ids == set()  # before .refresh() user changes is not shown (value cached)
-    assert remote_local_group["displayName"] == new_display_name == local_group.display_name
-    assert remote_local_group["description"] == new_description == local_group.description
+    with pytest.raises(AttributeError):
+        group.delete()
 
-    await local_group.refresh()
-    assert local_group._manually_set == set()
-    retrieved_user_ids = {u.id for u in await local_group.users}
-
-    assert remote_user_ids == expected_user_ids == retrieved_user_ids
-    assert remote_local_group["displayName"] == new_display_name == local_group.display_name
-    assert remote_local_group["description"] == new_description == local_group.description
-
-    assert await get_groups_count(httpx_client=httpx_client) == initial_groups_count
+    with pytest.raises(AttributeError):
+        group.save()
 
 
 async def _test_groups_node(adcm_client: ADCMClient, httpx_client: AsyncClient) -> None:
+    await create_51_groups(httpx_client=httpx_client)
     num_groups = await get_groups_count(httpx_client=httpx_client)
     no_objects_msg = "^No objects found with the given filter.$"
     multiple_objects_msg = "^More than one object found.$"
 
     # get
-    assert isinstance(await adcm_client.groups.get(display_name__eq="grp-1"), LocalGroup)
+    assert isinstance(await adcm_client.groups.get(display_name__eq="grp-1"), group_module.LocalGroup)
 
     with pytest.raises(ObjectDoesNotExistError, match=no_objects_msg):
         await adcm_client.groups.get(display_name__eq="grp-999")
@@ -270,7 +294,7 @@ async def _test_groups_node(adcm_client: ADCMClient, httpx_client: AsyncClient) 
         await adcm_client.groups.get(display_name__in=["grp-1", "grp-2"])
 
     # get_or_none
-    assert isinstance(await adcm_client.groups.get_or_none(display_name__eq="grp-3"), LocalGroup)
+    assert isinstance(await adcm_client.groups.get_or_none(display_name__eq="grp-3"), group_module.LocalGroup)
 
     assert await adcm_client.groups.get_or_none(display_name__eq="NotAGroup") is None
 
@@ -279,7 +303,7 @@ async def _test_groups_node(adcm_client: ADCMClient, httpx_client: AsyncClient) 
 
     # all
     all_groups = await adcm_client.groups.all()
-    assert all(isinstance(group, LocalGroup | LDAPGroup) for group in all_groups)
+    assert all(isinstance(group, group_module.LocalGroup | group_module.LDAPGroup) for group in all_groups)
     assert len({group.id for group in all_groups}) == num_groups
     assert len({id(group) for group in all_groups}) == num_groups
 

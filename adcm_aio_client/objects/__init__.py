@@ -24,16 +24,6 @@ from adcm_aio_client.objects._cm import (
     License,
     Service,
 )
-from adcm_aio_client.objects._rbac import (
-    BuiltInRole,
-    CustomRole,
-    LDAPGroup,
-    LocalGroup,
-    Permission,
-    Policy,
-)
-from adcm_aio_client.objects.rbac._types import LocalUserData, LocalUserLazy
-from adcm_aio_client.objects.rbac._user import LDAPUser, LocalUser, new_user
 
 __all__ = [
     "ADCM",
@@ -49,15 +39,4 @@ __all__ = [
     "Service",
     "Upgrade",
     "ConfigHostGroup",
-    "LocalUser",
-    "LDAPUser",
-    "LocalUserData",
-    "LocalUserLazy",
-    "new_user",
-    "LocalGroup",
-    "LDAPGroup",
-    "BuiltInRole",
-    "CustomRole",
-    "Permission",
-    "Policy",
 ]

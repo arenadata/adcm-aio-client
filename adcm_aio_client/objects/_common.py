@@ -16,7 +16,7 @@ from typing import Any, Literal, Self
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
-from adcm_aio_client._types import Refreshable
+from adcm_aio_client._types import Refreshable, Requester
 from adcm_aio_client.actions._objects import ActionsAccessor, UpgradeNode
 from adcm_aio_client.config._objects import ConfigHistoryNode, ConfigOwner, HostGroupConfig, ObjectConfig
 from adcm_aio_client.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester, WithRequesterProperty
@@ -86,6 +86,28 @@ class WithImports(WithProtectedRequester, AwareOfOwnPath):
     @async_cached_property
     async def imports(self: Self) -> Imports:
         return Imports(requester=self._requester, path=(*self.get_own_path(), "imports"))
+
+
+class WithSaveMethod[ObjectType]:
+    """Extension for Pydantic object model with id and requester"""
+
+    id: Any
+    requester: Requester
+    _cls: type[ObjectType]
+    _url_part: str
+
+    async def save(self: Self) -> ObjectType:
+        if self.id:
+            url = f"{self._url_part}/{self.id}"
+            method = self.requester.patch
+        else:
+            url = f"{self._url_part}"
+            method = self.requester.post
+
+        data = self.model_dump(exclude={"id"}, exclude_unset=True, exclude_defaults=True)  # pyright: ignore[reportAttributeAccessIssue]
+        response = await method(url, data=data)
+
+        return self._cls(requester=self.requester, data=response.as_dict())  # pyright: ignore[reportCallIssue]
 
 
 class LazyObject(WithRequesterProperty, AwareOfOwnPath, Refreshable):

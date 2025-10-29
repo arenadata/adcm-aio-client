@@ -1,12 +1,7 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, NotRequired, Self, TypedDict
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from adcm_aio_client.requesters import DefaultRequester
-
-if TYPE_CHECKING:
-    from adcm_aio_client.objects.rbac._user import LocalUser
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UserStatus(str, Enum):
@@ -19,7 +14,11 @@ class SourceType(str, Enum):
     LDAP = "ldap"
 
 
-class LocalUserData(BaseModel):
+class _BaseModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+
+class LocalUserData(_BaseModel):
     id: Annotated[int | None, Field(default=None, gt=0)]
     username: Annotated[str | None, Field(default=None)]
     password: Annotated[str | None, Field(default=None)]
@@ -27,35 +26,33 @@ class LocalUserData(BaseModel):
     first_name: Annotated[str | None, Field(default=None, serialization_alias="firstName")]
     last_name: Annotated[str | None, Field(default=None, serialization_alias="lastName")]
     email: Annotated[str | None, Field(default=None)]
+    groups: Annotated[list[int] | None, Field(default=None)]
 
-    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+    @field_validator("groups", mode="before")
+    @classmethod
+    def validate_groups(cls: type["LocalUserData"], value: Any) -> list[int]:  # noqa: ANN401
+        from adcm_aio_client.objects.rbac._group import LocalGroup
 
+        groups = list(value)
+        if not all(isinstance(group, LocalGroup) for group in groups):
+            raise ValueError(f'"groups" must be of type {LocalGroup.__name__}')
 
-class LocalUserLazy(LocalUserData):
-    """LocalUserData with requester, can perform user create / update operations"""
-
-    requester: Annotated[DefaultRequester, Field(exclude=True)]
-
-    async def save(self: Self) -> "LocalUser":
-        from adcm_aio_client.objects.rbac._user import LocalUser
-
-        if self.id:
-            url = f"rbac/users/{self.id}"
-            method = self.requester.patch
-        else:
-            url = "rbac/users"
-            method = self.requester.post
-
-        data = self.model_dump(exclude={"id"}, exclude_unset=True, exclude_defaults=True)
-        response = await method(url, data=data)
-
-        return LocalUser(requester=self.requester, data=response.as_dict())
+        return [group.id for group in groups]
 
 
-class UserKwargs(TypedDict):
-    username: NotRequired[str | None]
-    password: NotRequired[str | None]
-    is_super_user: NotRequired[bool | None]
-    first_name: NotRequired[str | None]
-    last_name: NotRequired[str | None]
-    email: NotRequired[str | None]
+class LocalGroupData(_BaseModel):
+    id: Annotated[int | None, Field(default=None)]
+    display_name: Annotated[str | None, Field(default=None, serialization_alias="displayName")]
+    description: Annotated[str | None, Field(default=None)]
+    users: Annotated[list[int] | None, Field(default=None)]
+
+    @field_validator("users", mode="before")
+    @classmethod
+    def validate_users(cls: type["LocalGroupData"], value: Any) -> list[int]:  # noqa: ANN401
+        from adcm_aio_client.objects.rbac._user import LDAPUser, LocalUser
+
+        users = list(value)
+        if not all(isinstance(user, LocalUser | LDAPUser) for user in users):
+            raise ValueError(f'"users" must be of type {LocalUser.__name__} | {LDAPUser.__name__}')
+
+        return [user.id for user in users]

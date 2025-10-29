@@ -1,22 +1,36 @@
-from typing import Any, Self, Unpack
+from collections.abc import Collection
+from typing import TYPE_CHECKING, Annotated, NotRequired, Self, TypedDict, Union, Unpack
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
+from pydantic import Field
 
-from adcm_aio_client._filters import ALL_OPERATIONS, COMMON_OPERATIONS, FilterBy, FilterByID, Filtering
-from adcm_aio_client.objects._accessors import PaginatedAccessor
 from adcm_aio_client.objects._base import RootInteractiveObject, WithCachedID
-from adcm_aio_client.objects._common import Deletable
-from adcm_aio_client.objects.rbac._types import LocalUserData, LocalUserLazy, SourceType, UserKwargs, UserStatus
+from adcm_aio_client.objects._common import Deletable, WithRequesterProperty, WithSaveMethod
+from adcm_aio_client.objects.rbac._types import LocalUserData, UserStatus
+from adcm_aio_client.requesters import DefaultRequester
+
+if TYPE_CHECKING:
+    from adcm_aio_client.objects.rbac._group import LDAPGroup, LocalGroup
 
 
-def new_user(**kwargs: Unpack[UserKwargs]) -> LocalUserData:
+class _UserKwargs(TypedDict):
+    username: NotRequired[str | None]
+    password: NotRequired[str | None]
+    is_super_user: NotRequired[bool | None]
+    first_name: NotRequired[str | None]
+    last_name: NotRequired[str | None]
+    email: NotRequired[str | None]
+    groups: NotRequired[Collection["LocalGroup"] | None]
+
+
+def new(**kwargs: Unpack[_UserKwargs]) -> LocalUserData:
     if not all((kwargs.get("username"), kwargs.get("password"))):
         raise ValueError('"username" and "password" are mandatory to create a user')
 
     return LocalUserData.model_validate(kwargs)
 
 
-class _UserBase(WithCachedID):
+class _UserBase(WithCachedID, WithRequesterProperty):
     PATH_PREFIX = "rbac/users"
 
     @property
@@ -47,59 +61,41 @@ class _UserBase(WithCachedID):
         return UserStatus.ACTIVE
 
     @async_cached_property
-    async def groups(self: Self) -> list:  # TODO: list[Union["LocalGroup", "LDAPGroup"]]
-        return []
-        # group_ids = [group["id"] for group in self._data["groups"]] or [-1]
-        #
-        # return await GroupsNode(path=("rbac", "groups"), requester=self._requester).filter(id__in=group_ids)
+    async def groups(self: Self) -> list[Union["LocalGroup", "LDAPGroup"]]:
+        from adcm_aio_client.objects.rbac._nodes import GroupsNode
 
-    @property
-    def _repr(self: Self) -> str:
-        return f"<{self.__class__.__name__} #{self.id} {self.username}>"
+        ids = [group["id"] for group in self._data["groups"]] or [-1]
+
+        return await GroupsNode(path=("rbac", "groups"), requester=self.requester).filter(id__in=ids)
 
     def __str__(self: Self) -> str:
-        return self._repr
+        return self.__repr__()
 
     def __repr__(self: Self) -> str:
-        return self._repr
+        return f"<{self.__class__.__name__} #{self.id} {self.username}>"
 
 
 class LocalUser(Deletable, _UserBase, RootInteractiveObject):
-    def edit(self: Self, **kwargs: Unpack[UserKwargs]) -> LocalUserLazy:
+    def edit(self: Self, **kwargs: Unpack[_UserKwargs]) -> "LocalUserLazy":
+        from adcm_aio_client.objects.rbac._group import LocalGroup
+
+        if groups := kwargs.pop("groups", ()):
+            if not all(isinstance(group, LocalGroup) for group in groups):
+                raise ValueError(f'"groups" must be of type {LocalGroup.__name__}')
+
+            kwargs["groups"] = [group.id for group in groups]  # pyright: ignore[reportGeneralTypeIssues]
+
         return LocalUserLazy(**{"id": self.id, "requester": self._requester, **kwargs})
+
+
+class LocalUserLazy(LocalUserData, WithSaveMethod[LocalUser]):
+    """LocalUserData with requester, can perform user create / update operations"""
+
+    _cls = LocalUser
+    _url_part = "rbac/users"
+
+    requester: Annotated[DefaultRequester, Field(exclude=True)]  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
 class LDAPUser(_UserBase, RootInteractiveObject):
     pass
-
-
-class UsersNode(PaginatedAccessor[LocalUser | LDAPUser]):
-    filtering = Filtering(
-        FilterByID, FilterBy("username", ALL_OPERATIONS, str), FilterBy("group", COMMON_OPERATIONS, int)
-    )
-
-    def new(self: Self, **kwargs: Unpack[UserKwargs]) -> LocalUserLazy:
-        if not all((kwargs.get("username"), kwargs.get("password"))):
-            raise ValueError('"username" and "password" are mandatory to create a user')
-
-        return LocalUserLazy(**{"requester": self._requester, **kwargs})
-
-    async def init(self: Self, user: LocalUserData) -> LocalUser:
-        if not isinstance(user, LocalUserData):
-            raise TypeError(f"Expected a {LocalUserData} object, got {type(user)}")
-
-        post_data = user.model_dump(exclude={"id"}, exclude_defaults=True, exclude_unset=True)
-        response = await self._requester.post("rbac/users/", data=post_data)
-
-        return LocalUser(requester=self._requester, data=response.as_dict())
-
-    def _create_object(self: Self, data: dict[str, Any]) -> LocalUser | LDAPUser:
-        match data["type"]:
-            case SourceType.LOCAL:
-                cls_ = LocalUser
-            case SourceType.LDAP:
-                cls_ = LDAPUser
-            case _:
-                raise NotImplementedError(f"Unexpected user type: {data['type']}")
-
-        return cls_(requester=self._requester, data=data)
