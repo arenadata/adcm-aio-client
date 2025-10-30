@@ -7,6 +7,7 @@ from pydantic import Field
 from adcm_aio_client.objects._base import RootInteractiveObject, WithCachedID
 from adcm_aio_client.objects._common import Deletable, WithRequesterProperty, WithSaveMethod
 from adcm_aio_client.objects.rbac._types import LocalUserData, UserStatus
+from adcm_aio_client.objects.rbac._utils import validate_kwargs
 from adcm_aio_client.requesters import DefaultRequester
 
 if TYPE_CHECKING:
@@ -14,18 +15,18 @@ if TYPE_CHECKING:
 
 
 class _UserKwargs(TypedDict):
-    username: NotRequired[str | None]
-    password: NotRequired[str | None]
-    is_super_user: NotRequired[bool | None]
-    first_name: NotRequired[str | None]
-    last_name: NotRequired[str | None]
-    email: NotRequired[str | None]
-    groups: NotRequired[Collection["LocalGroup"] | None]
+    username: NotRequired[str]
+    password: NotRequired[str]
+    is_super_user: NotRequired[bool]
+    first_name: NotRequired[str]
+    last_name: NotRequired[str]
+    email: NotRequired[str]
+    groups: NotRequired[Collection["LocalGroup"]]
 
 
 def new(**kwargs: Unpack[_UserKwargs]) -> LocalUserData:
-    if not all((kwargs.get("username"), kwargs.get("password"))):
-        raise ValueError('"username" and "password" are mandatory to create a user')
+    # cast kwargs to dict to remove `TypedDict is not dict` error
+    validate_kwargs(dict(kwargs), mandatory_fields=["username", "password"], obj_type_name=LocalUser.__name__)
 
     return LocalUserData.model_validate(kwargs)
 
@@ -85,7 +86,7 @@ class LocalUser(Deletable, _UserBase, RootInteractiveObject):
 
             kwargs["groups"] = [group.id for group in groups]  # pyright: ignore[reportGeneralTypeIssues]
 
-        return LocalUserLazy(**{"id": self.id, "requester": self._requester, **kwargs})
+        return LocalUserLazy.model_validate({"id": self.id, "requester": self._requester, **kwargs})
 
 
 class LocalUserLazy(LocalUserData, WithSaveMethod[LocalUser]):

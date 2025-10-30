@@ -104,7 +104,7 @@ class WithSaveMethod[ObjectType]:
             url = f"{self._url_part}"
             method = self.requester.post
 
-        data = self.model_dump(exclude={"id"}, exclude_unset=True, exclude_defaults=True)  # pyright: ignore[reportAttributeAccessIssue]
+        data = self.model_dump(exclude_unset=True, exclude_defaults=True, by_alias=True)  # pyright: ignore[reportAttributeAccessIssue]
         response = await method(url, data=data)
 
         return self._cls(requester=self.requester, data=response.as_dict())  # pyright: ignore[reportCallIssue]

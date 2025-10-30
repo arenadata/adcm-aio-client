@@ -139,11 +139,6 @@ class MaintenanceModeStatus(str, Enum):
     CHANGING = "changing"
 
 
-class UserStatus(str, Enum):
-    ACTIVE = "active"
-    INACTIVE = "inactive"
-
-
 class SourceType(str, Enum):
     LOCAL = "local"
     LDAP = "ldap"

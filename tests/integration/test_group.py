@@ -6,13 +6,11 @@ from httpx import AsyncClient, Timeout
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client._types import SourceType
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
 from adcm_aio_client.objects.rbac import group as group_module
 from adcm_aio_client.objects.rbac import user as user_module
-from adcm_aio_client.objects.rbac._group import _GroupKwargs
-from adcm_aio_client.objects.rbac._types import LocalGroupData, LocalUserData
+from adcm_aio_client.objects.rbac._types import LocalGroupData, LocalUserData, SourceType
 from tests.integration.setup_environment import DB_USER, ADCMContainer, ADCMPostgresContainer
 
 # pyright: reportAttributeAccessIssue=false
@@ -115,17 +113,16 @@ async def test_group(
     ldap_group: group_module.LDAPGroup,
     three_users: tuple[user_module.LocalUser, LocalUserData, user_module.LDAPUser],
 ) -> None:
-    _test_misc()
+    _test_fields_contract()
     await _test_local_group_data_api(adcm_client=adcm_client, httpx_client=httpx_client, three_users=three_users)
     await _test_local_group_lazy_api(adcm_client=adcm_client, httpx_client=httpx_client, three_users=three_users)
     await _test_ldap_group_api(group=ldap_group)
     await _test_groups_node(adcm_client=adcm_client, httpx_client=httpx_client)
 
 
-def _test_misc() -> None:
-    # check _GroupKwargs and LocalGroupData fields
-    localgroupdata = group_module.LocalGroupData.__annotations__
-    groupkwargs = _GroupKwargs.__annotations__
+def _test_fields_contract() -> None:
+    localgroupdata = LocalGroupData.__annotations__
+    groupkwargs = group_module._GroupKwargs.__annotations__
 
     assert localgroupdata.pop("id").__args__ == (int | None,)
 
@@ -134,13 +131,13 @@ def _test_misc() -> None:
 
     assert localgroupdata.pop("users").__args__ == (Optional[list[int]],)  # noqa: UP007
     assert groupkwargs.pop("users").__args__ == (
-        Optional[Collection[ForwardRef(user_module.LocalUser.__name__) | ForwardRef(user_module.LDAPUser.__name__)]],  # noqa: UP007
+        Collection[ForwardRef(user_module.LocalUser.__name__) | ForwardRef(user_module.LDAPUser.__name__)],  # noqa: UP007
     )
 
     for field in localgroupdata:
-        kwarg_type = groupkwargs[field].__args__
+        kwarg_type = groupkwargs[field].__args__[0]
         localgroupdata_type = localgroupdata[field].__args__
-        assert kwarg_type == localgroupdata_type, f"{field=}, {kwarg_type=}, {localgroupdata_type=}"
+        assert (kwarg_type | None,) == localgroupdata_type, f"{field=}, {kwarg_type=}, {localgroupdata_type=}"
 
 
 async def _test_local_group_data_api(
@@ -152,7 +149,7 @@ async def _test_local_group_data_api(
     group_name = "Test local group"
     assert group_name not in await get_all_group_names(httpx_client)
 
-    with pytest.raises(ValueError, match=r"\"display_name\" is mandatory to create a group"):
+    with pytest.raises(ValueError, match=f'"display_name" is mandatory to create a {group_module.LocalGroup.__name__}'):
         group_module.new(description="desc")
 
     group = group_module.new(display_name=group_name)
@@ -182,6 +179,8 @@ async def _test_local_group_data_api(
     assert {u.id for u in users} == {local_user.id, ldap_user.id}
 
     new_name = "New group name"
+    assert new_name not in await get_all_group_names(httpx_client)
+
     with pytest.raises(ValueError, match='"users" must be of type LocalUser | LDAPUser'):
         local_group.edit(display_name=new_name, users=[local_user_data])  # pyright: ignore[reportArgumentType]
 
@@ -212,7 +211,7 @@ async def _test_local_group_lazy_api(
     group_name = "Test_local_group_from_node"
     assert group_name not in await get_all_group_names(httpx_client)
 
-    with pytest.raises(ValueError, match='"display_name" is mandatory to create a group'):
+    with pytest.raises(ValueError, match=f'"display_name" is mandatory to create a {group_module.LocalGroup.__name__}'):
         adcm_client.groups.new(description="desc")
 
     with pytest.raises(ValueError, match='"users" must be of type LocalUser | LDAPUser'):

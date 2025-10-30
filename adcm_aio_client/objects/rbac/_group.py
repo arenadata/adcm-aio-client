@@ -7,6 +7,7 @@ from pydantic import Field
 from adcm_aio_client.objects._base import RootInteractiveObject, WithCachedID, WithRequesterProperty
 from adcm_aio_client.objects._common import Deletable, WithSaveMethod
 from adcm_aio_client.objects.rbac._types import LocalGroupData
+from adcm_aio_client.objects.rbac._utils import validate_kwargs
 from adcm_aio_client.requesters import DefaultRequester
 
 if TYPE_CHECKING:
@@ -14,14 +15,14 @@ if TYPE_CHECKING:
 
 
 class _GroupKwargs(TypedDict):
-    display_name: NotRequired[str | None]
-    description: NotRequired[str | None]
-    users: NotRequired[Collection[Union["LocalUser", "LDAPUser"]] | None]
+    display_name: NotRequired[str]
+    description: NotRequired[str]
+    users: NotRequired[Collection[Union["LocalUser", "LDAPUser"]]]
 
 
 def new(**kwargs: Unpack[_GroupKwargs]) -> LocalGroupData:
-    if not kwargs.get("display_name"):
-        raise ValueError('"display_name" is mandatory to create a group')
+    # cast kwargs to dict to remove `TypedDict is not dict` error
+    validate_kwargs(dict(kwargs), mandatory_fields=["display_name"], obj_type_name=LocalGroup.__name__)
 
     return LocalGroupData.model_validate(kwargs)
 

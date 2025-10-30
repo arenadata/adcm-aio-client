@@ -6,13 +6,11 @@ from httpx import AsyncClient, Timeout
 import pytest
 import pytest_asyncio
 
-from adcm_aio_client._types import SourceType
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.errors import ConflictError, MultipleObjectsReturnedError, ObjectDoesNotExistError
 from adcm_aio_client.objects.rbac import group as group_module
 from adcm_aio_client.objects.rbac import user as user_module
-from adcm_aio_client.objects.rbac._types import LocalGroupData, LocalUserData
-from adcm_aio_client.objects.rbac._user import _UserKwargs
+from adcm_aio_client.objects.rbac._types import LocalGroupData, LocalUserData, SourceType
 from tests.integration.setup_environment import DB_USER, ADCMContainer, ADCMPostgresContainer
 
 pytestmark = [pytest.mark.asyncio]
@@ -117,17 +115,16 @@ async def test_user(
     ldap_user: user_module.LDAPUser,
     three_groups: tuple[group_module.LocalGroup, LocalGroupData, group_module.LDAPGroup],
 ) -> None:
-    _test_misc()
+    _test_fields_contract()
     await _test_local_user_data_api(adcm_client=adcm_client, httpx_client=httpx_client, three_groups=three_groups)
     await _test_local_user_lazy_api(adcm_client=adcm_client, httpx_client=httpx_client, three_groups=three_groups)
     await _test_ldap_user_api(user=ldap_user)
     await _test_users_accessor(adcm_client=adcm_client, httpx_client=httpx_client, three_groups=three_groups)
 
 
-def _test_misc() -> None:
-    # check UserKwargs and LocalUserData fields
+def _test_fields_contract() -> None:
     localuserdata = LocalUserData.__annotations__
-    userkwargs = _UserKwargs.__annotations__
+    userkwargs = user_module._UserKwargs.__annotations__
 
     assert localuserdata.pop("id").__args__ == (int | None,)
 
@@ -135,12 +132,12 @@ def _test_misc() -> None:
     assert set(localuserdata.keys()) == set(userkwargs.keys()) == expected_fields
 
     assert localuserdata.pop("groups").__args__ == (Optional[list[int]],)  # noqa: UP007
-    assert userkwargs.pop("groups").__args__ == (Collection[group_module.LocalGroup.__name__] | None,)  # noqa: UP007
+    assert userkwargs.pop("groups").__args__ == (Collection[group_module.LocalGroup.__name__],)  # noqa: UP007
 
     for field in localuserdata:
-        kwarg_type = userkwargs[field].__args__
+        kwarg_type = userkwargs[field].__args__[0]
         localuserdata_type = localuserdata[field].__args__
-        assert kwarg_type == localuserdata_type, f"{field=}, {kwarg_type=}, {localuserdata_type=}"
+        assert (kwarg_type | None,) == localuserdata_type, f"{field=}, {kwarg_type=}, {localuserdata_type=}"
 
 
 async def _test_local_user_data_api(
@@ -153,7 +150,9 @@ async def _test_local_user_data_api(
     assert username not in await get_all_usernames(httpx_client)
 
     for wrong_data in ({"username": username}, {"password": username * 2}):
-        with pytest.raises(ValueError, match=r"^\"username\" and \"password\" are mandatory to create a user$"):
+        with pytest.raises(
+            ValueError, match=f'"username" and "password" are mandatory to create a {user_module.LocalUser.__name__}'
+        ):
             user_module.new(**wrong_data)  # pyright: ignore[reportArgumentType]
 
     user = user_module.new(username=username, password=username * 2)
@@ -220,7 +219,9 @@ async def _test_local_user_lazy_api(
     assert username not in await get_all_usernames(httpx_client)
 
     for wrong_data in ({"username": username}, {"password": username * 2}):
-        with pytest.raises(ValueError, match=r"^\"username\" and \"password\" are mandatory to create a user$"):
+        with pytest.raises(
+            ValueError, match=f'"username" and "password" are mandatory to create a {user_module.LocalUser.__name__}'
+        ):
             # pyright somehow thinks that `is_super_user` field here is `str`, not `bool | None`
             adcm_client.users.new(**wrong_data)  # pyright: ignore[reportArgumentType]
 
