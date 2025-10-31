@@ -1,4 +1,3 @@
-from collections.abc import Collection
 from typing import Optional
 import asyncio
 
@@ -132,7 +131,7 @@ def _test_fields_contract() -> None:
     assert set(localuserdata.keys()) == set(userkwargs.keys()) == expected_fields
 
     assert localuserdata.pop("groups").__args__ == (Optional[list[int]],)  # noqa: UP007
-    assert userkwargs.pop("groups").__args__ == (Collection[group_module.LocalGroup.__name__],)  # noqa: UP007
+    assert userkwargs.pop("groups").__args__ == (list[group_module.LocalGroup.__name__],)  # noqa: UP007
 
     for field in localuserdata:
         kwarg_type = userkwargs[field].__args__[0]
@@ -190,9 +189,9 @@ async def _test_local_user_data_api(
 
     wrong_groups = ([local_group_data], [ldap_group])
     for groups in wrong_groups:
-        with pytest.raises(ValueError, match='"groups" must be of type LocalGroup'):
+        with pytest.raises(ValueError):
             local_user.edit(groups=groups)  # pyright: ignore[reportArgumentType]
-        with pytest.raises(ValueError, match='"groups" must be of type LocalGroup'):
+        with pytest.raises(ValueError):
             user_module.new(username=username, password=username * 2, groups=groups)  # pyright: ignore[reportArgumentType]
 
     email = "example@mail.com"
@@ -227,7 +226,7 @@ async def _test_local_user_lazy_api(
 
     wrong_groups = ([ldap_group], [local_group_data])
     for groups in wrong_groups:
-        with pytest.raises(ValueError, match='"groups" must be of type LocalGroup'):
+        with pytest.raises(ValueError):
             adcm_client.users.new(username=username, password=username * 2, groups=groups)  # pyright: ignore[reportArgumentType]
 
     user = adcm_client.users.new(username=username, password=username * 2, groups=[local_group])

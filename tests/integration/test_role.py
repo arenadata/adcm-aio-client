@@ -1,4 +1,5 @@
 from typing import cast
+import asyncio
 
 from httpx import AsyncClient, Timeout
 import pytest
@@ -13,6 +14,19 @@ from adcm_aio_client.objects.rbac._types import CustomRoleData
 
 
 pytestmark = [pytest.mark.asyncio]
+
+
+async def create_51_custom_role(httpx_client: AsyncClient) -> None:
+    response = await httpx_client.get("rbac/roles/", params={"type": "business", "displayName__eq": "Create cluster"})
+    assert response.status_code == 200
+
+    child_id = response.json()["results"][0]["id"]
+    requests = []
+    for i in range(1, 52, 1):
+        data = {"displayName": f"Custom role {i}", "children": [child_id]}
+        requests.append(httpx_client.post(url="rbac/roles/", data=data, timeout=Timeout(15.0, read=None)))
+
+    await asyncio.gather(*requests, return_exceptions=False)
 
 
 async def get_roles_display_names(httpx_client: AsyncClient, **kwargs: str) -> list[str]:
@@ -82,7 +96,7 @@ async def test_role(
     )
     await _test_builtin_role_api(adcm_client=adcm_client)
     await _test_permission_api(adcm_client=adcm_client)
-    # await _test_roles_node(adcm_client=adcm_client, httpx_client=httpx_client)
+    await _test_roles_permissions_node(adcm_client=adcm_client, httpx_client=httpx_client)
 
 
 def _test_fields_contract() -> None:
@@ -149,7 +163,7 @@ async def _test_custom_role_data_api(
     new_name = "New custom role name"
     assert new_name not in await get_roles_display_names(httpx_client)
 
-    with pytest.raises(ValueError, match=f'"permissions" must be of type {role_module.Permission.__name__}'):
+    with pytest.raises(ValueError):
         custom_role.edit(display_name=new_name, permissions=[custom_role_unsaved])  # pyright: ignore[reportArgumentType]
 
     new_permission = cast(role_module.Permission, await adcm_client.permissions.get(display_name__eq="Add service"))
@@ -188,7 +202,7 @@ async def _test_custom_role_lazy_api(
             # pyright did not parse wrong_data and throws incorrect errors here
             adcm_client.roles.new(**wrong_data)  # pyright: ignore[reportArgumentType]
 
-    with pytest.raises(ValueError, match=f'"permissions" must be of type {role_module.Permission.__name__}'):
+    with pytest.raises(ValueError):
         adcm_client.roles.new(display_name=role_name, permissions=[custom_role_unsaved])  # pyright: ignore[reportArgumentType]
 
     role = adcm_client.roles.new(display_name=role_name, permissions=[permission])
@@ -275,6 +289,7 @@ async def _test_permission_api(adcm_client: ADCMClient) -> None:
 
 
 async def _test_roles_permissions_node(adcm_client: ADCMClient, httpx_client: AsyncClient) -> None:
+    await create_51_custom_role(httpx_client)
     num_roles = await get_roles_count(httpx_client=httpx_client, type="role")
     num_permissions = await get_roles_count(httpx_client=httpx_client, type="business")
     no_objects_msg = "^No objects found with the given filter.$"

@@ -1,4 +1,3 @@
-from collections.abc import Collection
 from typing import ForwardRef, Optional
 import asyncio
 
@@ -131,7 +130,7 @@ def _test_fields_contract() -> None:
 
     assert localgroupdata.pop("users").__args__ == (Optional[list[int]],)  # noqa: UP007
     assert groupkwargs.pop("users").__args__ == (
-        Collection[ForwardRef(user_module.LocalUser.__name__) | ForwardRef(user_module.LDAPUser.__name__)],  # noqa: UP007
+        list[ForwardRef(user_module.LocalUser.__name__) | ForwardRef(user_module.LDAPUser.__name__)],  # noqa: UP007
     )
 
     for field in localgroupdata:

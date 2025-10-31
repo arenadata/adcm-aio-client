@@ -1,4 +1,4 @@
-from functools import cached_property
+from functools import cached_property, partial
 from typing import Annotated, NotRequired, Self, TypedDict, Unpack
 
 from pydantic import Field
@@ -20,7 +20,7 @@ class _RoleKwargs(TypedDict):
 
 def new(**kwargs: Unpack[_RoleKwargs]) -> CustomRoleData:
     # cast kwargs to dict to remove `TypedDict is not dict` error
-    validate_kwargs(dict(kwargs), mandatory_fields=["display_name", "permissions"], obj_type_name=CustomRole.__name__)
+    _validate_role_kwargs(dict(kwargs))
 
     return CustomRoleData.model_validate(kwargs)
 
@@ -66,7 +66,7 @@ class CustomRole(Deletable, _RoleBase):
 
 
 class CustomRoleLazy(CustomRoleData, WithSaveMethod[CustomRole]):
-    """LocalGroupData with requester, can perform group create / update operations"""
+    """LocalGroupData with requester, can perform role create / update operations"""
 
     _cls = CustomRole
     _url_part = "rbac/roles"
@@ -82,3 +82,8 @@ class Permission(RootInteractiveObject):
     @property
     def display_name(self: Self) -> str:
         return self._data["displayName"]
+
+
+_validate_role_kwargs = partial(
+    validate_kwargs, mandatory_fields=["display_name", "permissions"], obj_type_name=CustomRole.__name__
+)

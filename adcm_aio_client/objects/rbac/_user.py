@@ -1,4 +1,4 @@
-from collections.abc import Collection
+from functools import partial
 from typing import TYPE_CHECKING, Annotated, NotRequired, Self, TypedDict, Union, Unpack
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
@@ -21,12 +21,12 @@ class _UserKwargs(TypedDict):
     first_name: NotRequired[str]
     last_name: NotRequired[str]
     email: NotRequired[str]
-    groups: NotRequired[Collection["LocalGroup"]]
+    groups: NotRequired[list["LocalGroup"]]
 
 
 def new(**kwargs: Unpack[_UserKwargs]) -> LocalUserData:
     # cast kwargs to dict to remove `TypedDict is not dict` error
-    validate_kwargs(dict(kwargs), mandatory_fields=["username", "password"], obj_type_name=LocalUser.__name__)
+    _validate_user_kwargs(dict(kwargs))
 
     return LocalUserData.model_validate(kwargs)
 
@@ -78,14 +78,6 @@ class _UserBase(WithCachedID, WithRequesterProperty):
 
 class LocalUser(Deletable, _UserBase, RootInteractiveObject):
     def edit(self: Self, **kwargs: Unpack[_UserKwargs]) -> "LocalUserLazy":
-        from adcm_aio_client.objects.rbac._group import LocalGroup
-
-        if groups := kwargs.pop("groups", ()):
-            if not all(isinstance(group, LocalGroup) for group in groups):
-                raise ValueError(f'"groups" must be of type {LocalGroup.__name__}')
-
-            kwargs["groups"] = [group.id for group in groups]  # pyright: ignore[reportGeneralTypeIssues]
-
         return LocalUserLazy.model_validate({"id": self.id, "requester": self._requester, **kwargs})
 
 
@@ -100,3 +92,8 @@ class LocalUserLazy(LocalUserData, WithSaveMethod[LocalUser]):
 
 class LDAPUser(_UserBase, RootInteractiveObject):
     pass
+
+
+_validate_user_kwargs = partial(
+    validate_kwargs, mandatory_fields=["username", "password"], obj_type_name=LocalUser.__name__
+)

@@ -1,4 +1,4 @@
-from collections.abc import Collection
+from functools import partial
 from typing import TYPE_CHECKING, Annotated, NotRequired, Self, TypedDict, Union, Unpack
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
@@ -17,12 +17,12 @@ if TYPE_CHECKING:
 class _GroupKwargs(TypedDict):
     display_name: NotRequired[str]
     description: NotRequired[str]
-    users: NotRequired[Collection[Union["LocalUser", "LDAPUser"]]]
+    users: NotRequired[list[Union["LocalUser", "LDAPUser"]]]
 
 
 def new(**kwargs: Unpack[_GroupKwargs]) -> LocalGroupData:
     # cast kwargs to dict to remove `TypedDict is not dict` error
-    validate_kwargs(dict(kwargs), mandatory_fields=["display_name"], obj_type_name=LocalGroup.__name__)
+    _validate_group_kwargs(dict(kwargs))
 
     return LocalGroupData.model_validate(kwargs)
 
@@ -63,3 +63,6 @@ class LocalGroupLazy(LocalGroupData, WithSaveMethod[LocalGroup]):
 
 class LDAPGroup(_GroupBase, RootInteractiveObject):
     pass
+
+
+_validate_group_kwargs = partial(validate_kwargs, mandatory_fields=["display_name"], obj_type_name=LocalGroup.__name__)
