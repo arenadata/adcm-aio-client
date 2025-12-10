@@ -114,10 +114,6 @@ class AwareOfOwnPath(Protocol):
     def get_own_path(self: Self) -> Endpoint: ...
 
 
-class Refreshable(Protocol):
-    async def refresh(self: Self) -> Self: ...
-
-
 class MappingOperation(str, Enum):
     ADD = "add"
     REMOVE = "remove"

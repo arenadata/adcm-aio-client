@@ -1,9 +1,8 @@
-from typing import Any
+from typing import cast
 import asyncio
 
 from httpx import AsyncClient, Timeout
 import pytest
-import pytest_asyncio
 
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
@@ -32,92 +31,64 @@ async def get_roles_count(httpx_client: AsyncClient, **kwargs: str) -> int:
     return int(response.json()["count"])
 
 
-@pytest_asyncio.fixture()
-async def three_roles(adcm_client: ADCMClient) -> tuple[BuiltInRole, CustomRole, Permission]:
-    """Returns 3 roles: builtin (builtin `role` role) saved, custom unsaved and permission (builtin `business` role)"""
+async def assert_role(role: CustomRole, expected: dict, httpx_client: AsyncClient) -> None:
+    response = await httpx_client.get(f"rbac/roles/{role.id}/")
+    assert response.status_code == 200
 
-    builtin_role = await adcm_client.roles.get(display_name__eq="Cluster Administrator")
-    assert isinstance(builtin_role, BuiltInRole)
-
-    permission = await adcm_client.permissions.get(name__eq="Create cluster")
-    assert isinstance(permission, Permission)
-
-    custom_role = CustomRole(
-        client=adcm_client, display_name="Handmade role with create cluster permission", permissions=[permission]
-    )
-
-    return builtin_role, custom_role, permission
+    response = response.json()
+    for attr, value in expected.items():
+        assert response[attr] == value
 
 
-async def test_role(
-    adcm_client: ADCMClient, httpx_client: AsyncClient, three_roles: tuple[BuiltInRole, CustomRole, Permission]
-) -> None:
-    await _test_object_api(adcm_client, httpx_client, three_roles)
-    await create_51_custom_role(httpx_client)
+async def test_role(adcm_client: ADCMClient, httpx_client: AsyncClient) -> None:
+    await _test_create_delete_api(adcm_client, httpx_client)
     await _test_roles_node(adcm_client, httpx_client)
 
 
-async def _test_object_api(
-    adcm_client: ADCMClient, httpx_client: AsyncClient, three_roles: tuple[BuiltInRole, CustomRole, Permission]
-) -> None:
-    def _is_int(item: Any) -> bool:  # noqa: ANN401
-        return isinstance(item, int)
+async def _test_create_delete_api(adcm_client: ADCMClient, httpx_client: AsyncClient) -> None:
+    permission = cast(Permission, await adcm_client.permissions.get(display_name__eq="Create cluster"))
+    with pytest.raises(AttributeError):
+        await permission.delete()  # pyright: ignore[reportAttributeAccessIssue]
 
-    expected = (
-        {"id": _is_int, "name": "Cluster Administrator", "display_name": "Cluster Administrator", "description": ""},
-        {
-            "id": None,
-            "name": "Handmade role with create cluster permission",
-            "display_name": "Handmade role with create cluster permission",
-            "description": "",
-        },
-        {
-            "id": _is_int,
-            "name": "Create cluster",
-            "display_name": "Create cluster",
-            "description": "The ability to add new cluster",
-        },
-    )
-    for role, expected_ in zip(three_roles, expected, strict=True):
-        await _test_role_attributes(role, expected_)
+    role = await adcm_client.roles.create(display_name="Test role", permissions=[permission], description="123")
 
-    builtin_role, custom_role, permission = three_roles
-    initial_roles_count = await get_roles_count(httpx_client, type="role")
+    assert isinstance(role, CustomRole)
+    expected = {
+        "id": role.id,
+        "name": role.display_name,
+        "displayName": role.display_name,
+        "isBuiltIn": False,
+        "isAnyCategory": False,
+        "categories": [],
+        "type": "role",
+        "parametrizedByType": [],
+        "description": "123",
+        "children": [
+            {
+                "id": permission.id,
+                "name": permission.name,
+                "displayName": permission.display_name,
+                "isBuiltIn": True,
+                "isAnyCategory": False,
+                "categories": [],
+                "type": "business",
+            }
+        ],
+    }
+    await assert_role(role, expected, httpx_client)
 
-    await custom_role.save()
-    assert isinstance(custom_role.id, int)
-    assert await get_roles_count(httpx_client, type="role") == initial_roles_count + 1
+    await role.delete()
+    response = await httpx_client.get(f"rbac/roles/{role.id}/")
+    assert response.status_code == 404
 
-    assert isinstance(await adcm_client.roles.get(display_name__eq=custom_role.display_name), CustomRole)
-
-    with pytest.raises(NotImplementedError):
-        BuiltInRole(display_name="New builtin role", permissions=[permission])
-
-    with pytest.raises(NotImplementedError):
-        Permission(display_name="New builtin role", permissions=[permission])
-
-    incomplete_args = (
-        {"client": adcm_client, "display_name": "New"},
-        {"client": adcm_client, "permissions": [permission]},
-        {"display_name": "New", "permissions": [permission]},
-    )
-    for args in incomplete_args:
-        with pytest.raises(RuntimeError):
-            CustomRole(**args)
-
-    await custom_role.delete()
-    assert await get_roles_count(httpx_client, type="role") == initial_roles_count
-
-
-async def _test_role_attributes(role: BuiltInRole | CustomRole | Permission, expected: dict[str, Any]) -> None:
-    for attr, expected_ in expected.items():
-        if callable(expected_):
-            assert expected_(getattr(role, attr)), f"{role=}, {attr=}, {expected_} must be True"
-        else:
-            assert getattr(role, attr) == expected_, f"{role=}, {attr=}, {expected_=}"
+    builtin_role = await adcm_client.roles.get(display_name__eq="Cluster Administrator")
+    with pytest.raises(AttributeError):
+        await builtin_role.delete()  # pyright: ignore[reportAttributeAccessIssue]
 
 
 async def _test_roles_node(adcm_client: ADCMClient, httpx_client: AsyncClient) -> None:
+    await create_51_custom_role(httpx_client)
+
     num_roles = await get_roles_count(httpx_client=httpx_client, type="role")
     num_permissions = await get_roles_count(httpx_client=httpx_client, type="business")
     no_objects_msg = "^No objects found with the given filter.$"

@@ -10,16 +10,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Callable
 from functools import cached_property
-from typing import Any, Literal, Self
+from typing import Self
 
 from asyncstdlib.functools import cached_property as async_cached_property  # noqa: N813
 
-from adcm_aio_client._types import Refreshable
 from adcm_aio_client.actions._objects import ActionsAccessor, UpgradeNode
 from adcm_aio_client.config._objects import ConfigHistoryNode, ConfigOwner, HostGroupConfig, ObjectConfig
-from adcm_aio_client.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester, WithRequesterProperty
+from adcm_aio_client.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
 from adcm_aio_client.objects._imports import Imports
 
 
@@ -86,59 +84,3 @@ class WithImports(WithProtectedRequester, AwareOfOwnPath):
     @async_cached_property
     async def imports(self: Self) -> Imports:
         return Imports(requester=self._requester, path=(*self.get_own_path(), "imports"))
-
-
-class LazyObject(WithRequesterProperty, AwareOfOwnPath, Refreshable):
-    def __init__(self: Self, *args: Any, **kwargs: Any) -> None:  # noqa: ANN401
-        super().__init__(*args, **kwargs)
-        self._manually_set = set()
-
-    @property
-    def id(self: Self) -> int | None:
-        """May be `None` if object was created manually and not saved yet"""
-        return self._data.get("id")
-
-    async def save(self: Self) -> None:
-        if self.id is None:  # create
-            url = (self.PATH_PREFIX,)  # pyright: ignore[reportAttributeAccessIssue]
-            method = self.requester.post
-            data = self._prepare_data_for_save(mode="create")
-        else:  # update
-            url = self.get_own_path()
-            method = self.requester.patch
-            data = self._prepare_data_for_save(mode="update")
-
-        response = await method(*url, data=data)
-        self._data = response.as_dict()
-        self._manually_set.clear()
-
-    async def refresh(self: Self) -> Self:
-        self._manually_set.clear()
-        return await super().refresh()  # pyright: ignore[reportAbstractUsage]
-
-    def _prepare_data_for_save(self: Self, mode: Literal["create", "update"]) -> dict:
-        match mode:
-            case "create":
-                data = self._data
-            case "update":
-                data = {key: value for key, value in self._data.items() if key in self._manually_set}
-            case _:
-                raise ValueError(f"Unknown mode {mode}")
-
-        return self._postprocess_save_data(data=data, mode=mode)
-
-    @staticmethod
-    def _postprocess_save_data(data: Any, mode: Literal["create", "update"]) -> Any:  # noqa: ANN401
-        """Override this in subclass to mutate data"""
-        _ = mode
-        return data
-
-
-class ConfigurableSetAttrMixin:
-    _custom_setattr: dict[str, Callable[[Self, str, Any], Any]]
-
-    def __setattr__(self: Self, key: str, value: Any) -> None:  # noqa: ANN401
-        if key in self._custom_setattr:
-            self._custom_setattr[key](self, key, value)
-        else:
-            super().__setattr__(key, value)
