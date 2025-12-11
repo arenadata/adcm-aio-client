@@ -178,7 +178,7 @@ async def _test_host_related_action_properties(context: Context) -> None:
         assert config is action_config
 
         # quite strange pick of response in here in ADCM, so generalized expected error
-        with pytest.raises(UnknownError, match=".*config key.*is required"):
+        with pytest.raises(UnknownError, match=".*Configuration doesn.*'t match specification"):
             await action.run()
 
         config["string_field", Parameter].set("sample")
