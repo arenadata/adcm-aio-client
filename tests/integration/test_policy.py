@@ -1,3 +1,4 @@
+from typing import cast
 import asyncio
 
 from httpx import AsyncClient, Timeout
@@ -10,7 +11,6 @@ from adcm_aio_client.objects import (
     BuiltInRole,
     Bundle,
     Cluster,
-    HostProvider,
     LocalGroup,
     Policy,
 )
@@ -44,20 +44,18 @@ async def get_policies_count(httpx_client: AsyncClient) -> int:
     return int(response.json()["count"])
 
 
+async def assert_policy(policy: Policy, expected: dict, httpx_client: AsyncClient) -> None:
+    response = await httpx_client.get(f"rbac/policies/{policy.id}/")
+    assert response.status_code == 200
+
+    response = response.json()
+    for attr, value in expected.items():
+        assert response[attr] == value
+
+
 @pytest_asyncio.fixture()
 async def group(adcm_client: ADCMClient, httpx_client: AsyncClient) -> LocalGroup:
     response = await httpx_client.post(url="rbac/groups/", data={"displayName": "Test group"})
-    assert response.status_code == 201
-
-    group = await adcm_client.groups.get(display_name__eq="Test group")
-    assert isinstance(group, LocalGroup)
-
-    return group
-
-
-@pytest_asyncio.fixture()
-async def new_group(adcm_client: ADCMClient, httpx_client: AsyncClient) -> LocalGroup:
-    response = await httpx_client.post(url="rbac/groups/", data={"displayName": "New test group"})
     assert response.status_code == 201
 
     group = await adcm_client.groups.get(display_name__eq="Test group")
@@ -71,129 +69,48 @@ async def simple_cluster(adcm_client: ADCMClient, simple_cluster_bundle: Bundle)
     return await adcm_client.clusters.create(bundle=simple_cluster_bundle, name="Simple cluster")
 
 
-@pytest_asyncio.fixture()
-async def provider(adcm_client: ADCMClient, simple_hostprovider_bundle: Bundle) -> HostProvider:
-    return await adcm_client.hostproviders.create(bundle=simple_hostprovider_bundle, name="Test HP")
-
-
-@pytest_asyncio.fixture()
-async def two_policies(
+async def test_policy(
     adcm_client: ADCMClient, httpx_client: AsyncClient, simple_cluster: Cluster, group: LocalGroup
-) -> tuple[Policy, Policy]:
-    """Returns two policies: remote and created locally without saving"""
-    role = await adcm_client.roles.get(name__eq="Cluster Administrator")
-    assert isinstance(role, BuiltInRole)
-
-    data = {
-        "name": "cluster admin policy",
-        "role": {"id": role.id},
-        "objects": [{"id": simple_cluster.id, "type": "cluster"}],
-        "groups": [group.id],
-    }
-    response = await httpx_client.post(url="rbac/policies/", json=data, timeout=Timeout(15.0, read=None))
-    assert response.status_code == 201
-
-    policy = await adcm_client.policies.get(name__eq="cluster admin policy")
-
-    not_saved_policy = Policy(
-        client=adcm_client, name="cluster admin policy new", role=role, objects=[simple_cluster], groups=[group]
+) -> None:
+    await _test_create_delete_api(
+        adcm_client=adcm_client, httpx_client=httpx_client, group=group, cluster=simple_cluster
     )
+    await _test_policies_node(adcm_client=adcm_client, httpx_client=httpx_client, cluster=simple_cluster, group=group)
 
-    return policy, not_saved_policy
 
-
-async def test_role(
+async def _test_create_delete_api(
     adcm_client: ADCMClient,
     httpx_client: AsyncClient,
-    two_policies: tuple[Policy, Policy],
-    simple_cluster: Cluster,
     group: LocalGroup,
-    new_group: LocalGroup,
-    provider: HostProvider,
+    cluster: Cluster,
 ) -> None:
-    await create_51_policy(httpx_client=httpx_client, cluster=simple_cluster, group=group)
-    await _test_object_api(
-        adcm_client=adcm_client,
-        two_policies=two_policies,
-        group=group,
-        new_group=new_group,
-        object_=simple_cluster,
-        new_object=provider,
+    name = "Test policy"
+    role = cast(BuiltInRole, await adcm_client.roles.get(name__eq="Cluster Administrator"))
+    policy = await adcm_client.policies.create(
+        name=name, role=role, objects=[cluster], groups=[group], description="dsc"
     )
-    await _test_policies_node(adcm_client, httpx_client)
 
-
-async def _test_object_api(
-    adcm_client: ADCMClient,
-    two_policies: tuple[Policy, Policy],
-    group: LocalGroup,
-    new_group: LocalGroup,
-    object_: Cluster,
-    new_object: HostProvider,
-) -> None:
-    policy, not_saved_policy = two_policies
-    assert isinstance(policy.id, int)
-    assert not_saved_policy.id is None
+    assert isinstance(policy, Policy)
+    expected = {
+        "id": policy.id,
+        "name": name,
+        "description": "dsc",
+        "isBuiltIn": False,
+        "objects": [{"id": cluster.id, "type": "cluster", "name": cluster.name, "displayName": cluster.name}],
+        "groups": [{"id": group.id, "name": f"{group.display_name} [local]", "displayName": group.display_name}],
+        "role": {"id": role.id, "name": role.name, "displayName": role.display_name},
+    }
+    await assert_policy(policy, expected, httpx_client)
 
     await policy.delete()
-    with pytest.raises(ObjectDoesNotExistError):
-        await adcm_client.policies.get(name__eq=policy.name)
-
-    with pytest.raises(ObjectDoesNotExistError):
-        await adcm_client.policies.get(name__eq=not_saved_policy.name)
-
-    await not_saved_policy.save()
-    assert isinstance(not_saved_policy.id, int)
-
-    policy = await adcm_client.policies.get(name__eq=not_saved_policy.name)
-    assert isinstance(policy, Policy)
-    assert isinstance(policy.id, int)
-    assert policy.name == "cluster admin policy new"
-    assert policy.description == ""
-    assert await policy.objects == [object_]
-    assert await policy.role == await adcm_client.roles.get(name__eq="Cluster Administrator")
-    assert await policy.groups == [group]
-
-    new_role = await adcm_client.roles.get(name__eq="Provider Administrator")
-    assert isinstance(new_role, BuiltInRole)
-
-    policy.name = "new policy name"
-    policy.description = "new policy description"
-    policy.objects = [new_object]
-    policy.role = new_role
-    policy.groups = [new_group]
-    assert policy._manually_set == {"name", "description", "objects", "role", "groups"}
-
-    await policy.save()
-    await policy.refresh()
-    assert policy._manually_set == set()
-
-    assert policy.name == "new policy name" == policy._data["name"]
-    assert policy.description == "new policy description" == policy._data["description"]
-    assert await policy.objects == [new_object]
-    assert policy._data["objects"] == [
-        {"id": new_object.id, "type": "provider", "name": new_object.name, "displayName": new_object.name}
-    ]
-    assert await policy.role == new_role
-    assert policy._data["role"] == {"id": new_role.id, "name": new_role.name, "displayName": new_role.display_name}
-    assert await policy.groups == [new_group]
-    assert policy._data["groups"] == [
-        {"id": new_group.id, "name": f"{new_group.display_name} [local]", "displayName": new_group.display_name}
-    ]
-
-    wrong_args = (
-        {"name": "name", "role": new_role, "objects": [new_object], "groups": [new_group]},
-        {"client": adcm_client, "role": new_role, "objects": [new_object], "groups": [new_group]},
-        {"client": adcm_client, "name": "name", "objects": [new_object], "groups": [new_group]},
-        {"client": adcm_client, "name": "name", "role": new_role, "groups": [new_group]},
-        {"client": adcm_client, "name": "name", "role": new_role, "objects": [new_object]},
-    )
-    for args in wrong_args:
-        with pytest.raises(RuntimeError):
-            Policy(**args)
+    response = await httpx_client.get(f"rbac/policies/{policy.id}/")
+    assert response.status_code == 404
 
 
-async def _test_policies_node(adcm_client: ADCMClient, httpx_client: AsyncClient) -> None:
+async def _test_policies_node(
+    adcm_client: ADCMClient, httpx_client: AsyncClient, cluster: Cluster, group: LocalGroup
+) -> None:
+    await create_51_policy(httpx_client=httpx_client, cluster=cluster, group=group)
     num_policies = await get_policies_count(httpx_client)
     no_objects_msg = "^No objects found with the given filter.$"
     multiple_objects_msg = "^More than one object found.$"

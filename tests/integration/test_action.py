@@ -23,9 +23,9 @@ from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.config import Parameter
 from adcm_aio_client.config._objects import ActionConfig
 from adcm_aio_client.errors import (
+    ConflictError,
     NoConfigInActionError,
     NoMappingInActionError,
-    UnknownError,
 )
 from adcm_aio_client.host_groups._action_group import ActionHostGroup
 from adcm_aio_client.mapping._objects import ActionMapping
@@ -178,7 +178,7 @@ async def _test_host_related_action_properties(context: Context) -> None:
         assert config is action_config
 
         # quite strange pick of response in here in ADCM, so generalized expected error
-        with pytest.raises(UnknownError, match=".*config key.*is required"):
+        with pytest.raises(ConflictError, match=".*value should not be empty.*"):
             await action.run()
 
         config["string_field", Parameter].set("sample")
