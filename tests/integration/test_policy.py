@@ -11,7 +11,9 @@ from adcm_aio_client.objects import (
     BuiltInRole,
     Bundle,
     Cluster,
+    CustomRole,
     LocalGroup,
+    Permission,
     Policy,
 )
 
@@ -104,6 +106,32 @@ async def _test_create_delete_api(
 
     await policy.delete()
     response = await httpx_client.get(f"rbac/policies/{policy.id}/")
+    assert response.status_code == 404
+
+    # without object
+    role_name, policy_name = "My role", "My policy"
+    permissions = cast(
+        list[Permission],
+        await adcm_client.permissions.filter(name__iin=["view any object configuration", "view any object import"]),
+    )
+    custom_role = await adcm_client.roles.create(display_name=role_name, permissions=permissions)
+    assert isinstance(custom_role, CustomRole)
+    policy_without_objects = await adcm_client.policies.create(policy_name, role=custom_role, groups=[group])
+    assert isinstance(policy_without_objects, Policy)
+
+    expected_no_objects = {
+        "id": policy_without_objects.id,
+        "name": policy_name,
+        "description": "",
+        "isBuiltIn": False,
+        "objects": [],
+        "groups": [{"id": group.id, "name": f"{group.display_name} [local]", "displayName": group.display_name}],
+        "role": {"id": custom_role.id, "name": custom_role.name, "displayName": custom_role.display_name},
+    }
+    await assert_policy(policy_without_objects, expected_no_objects, httpx_client)
+
+    await policy_without_objects.delete()
+    response = await httpx_client.get(f"rbac/policies/{policy_without_objects.id}/")
     assert response.status_code == 404
 
 
