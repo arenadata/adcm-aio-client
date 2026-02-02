@@ -306,14 +306,14 @@ class PoliciesNode(PaginatedAccessor[Policy]):
         self: Self,
         name: str,
         role: CustomRole | BuiltInRole,
-        objects: list[PolicyObject],
         groups: list[LocalGroup | LDAPGroup],
+        objects: list[PolicyObject] | None = None,
         description: str = "",
     ) -> Policy:
         data = {
             "name": name,
             "role": {"id": role.id},
-            "objects": [{"id": obj.id, "type": self._obj_cls_type_map[obj.__class__]} for obj in objects],
+            "objects": [{"id": obj.id, "type": self._obj_cls_type_map[obj.__class__]} for obj in objects or []],
             "groups": [group.id for group in groups],
             "description": description,
         }
