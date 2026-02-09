@@ -185,22 +185,36 @@ class Cluster(
     WithConfigHostGroups,
     RootInteractiveObject,
 ):
+    """
+    Represents `Cluster` entity in ADCM terminology.
+    """
+
     PATH_PREFIX = "clusters"
+    """@private"""
 
     # data-based properties
 
     @property
     def name(self: Self) -> str:
+        """
+        `Cluster`'s name.
+        """
         return str(self._data["name"])
 
     @property
     def description(self: Self) -> str:
+        """
+        `Cluster`'s description.
+        """
         return str(self._data["description"])
 
     # related/dynamic data access
 
     @async_cached_property
     async def bundle(self: Self) -> Bundle:
+        """
+        `Bundle` object in which `Cluster` is defined.
+        """
         prototype_id = self._data["prototype"]["id"]
         response = await self._requester.get("prototypes", prototype_id)
 
@@ -212,6 +226,10 @@ class Cluster(
     # object-specific methods
 
     async def set_ansible_forks(self: Self, value: int) -> Self:
+        """
+        Sets the `defaults.forks` parameter value for `Cluster`'s ansible config.
+        :param value: integer
+        """
         await self._requester.post(
             *self.get_own_path(), "ansible-config", data={"config": {"defaults": {"forks": value}}, "adcmMeta": {}}
         )
@@ -221,25 +239,61 @@ class Cluster(
 
     @async_cached_property
     async def mapping(self: Self) -> ClusterMapping:
+        """
+        Through this node you can change `Cluster`'s mapping.
+        """
         return await ClusterMapping.for_cluster(owner=self)
 
     @cached_property
     def services(self: Self) -> "ServicesNode":
+        """
+        Group of related `Service`s.
+        """
         return ServicesNode(parent=self, path=(*self.get_own_path(), "services"), requester=self._requester)
 
     @cached_property
     def hosts(self: Self) -> "HostsInClusterNode":
+        """
+        Group of `Host`s linked to this `Cluster`.
+        """
         return HostsInClusterNode(cluster=self)
 
 
 FilterByBundle = FilterBy("bundle", COMMON_OPERATIONS, Bundle)
+"""@private"""
 
 
 class ClustersNode(PaginatedAccessor[Cluster]):
+    """
+    Node responsible for accessing `Cluster` objects.<br>
+    Supports filtering by `name`, `bundle` or `status` cluster's attribute.
+
+    Examples:
+    ```python
+    # get cluster which name contains substring `adh` or `None`, if such cluster does not exist.
+    cluster: Cluster | None = await adcm_client.clusters.get_or_none(name__icontains="adh")
+
+    # get list of clusters which bundle is not equal to `bundle_object`.
+    clusters: list[Cluster] = await adcm_client.clusters.filter(Filter(attr="bundle", op="ne", value=bundle_object))
+
+    # get list of clusters with status not equal to `up` or `down`.
+    clusters: list[Cluster] = await adcm_client.clusters.filter(status__exclude=["up", "down"])
+    ```
+    """
+
     class_type = Cluster
+    """@private"""
     filtering = Filtering(FilterByName, FilterByBundle, FilterByStatus)
+    """@private"""
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
+        """
+        Create new `Cluster` object
+        :param bundle: `Bundle` object in which cluster is defined
+        :param name: str, cluster's name
+        :param description: str, cluster's description. Defaults to empty string
+        :return: Freshly created `Cluster`
+        """
         response = await self._requester.post(
             "clusters",
             data={
@@ -263,31 +317,94 @@ class Service(
     WithMaintenanceMode,
     InteractiveChildObject[Cluster],
 ):
+    """
+    Represents part of `Cluster` named `Service` in ADCM terminology.
+
+    Can be "standalone" entity (like `Spark Client`)
+    or a group of related `Component`s that are expected to be mapped on some hosts.
+
+    Adding services is available via `Cluster` API:
+    ```python
+    cluster: Cluster
+    adbcc = await cluster.services.add(Filter(attr="display_name", op="ieq", value="adb control"))
+    ```
+
+    Components doesn't require explicit addition/creation,
+    so they can be acquired with filters like other objects:
+    ```python
+    service: Service
+    await service.components.get_or_none(name__eq="master")
+    ```
+
+    Working with services may include interactions such as:
+    - imports management
+    - config management
+    - action/config host groups
+    """
+
     PATH_PREFIX = "services"
+    """@private"""
 
     @property
     def name(self: Self) -> str:
+        """
+        `Service`'s name.
+        :return: str
+        """
         return self._data["name"]
 
     @property
     def display_name(self: Self) -> str:
+        """
+        `Service`'s name displayed in UI.
+        :return: str
+        """
         return self._data["displayName"]
 
     @cached_property
     def cluster(self: Self) -> Cluster:
+        """
+        Cluster to which this service belongs
+        :return: Cluster
+        """
         return self._parent
 
     @cached_property
     def components(self: Self) -> "ComponentsNode":
+        """
+        Components Node for accessing components of this service
+        :return `ComponentsNode`
+        """
         return ComponentsNode(parent=self, path=(*self.get_own_path(), "components"), requester=self._requester)
 
     @async_cached_property
     async def license(self: Self) -> License:
+        """
+        License object for this service
+        :return `License`
+        """
         prototype_data = (await self.requester.get("prototypes", self._data["prototype"]["id"])).as_dict()
         return License(self._requester, prototype_data)
 
 
 class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
+    """
+    Node for accessing `Service` objects and managing them.
+
+    Example of using:
+    ```python
+    # Add service with name containing "yarn"
+    service: Service = await cluster.services.add(Filter(attr="name", op="contains", value="yarn"))
+
+    # Get service by name
+    service: Service = await cluster.services.get(name__eq="yarn")
+
+    # List all services
+    services: list[Service] = await cluster.services.list()
+
+    ```
+    """
+
     class_type = Service
     filtering = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
     service_add_filtering = Filtering(FilterByName, FilterByDisplayName)
@@ -295,6 +412,13 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
     async def add(
         self: Self, filter_: Filter, *, accept_license: bool = False, with_dependencies: bool = False
     ) -> list[Service]:
+        """
+        Create new `Service` object
+        :param filter_: `Filter` instance to retrieve required service candidates from the others
+        :param accept_license: Accept license for the service
+        :param with_dependencies: Retrieve dependencies for the service
+        :return: Created `Service` instance
+        """
         candidates = await self._retrieve_service_candidates(filter_=filter_)
 
         if not candidates:
@@ -311,11 +435,22 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
         return await self._add_services(candidates)
 
     async def _retrieve_service_candidates(self: Self, filter_: Filter) -> list[dict]:
+        """
+        Retrieve service candidates
+        :param filter_: `Filter` instance to retrieve required service candidate from the others
+        :return: list of service candidates as dicts
+        """
         query = self.service_add_filtering.to_query(filters=(filter_,))
         response = await self._requester.get(*self._parent.get_own_path(), "service-candidates", query=query)
         return response.as_list()
 
     async def _find_missing_service_dependencies(self: Self, candidates: list[dict]) -> list[dict]:
+        """
+        Find missing service dependencies which are still required to have in order to create new `Service` instance
+        :param candidates: list of service candidates as dicts.
+        Candidates should be obtained by `_retrieve_service_candidates`
+        :return: list of service dependencies prototypes as dicts
+        """
         response = await self._requester.get(*self._parent.get_own_path(), "service-prototypes")
         all_service_prototypes = response.as_list()
 
@@ -336,6 +471,13 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
     def _detect_missing_dependencies(
         self: Self, dependencies: dict[int, set[int]], to_add: set[int], processed: set[int]
     ) -> set[int]:
+        """
+        Locate missing dependencies
+        :param dependencies: the dict consists of prototype id and its dependent prototypes as a set of ids
+        :param to_add: the set of prototype ids to be added
+        :param processed: the set of prototype ids already processed so there is no need to do it second time
+        :return: the set of prototype ids of missing dependencies
+        """
         unprocessed = to_add - processed
         if not unprocessed:
             return to_add
@@ -349,6 +491,12 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
         )
 
     async def _accept_licenses_safe(self: Self, candidates: list[dict]) -> None:
+        """
+        For each unaccepted license of passed candidates accept it
+        :param candidates: list of service candidates as dicts.
+        Candidates should be obtained by `_retrieve_service_candidates`
+        :return: None
+        """
         unaccepted: deque[int] = deque()
 
         for candidate in candidates:
@@ -363,6 +511,11 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
             await asyncio.gather(*tasks)
 
     async def _add_services(self: Self, candidates: list[dict]) -> list[Service]:
+        """
+        Add services
+        :param candidates: list of service candidates dicts obtained by `_retrieve_service_candidates`
+        :return: list of created `Service` objects
+        """
         data = [{"prototypeId": candidate["id"]} for candidate in candidates]
         response = await self._requester.post(*self._parent.get_own_path(), "services", data=data)
         return [Service(data=entry, parent=self._parent) for entry in response.as_list()]
@@ -378,17 +531,39 @@ class Component(
     InteractiveChildObject[Service],
 ):
     PATH_PREFIX = "components"
+    """
+    @private
+    """
 
     @property
     def name(self: Self) -> str:
+        """
+        `Component`'s name.
+        """
         return self._data["name"]
 
     @property
     def display_name(self: Self) -> str:
+        """
+        `Component`'s name displayed in UI.
+        """
         return self._data["displayName"]
 
     @async_cached_property
     async def constraint(self: Self) -> list[int | str]:
+        """
+        `Component`'s constraints on hosts mapping as list of `int` and/or `str` constraint tokens. Possible values:
+        [1] — exactly one component should be installed.
+        [0,1] — one or zero components should be installed.
+        [1,2] — one or two components should be installed.
+        [0,+] — zero or any more components should be installed (default value).
+        [1,odd] — one or more components should be installed; the total amount should be odd.
+        [0,odd] — zero or more components should be installed; if more than zero, the total amount should be odd.
+        [odd] — same as [1,odd].
+        [1,+] — one or more components should be installed.
+        [+] — component should be installed on all hosts of a cluster.
+        :return: list of `int` and/or `str`
+        """
         response = (await self._requester.get(*self.cluster.get_own_path(), "mapping", "components")).as_list()
         for component in response:
             if component["id"] == self.id:
@@ -398,14 +573,23 @@ class Component(
 
     @cached_property
     def service(self: Self) -> Service:
+        """
+        `Component`'s parent `Service` it belongs to.
+        """
         return self._parent
 
     @cached_property
     def cluster(self: Self) -> Cluster:
+        """
+        `Component`'s parent `Cluster` it belongs to.
+        """
         return self.service.cluster
 
     @cached_property
     def hosts(self: Self) -> "HostsAccessor":
+        """
+        `HostsAccessor` for `Component`'s hosts.
+        """
         return HostsAccessor(
             path=(*self.cluster.get_own_path(), "hosts"),
             requester=self._requester,
@@ -414,38 +598,100 @@ class Component(
 
 
 class ComponentsNode(PaginatedChildAccessor[Service, Component]):
+    """
+    Node responsible for accessing `Components` objects.<br>
+    Supports filtering by `name`, `display_name` or `status` component's attributes.
+
+    Examples:
+    ```python
+    # get components which display name is equal to `DataNode` or `None`, if such component does not exist.
+    component: Component | None = await service.components.get_or_none(display_name__eq="DataNode", status="up")
+
+    # get list of components whose status is not equal to `up` or `down`.
+    components: list[Component] = await service.components.filter(status__exclude=["up", "down"])
+    ```
+    """
+
     class_type = Component
+    """
+    @private
+    """
     filtering = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
+    """
+    @private
+    """
 
 
 class HostProvider(Deletable, WithActions, WithUpgrades, WithConfig, WithConfigHostGroups, RootInteractiveObject):
+    """
+    Represents `HostProvider` entity in ADCM terminology.
+    """
+
     PATH_PREFIX = "hostproviders"
+    """@private"""
     filtering = Filtering(FilterByName, FilterByBundle)
+    """@private"""
 
     # data-based properties
 
     @property
     def name(self: Self) -> str:
+        """
+        `HostProvider`'s name.
+        """
         return str(self._data["name"])
 
     @property
     def description(self: Self) -> str:
+        """
+        `HostProvider`'s description.
+        """
         return str(self._data["description"])
 
     @property
     def display_name(self: Self) -> str:
+        """
+        `HostProvider`'s display name.
+        """
         return str(self._data["prototype"]["displayName"])
 
     @cached_property
     def hosts(self: Self) -> "HostsAccessor":
+        """
+        Group of related `Host`s.
+        :return: `HostsAccessor` object
+        """
         return HostsAccessor(path=("hosts",), requester=self._requester, default_query={"hostproviderName": self.name})
 
 
 class HostProvidersNode(PaginatedAccessor[HostProvider]):
+    """
+    Node responsible for accessing `HostProvider` objects.<br>
+    Supports filtering by `name` and `bundle` hostprovider's attributes.
+
+    Examples:
+    ```python
+    # get hostprovider which name contains substring `yandex` or `None`, if such hostprovider does not exist.
+    hostprovider: HostProvider | None = await adcm_client.hostproviders.get_or_none(name__icontains="yandex")
+
+    # get list of hostproviders which bundle is not equal to `bundle_object`.
+    hostproviders: list[HostProvider] = await adcm_client.hostproviders.filter(Filter(attr="bundle", op="ne", value=bundle_object))
+    ```
+    """  # noqa: E501
+
     class_type = HostProvider
+    """@private"""
     filtering = Filtering(FilterByName, FilterByBundle)
+    """@private"""
 
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
+        """
+        Create new `HostProvider` object
+        :param bundle: `Bundle` object in which hostprovider is defined
+        :param name: hostprovider's name
+        :param description: hostprovider's description
+        :return: `HostProvider`
+        """
         response = await self._requester.post(
             "hostproviders",
             data={
@@ -459,18 +705,29 @@ class HostProvidersNode(PaginatedAccessor[HostProvider]):
 
 
 class Host(Deletable, WithActions, WithConfig, WithStatus, WithMaintenanceMode, RootInteractiveObject):
+    """
+    Represents `Host` entity in ADCM terminology.
+    """
+
     PATH_PREFIX = "hosts"
+    """@private"""
 
     @property
     def name(self: Self) -> str:
+        """`Host`'s name"""
         return str(self._data["name"])
 
     @property
     def description(self: Self) -> str:
+        """`Host`'s description"""
         return str(self._data["description"])
 
     @async_cached_property
     async def cluster(self: Self) -> Cluster | None:
+        """
+        `Cluster` to which the host is linked
+        :return: `Cluster` or `None` if host is not linked to any cluster
+        """
         if not self._data["cluster"]:
             return None
 
@@ -478,18 +735,57 @@ class Host(Deletable, WithActions, WithConfig, WithStatus, WithMaintenanceMode, 
 
     @async_cached_property
     async def hostprovider(self: Self) -> HostProvider:
+        """`HostProvider` from which the host was created"""
         return await HostProvider.with_id(requester=self._requester, object_id=self._data["hostprovider"]["id"])
 
 
 class HostsAccessor(PaginatedAccessor[Host]):
+    """
+    Node responsible for accessing `Host` objects.<br>
+    Supports filtering by `name`, `status` and `bundle` host's attributes.
+
+    Examples:
+    ```python
+    # get host mapped to `component` which name contains substring `ssh` or `None`, if such host does not exist.
+    host: Host | None = await component.hosts.get_or_none(name__icontains="ssh")
+
+    # get list of hosts that belongs to `hostprovider` and their bundle is not equal to `bundle_object`.
+    hosts: list[Host] = await hostprovider.filter(Filter(attr="bundle", op="ne", value=bundle_object))
+    ```
+    """
+
     class_type = Host
+    """@private"""
     filtering = Filtering(FilterByName, FilterByStatus, FilterBy("hostprovider", COMMON_OPERATIONS, HostProvider))
+    """@private"""
 
 
 class HostsNode(HostsAccessor):
+    """
+    Node responsible for accessing `Host` objects.<br>
+    Supports filtering by `name`, `status` and `bundle` host's attributes.
+
+    Examples:
+    ```python
+    # get host which name contains substring `ssh` or `None`, if such host does not exist.
+    host: Host | None = await adcm_client.hosts.get_or_none(name__icontains="ssh")
+
+    # get list of hosts which status is not equal to `up`, case-insensitive.
+    hosts: list[Host] = await adcm_client.hosts.filter(status__ine="up")
+    ```
+    """
+
     async def create(
         self: Self, hostprovider: HostProvider, name: str, description: str = "", cluster: Cluster | None = None
     ) -> Host:
+        """
+        Create new `Host` object
+        :param hostprovider: `Hostprovider` object, to which created host will belong
+        :param name: host's name
+        :param description: host's description
+        :param cluster: `Cluster` object or None. If specified, links created host to `cluster`
+        :return: `Host` object
+        """
         data = {"hostproviderId": hostprovider.id, "name": name, "description": description}
         if cluster:
             data["clusterId"] = cluster.id
@@ -499,18 +795,52 @@ class HostsNode(HostsAccessor):
 
 
 class HostsInClusterNode(HostsAccessor):
+    """
+    Node responsible for accessing `Host` objects linked to specific `Cluster`.<br>
+    Supports filtering by `name`, `status` and `bundle` host's attributes.
+
+    Example:
+    ```python
+    # get host in `cluster` which name equals to `host-1`
+    host: Host = await cluster.hosts.get(name__eq="host-1")
+    ```
+    """
+
     def __init__(self: Self, cluster: Cluster) -> None:
+        """@private"""
         path = (*cluster.get_own_path(), "hosts")
         super().__init__(path=path, requester=cluster.requester)
 
         self._root_host_filter = HostsAccessor(path=("hosts",), requester=cluster.requester).filter
 
     async def add(self: Self, host: Host | Iterable[Host] | Filter) -> None:
+        """
+        Link specified `host` to `cluster`.
+        :param host: `Host` object, iterable of `Host` objects or `Filter` object that describes desired set of `Host`s
+
+        Examples:
+        ```python
+        await cluster.hosts.add(host=host)
+        await cluster.hosts.add(host=[host1, host2, host3])
+        await cluster.hosts.add(host=Filter(attr="name", op="eq", value="host-2"))
+        ```
+        """
         hosts = await self._get_hosts(host=host, filter_func=self._root_host_filter)
 
         await self._requester.post(*self._path, data=[{"hostId": host.id} for host in hosts])
 
     async def remove(self: Self, host: Host | Iterable[Host] | Filter) -> None:
+        """
+        Unlink specified `host` from `cluster`.
+        :param host: `Host` object, iterable of `Host` objects or `Filter` object that describes desired set of `Host`s
+
+        Examples:
+        ```python
+        await cluster.hosts.remove(host=host)
+        await cluster.hosts.remove(host=[host1, host2, host3])
+        await cluster.hosts.remove(host=Filter(attr="name", op="eq", value="host-2"))
+        ```
+        """
         hosts = await self._get_hosts(host=host, filter_func=self.filter)
 
         error = await safe_gather(
@@ -536,6 +866,7 @@ class HostsInClusterNode(HostsAccessor):
 
 
 async def default_exit_condition(job: "Job") -> bool:
+    """@private"""
     return await job.get_status() in DEFAULT_JOB_TERMINAL_STATUSES
 
 
