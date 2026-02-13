@@ -18,7 +18,7 @@ import pytest_asyncio
 
 from adcm_aio_client import Filter
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.errors import ConflictError
+from adcm_aio_client.errors import ObjectUpdateError
 from adcm_aio_client.objects import Bundle, Component, Host, Service
 
 pytestmark = [pytest.mark.asyncio]
@@ -266,7 +266,7 @@ async def _test_mm_effects_on_mapping(context: Context) -> None:
     await cluster.refresh()
     mapping = await cluster.mapping
     await mapping.add(component=component, host=host_1)
-    with pytest.raises(ConflictError, match="You can't save hc with hosts in maintenance mode"):
+    with pytest.raises(ObjectUpdateError, match="You can't save hc with hosts in maintenance mode"):
         await mapping.save()
 
     # test map host_2 not in mm
