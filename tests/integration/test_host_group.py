@@ -21,6 +21,7 @@ from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.config._objects import HostGroupConfig
 from adcm_aio_client.errors import (
     MultipleObjectsReturnedError,
+    ObjectCreationError,
     ObjectDoesNotExistError,
     ObjectUpdateError,
 )
@@ -64,6 +65,10 @@ async def test_host_groups(adcm_client: ADCMClient, cluster: Cluster, hostprovid
         await cluster.action_host_groups.create(name=f"host-group-{i}", description=f"host group description {i}")
         await hostprovider.config_host_groups.create(name=f"host-group-{i}", description=f"host group description {i}")
         await cluster.config_host_groups.create(name=f"host-group-{i}", description=f"host group description {i}")
+
+    # create duplicate
+    with pytest.raises(ObjectCreationError):
+        await cluster.action_host_groups.create(name="host-group-1")
 
     action_host_group = await cluster.action_host_groups.get(name__eq="host-group-35")
     config_host_groups_provider = await hostprovider.config_host_groups.get(name__eq="host-group-35")

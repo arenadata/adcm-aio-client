@@ -25,6 +25,7 @@ from adcm_aio_client.errors import (
     BadRequestError,
     ConflictError,
     NotFoundError,
+    ObjectCreationError,
     ObjectUpdateError,
     PermissionDeniedError,
 )
@@ -164,7 +165,9 @@ class HostGroupNode[
     Parent: Cluster | Service | Component | HostProvider,
     Child: ConfigHostGroup | ActionHostGroup,
 ](PaginatedChildAccessor[Parent, Child]):
-    # @convert_object_errors()
+    @convert_object_errors(
+        raise_=ObjectCreationError, on_errors=(PermissionDeniedError, NotFoundError, BadRequestError, ConflictError)
+    )
     async def create(  # TODO: can create HG with subset of `hosts` if adding some of them leads to an error
         self: Self, name: str, description: str = "", hosts: list["Host"] | None = None
     ) -> Child:
