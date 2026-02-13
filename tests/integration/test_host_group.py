@@ -79,12 +79,15 @@ async def test_host_groups(adcm_client: ADCMClient, cluster: Cluster, hostprovid
     await config_host_groups_cluster.hosts.add(host=await adcm_client.hosts.filter(name__contains="test-host"))
 
     # add the same hosts again
-    with pytest.raises(ObjectUpdateError):
+    with pytest.raises(ExceptionGroup) as exc:
         await action_host_group.hosts.add(host=await cluster.hosts.filter(name__contains="test-host"))
-    with pytest.raises(ObjectUpdateError):
+        assert exc.group_contains(ObjectUpdateError, match="HOST_GROUP_CONFLICT")
+    with pytest.raises(ExceptionGroup) as exc:
         await config_host_groups_provider.hosts.add(host=await adcm_client.hosts.filter(name__contains="test-host"))
-    with pytest.raises(ObjectUpdateError):
+        assert exc.group_contains(ObjectUpdateError, match="HOST_GROUP_CONFLICT")
+    with pytest.raises(ExceptionGroup) as exc:
         await config_host_groups_cluster.hosts.add(host=await adcm_client.hosts.filter(name__contains="test-host"))
+        assert exc.group_contains(ObjectUpdateError, match="HOST_GROUP_CONFLICT")
 
     await _test_host_group_properties(cluster.action_host_groups)
     await _test_host_group_accessors(cluster.action_host_groups)

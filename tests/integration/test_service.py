@@ -24,8 +24,8 @@ from adcm_aio_client import Filter
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.config._objects import ConfigHistoryNode, ObjectConfig
 from adcm_aio_client.errors import (
-    ConflictError,
     MultipleObjectsReturnedError,
+    NotFoundError,
     ObjectDoesNotExistError,
     ObjectUpdateError,
 )
@@ -126,7 +126,7 @@ async def test_service_api(cluster_52: Cluster, httpx_client: AsyncClient) -> No
 async def _test_service_create_delete_api(name: str, cluster: Cluster, httpx_client: AsyncClient) -> None:
     target_service_filter = Filter(attr="name", op="eq", value=name)
 
-    with pytest.raises(ConflictError, match="LICENSE_ERROR"):
+    with pytest.raises(ObjectUpdateError, match="LICENSE_ERROR"):
         await cluster.services.add(filter_=target_service_filter)
 
     service = await cluster.services.add(filter_=target_service_filter, accept_license=True)
@@ -147,7 +147,7 @@ async def _test_service_create_delete_api(name: str, cluster: Cluster, httpx_cli
     assert response.status_code == 404
 
     # add non-existent service
-    with pytest.raises(ObjectUpdateError):
+    with pytest.raises(NotFoundError):
         await cluster.services.add(filter_=Filter(attr="name", op="eq", value="123"), accept_license=True)
 
 

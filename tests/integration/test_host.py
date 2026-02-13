@@ -20,6 +20,7 @@ from adcm_aio_client.actions._objects import ActionsAccessor
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.errors import (
     MultipleObjectsReturnedError,
+    NotFoundError,
     ObjectCreationError,
     ObjectDoesNotExistError,
     ObjectUpdateError,
@@ -71,7 +72,7 @@ async def test_host(adcm_client: ADCMClient, hostprovider: HostProvider, cluster
         )
 
     # create duplicate
-    with pytest.raises(ObjectCreationError):
+    with pytest.raises(ObjectCreationError, match="HOST_CONFLICT"):
         await adcm_client.hosts.create(hostprovider=hostprovider, name="test-host-0")
 
     expected = Expected(name="test-host-0", description="", cluster_id=cluster.id, provider_id=hostprovider.id)
@@ -90,8 +91,9 @@ async def test_host(adcm_client: ADCMClient, hostprovider: HostProvider, cluster
     await cluster.hosts.remove(host)
 
     # remove already removed host
-    with pytest.raises(ObjectUpdateError):
+    with pytest.raises(ExceptionGroup) as exc:
         await cluster.hosts.remove(host)
+        assert exc.group_contains(NotFoundError)
 
     await host.delete()
 
