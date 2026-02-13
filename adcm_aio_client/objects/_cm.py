@@ -41,16 +41,7 @@ from adcm_aio_client._types import (
 )
 from adcm_aio_client._utils import safe_gather
 from adcm_aio_client.actions._objects import Action
-from adcm_aio_client.errors import (
-    BadRequestError,
-    ConflictError,
-    InvalidFilterError,
-    NotFoundError,
-    ObjectCreationError,
-    ObjectUpdateError,
-    PermissionDeniedError,
-    WaitTimeoutError,
-)
+from adcm_aio_client.errors import InvalidFilterError, NotFoundError, WaitTimeoutError
 from adcm_aio_client.host_groups._action_group import ActionHostGroup, WithActionHostGroups
 from adcm_aio_client.host_groups._config_group import WithConfigHostGroups
 from adcm_aio_client.mapping._objects import ClusterMapping
@@ -63,7 +54,8 @@ from adcm_aio_client.objects._base import (
     InteractiveChildObject,
     InteractiveObject,
     RootInteractiveObject,
-    convert_object_errors,
+    convert_create_errors,
+    convert_update_errors,
 )
 from adcm_aio_client.objects._common import (
     Deletable,
@@ -163,9 +155,7 @@ class BundlesNode(PaginatedAccessor[Bundle]):
         super().__init__(path, requester)
         self._bundle_retriever = retriever
 
-    @convert_object_errors(
-        raise_=ObjectCreationError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
-    )
+    @convert_create_errors
     async def create(self: Self, source: Path | URLStr, *, accept_license: bool = False) -> Bundle:
         if isinstance(source, Path):
             file = Path(source).read_bytes()
@@ -224,7 +214,7 @@ class Cluster(
 
     # object-specific methods
 
-    @convert_object_errors(raise_=ObjectUpdateError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError))
+    @convert_update_errors
     async def set_ansible_forks(self: Self, value: int) -> Self:
         await self._requester.post(
             *self.get_own_path(), "ansible-config", data={"config": {"defaults": {"forks": value}}, "adcmMeta": {}}
@@ -235,7 +225,7 @@ class Cluster(
 
     @async_cached_property
     async def mapping(self: Self) -> ClusterMapping:
-        return await ClusterMapping.for_cluster(owner=self)
+        return await ClusterMapping.for_cluster(owner=self, object_repr=str(self))
 
     @cached_property
     def services(self: Self) -> "ServicesNode":
@@ -253,9 +243,7 @@ class ClustersNode(PaginatedAccessor[Cluster]):
     class_type = Cluster
     filtering = Filtering(FilterByName, FilterByBundle, FilterByStatus)
 
-    @convert_object_errors(
-        raise_=ObjectCreationError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
-    )
+    @convert_create_errors
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> Cluster:
         response = await self._requester.post(
             "clusters",
@@ -309,7 +297,7 @@ class ServicesNode(PaginatedChildAccessor[Cluster, Service]):
     filtering = Filtering(FilterByName, FilterByDisplayName, FilterByStatus)
     service_add_filtering = Filtering(FilterByName, FilterByDisplayName)
 
-    @convert_object_errors(raise_=ObjectUpdateError, on_errors=(NotFoundError, PermissionDeniedError))
+    @convert_update_errors
     async def add(
         self: Self, filter_: Filter, *, accept_license: bool = False, with_dependencies: bool = False
     ) -> list[Service]:
@@ -463,9 +451,7 @@ class HostProvidersNode(PaginatedAccessor[HostProvider]):
     class_type = HostProvider
     filtering = Filtering(FilterByName, FilterByBundle)
 
-    @convert_object_errors(
-        raise_=ObjectCreationError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
-    )
+    @convert_create_errors
     async def create(self: Self, bundle: Bundle, name: str, description: str = "") -> HostProvider:
         response = await self._requester.post(
             "hostproviders",
@@ -508,9 +494,7 @@ class HostsAccessor(PaginatedAccessor[Host]):
 
 
 class HostsNode(HostsAccessor):
-    @convert_object_errors(
-        raise_=ObjectCreationError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
-    )
+    @convert_create_errors
     async def create(
         self: Self, hostprovider: HostProvider, name: str, description: str = "", cluster: Cluster | None = None
     ) -> Host:
@@ -529,17 +513,13 @@ class HostsInClusterNode(HostsAccessor):
 
         self._root_host_filter = HostsAccessor(path=("hosts",), requester=cluster.requester).filter
 
-    @convert_object_errors(
-        raise_=ObjectUpdateError, on_errors=(BadRequestError, ConflictError, NotFoundError, PermissionDeniedError)
-    )
+    @convert_update_errors
     async def add(self: Self, host: Host | Iterable[Host] | Filter) -> None:
         hosts = await self._get_hosts(host=host, filter_func=self._root_host_filter)
 
         await self._requester.post(*self._path, data=[{"hostId": host.id} for host in hosts])
 
-    @convert_object_errors(
-        raise_=ObjectUpdateError, on_errors=(BadRequestError, ConflictError, NotFoundError, PermissionDeniedError)
-    )
+    @convert_update_errors
     async def remove(self: Self, host: Host | Iterable[Host] | Filter) -> None:
         hosts = await self._get_hosts(host=host, filter_func=self.filter)
 

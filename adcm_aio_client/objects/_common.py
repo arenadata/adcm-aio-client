@@ -17,19 +17,14 @@ from asyncstdlib.functools import cached_property as async_cached_property  # no
 
 from adcm_aio_client.actions._objects import ActionsAccessor, UpgradeNode
 from adcm_aio_client.config._objects import ConfigHistoryNode, ConfigOwner, HostGroupConfig, ObjectConfig
-from adcm_aio_client.errors import ConflictError, NotFoundError, ObjectDeleteError, ObjectDoesNotExistError
-from adcm_aio_client.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
+from adcm_aio_client.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester, convert_delete_errors
 from adcm_aio_client.objects._imports import Imports
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):
+    @convert_delete_errors
     async def delete(self: Self) -> None:
-        try:
-            await self._requester.delete(*self.get_own_path())
-        except NotFoundError as e:
-            raise ObjectDoesNotExistError from e
-        except ConflictError as e:
-            raise ObjectDeleteError(str(e)) from e
+        await self._requester.delete(*self.get_own_path())
 
 
 class WithStatus(WithProtectedRequester, AwareOfOwnPath):
@@ -75,7 +70,12 @@ class WithUpgrades(WithProtectedRequester, AwareOfOwnPath):
 class WithMaintenanceMode(WithProtectedRequester, AwareOfOwnPath):
     @async_cached_property
     async def maintenance_mode(self: Self) -> MaintenanceMode:
-        maintenance_mode = MaintenanceMode(self._data["maintenanceMode"], self._requester, self.get_own_path())  # pyright: ignore[reportAttributeAccessIssue]
+        maintenance_mode = MaintenanceMode(
+            maintenance_mode_status=self._data["maintenanceMode"],  # pyright: ignore[reportAttributeAccessIssue]
+            requester=self._requester,
+            path=self.get_own_path(),
+            object_repr=str(self),
+        )
         self._data["maintenanceMode"] = maintenance_mode.value  # pyright: ignore[reportAttributeAccessIssue]
         return maintenance_mode
 
@@ -89,4 +89,4 @@ class WithJobStatus(WithProtectedRequester, AwareOfOwnPath):
 class WithImports(WithProtectedRequester, AwareOfOwnPath):
     @async_cached_property
     async def imports(self: Self) -> Imports:
-        return Imports(requester=self._requester, path=(*self.get_own_path(), "imports"))
+        return Imports(requester=self._requester, path=(*self.get_own_path(), "imports"), object_repr=str(self))

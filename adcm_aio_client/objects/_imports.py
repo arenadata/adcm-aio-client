@@ -14,23 +14,17 @@ from collections.abc import Collection, Iterable
 from typing import TYPE_CHECKING, Self, Union
 
 from adcm_aio_client._types import Endpoint, Requester
-from adcm_aio_client.errors import (
-    BadRequestError,
-    ConflictError,
-    NotFoundError,
-    ObjectUpdateError,
-    PermissionDeniedError,
-)
-from adcm_aio_client.objects._base import convert_object_errors
+from adcm_aio_client.objects._base import convert_update_errors
 
 if TYPE_CHECKING:
     from adcm_aio_client.objects import Cluster, Service
 
 
 class Imports:
-    def __init__(self: Self, requester: Requester, path: Endpoint) -> None:
+    def __init__(self: Self, requester: Requester, path: Endpoint, object_repr: str) -> None:
         self._requester = requester
         self._path = path
+        self._object_repr = f"{object_repr} imports"
 
     async def _get_source_binds(self: Self) -> set[tuple[int, str]]:
         response = await self._requester.get(*self._path)
@@ -51,25 +45,19 @@ class Imports:
     def _sources_to_binds(self: Self, sources: Collection[Union["Cluster", "Service"]]) -> set[tuple[int, str]]:
         return {(s.id, s.__class__.__name__.lower()) for s in sources}
 
-    @convert_object_errors(
-        raise_=ObjectUpdateError, on_errors=(NotFoundError, PermissionDeniedError, ConflictError, BadRequestError)
-    )
+    @convert_update_errors
     async def add(self: Self, sources: Collection[Union["Cluster", "Service"]]) -> None:
         current_binds = await self._get_source_binds()
         sources_binds = self._sources_to_binds(sources)
         binds_to_set = current_binds.union(sources_binds)
         await self._requester.post(*self._path, data=self._create_post_data(binds_to_set))
 
-    @convert_object_errors(
-        raise_=ObjectUpdateError, on_errors=(NotFoundError, PermissionDeniedError, ConflictError, BadRequestError)
-    )
+    @convert_update_errors
     async def set(self: Self, sources: Collection[Union["Cluster", "Service"]]) -> None:
         binds_to_set = self._sources_to_binds(sources)
         await self._requester.post(*self._path, data=self._create_post_data(binds_to_set))
 
-    @convert_object_errors(
-        raise_=ObjectUpdateError, on_errors=(NotFoundError, PermissionDeniedError, ConflictError, BadRequestError)
-    )
+    @convert_update_errors
     async def remove(self: Self, sources: Collection[Union["Cluster", "Service"]]) -> None:
         current_binds = await self._get_source_binds()
         sources_binds = self._sources_to_binds(sources)

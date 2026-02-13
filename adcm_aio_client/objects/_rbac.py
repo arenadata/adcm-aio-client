@@ -16,9 +16,8 @@ from adcm_aio_client._filters import (
     Filtering,
 )
 from adcm_aio_client._types import EntitySourceType, UserStatus
-from adcm_aio_client.errors import BadRequestError, ConflictError, ObjectCreationError, PermissionDeniedError
 from adcm_aio_client.objects._accessors import PaginatedAccessor
-from adcm_aio_client.objects._base import RootInteractiveObject, convert_object_errors
+from adcm_aio_client.objects._base import RootInteractiveObject, convert_create_errors
 from adcm_aio_client.objects._cm import Cluster, Component, Host, HostProvider, Service
 from adcm_aio_client.objects._common import Deletable
 
@@ -96,9 +95,7 @@ class UsersNode(PaginatedAccessor[LocalUser | LDAPUser]):
 
         return cls_(requester=self._requester, data=data)
 
-    @convert_object_errors(
-        raise_=ObjectCreationError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
-    )
+    @convert_create_errors
     async def create(
         self: Self,
         username: str,
@@ -163,9 +160,7 @@ class GroupsNode(PaginatedAccessor[LocalGroup | LDAPGroup]):
 
         return cls_(requester=self._requester, data=data)
 
-    @convert_object_errors(
-        raise_=ObjectCreationError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
-    )
+    @convert_create_errors
     async def create(
         self: Self, display_name: str, description: str = "", users: list[LocalUser] | None = None
     ) -> LocalGroup:
@@ -238,9 +233,7 @@ class RolesNode(PaginatedAccessor[BuiltInRole | CustomRole | Permission]):
 
         return cls_(requester=self._requester, data=data)
 
-    @convert_object_errors(
-        raise_=ObjectCreationError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
-    )
+    @convert_create_errors
     async def create(
         self: Self, display_name: str, permissions: list[Permission] | None = None, description: str = ""
     ) -> CustomRole:
@@ -312,9 +305,7 @@ class PoliciesNode(PaginatedAccessor[Policy]):
         Host: "host",
     }
 
-    @convert_object_errors(
-        raise_=ObjectCreationError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
-    )
+    @convert_create_errors
     async def create(
         self: Self,
         name: str,

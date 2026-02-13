@@ -28,7 +28,10 @@ from adcm_aio_client._types import (
 )
 from adcm_aio_client.errors import (
     ADCMClientError,
-    NotFoundError,
+    BadRequestError,
+    ConflictError,
+    ObjectCreationError,
+    ObjectDeleteError,
     ObjectUpdateError,
     PermissionDeniedError,
 )
@@ -39,23 +42,51 @@ AsyncFunc = Callable[P, Awaitable[R]]
 DecoratedAsyncFunc = Callable[P, Awaitable[R]]
 
 
-def convert_object_errors(
+def _convert_object_errors(
     raise_: type[ADCMClientError], on_errors: tuple[type[ADCMClientError], ...]
 ) -> Callable[[AsyncFunc[P, R]], DecoratedAsyncFunc[P, R]]:
     def decorator(func: AsyncFunc[P, R]) -> DecoratedAsyncFunc[P, R]:
         @wraps(func)
-        async def wrapper(*arg: P.args, **kwargs: P.kwargs) -> R:
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             try:
-                res = await func(*arg, **kwargs)
+                res = await func(*args, **kwargs)
             except* on_errors as e:
-                msg = str(e.exceptions[0]) if isinstance(e, BaseExceptionGroup) else str(e)
-                raise raise_(msg) from e
+                self = args[0]
+                obj_ref = str(self) if isinstance(self, InteractiveObject) else getattr(self, "_object_repr", "")
+                to_raise = _process_exception_group(e, raise_, obj_ref)
+
+                raise to_raise from e
 
             return res
 
         return wrapper
 
     return decorator
+
+
+def _process_exception_group(
+    exc: ExceptionGroup, raise_: type[ADCMClientError], obj_ref: str
+) -> ADCMClientError | ExceptionGroup:
+    if len(exc.exceptions) == 1:
+        return raise_(f"{obj_ref}: {str(exc.exceptions[0])}")
+
+    exceptions = []
+    for e in exc.exceptions:
+        exceptions.append(raise_(str(e)))
+
+    msg_part = f" {exc.message}" if exc.message else " errors"
+    return ExceptionGroup(f"{obj_ref}{msg_part}", exceptions)
+
+
+convert_create_errors = _convert_object_errors(
+    raise_=ObjectCreationError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
+)
+convert_update_errors = _convert_object_errors(
+    raise_=ObjectUpdateError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
+)
+convert_delete_errors = _convert_object_errors(
+    raise_=ObjectDeleteError, on_errors=(ConflictError, PermissionDeniedError)
+)
 
 
 class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOwnPath):
@@ -111,13 +142,9 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
                 delattr(self, name)
 
     def __str__(self: Self) -> str:
-        return self._repr
+        return self.__repr__()
 
     def __repr__(self: Self) -> str:
-        return self._repr
-
-    @property
-    def _repr(self: Self) -> str:
         name = getattr(self, "display_name", None) or getattr(self, "name", None)
         name = f" {name}" if isinstance(name, str) else ""
         return f"<{self.__class__.__name__} #{self.id}{name}>"
@@ -159,11 +186,16 @@ class InteractiveChildObject[Parent: InteractiveObject](InteractiveObject):
 
 class MaintenanceMode:
     def __init__(
-        self: Self, maintenance_mode_status: MaintenanceModeStatus, requester: Requester, path: Endpoint
+        self: Self,
+        maintenance_mode_status: MaintenanceModeStatus,
+        requester: Requester,
+        path: Endpoint,
+        object_repr: str,
     ) -> None:
         self._maintenance_mode_status = maintenance_mode_status
         self._requester = requester
         self._path = path
+        self._object_repr = f"{object_repr} maintenance mode"
 
     def __repr__(self: Self) -> str:
         return self._maintenance_mode_status
@@ -175,14 +207,14 @@ class MaintenanceMode:
     def value(self: Self) -> str:
         return self._maintenance_mode_status
 
-    @convert_object_errors(raise_=ObjectUpdateError, on_errors=(PermissionDeniedError, NotFoundError))
+    @convert_update_errors
     async def on(self: Self) -> None:
         current_mm_status = await self._requester.post(
             *self._path, "maintenance-mode", data={"maintenanceMode": MaintenanceModeStatus.ON}
         )
         self._maintenance_mode_status = current_mm_status.as_dict()["maintenanceMode"]
 
-    @convert_object_errors(raise_=ObjectUpdateError, on_errors=(PermissionDeniedError, NotFoundError))
+    @convert_update_errors
     async def off(self: Self) -> None:
         current_mm_status = await self._requester.post(
             *self._path, "maintenance-mode", data={"maintenanceMode": MaintenanceModeStatus.OFF}
