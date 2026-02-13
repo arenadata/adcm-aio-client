@@ -21,6 +21,13 @@ from adcm_aio_client import Filter
 from adcm_aio_client._filters import FilterValue
 from adcm_aio_client._types import Endpoint, HostID, QueryParameters, Requester, RequesterResponse
 from adcm_aio_client._utils import safe_gather
+from adcm_aio_client.errors import (
+    BadRequestError,
+    ConflictError,
+    NotFoundError,
+    ObjectUpdateError,
+    PermissionDeniedError,
+)
 from adcm_aio_client.objects._accessors import (
     DefaultQueryParams as AccessorFilter,
 )
@@ -29,6 +36,7 @@ from adcm_aio_client.objects._accessors import (
     PaginatedChildAccessor,
     filters_to_inline,
 )
+from adcm_aio_client.objects._base import convert_object_errors
 
 if TYPE_CHECKING:
     from adcm_aio_client.host_groups._action_group import ActionHostGroup
@@ -50,14 +58,23 @@ class HostsInHostGroupNode(NonPaginatedAccessor["Host"]):
 
         return super().__new__(cls)
 
+    @convert_object_errors(
+        raise_=ObjectUpdateError, on_errors=(BadRequestError, ConflictError, NotFoundError, PermissionDeniedError)
+    )
     async def add(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> None:
         host_ids = await self._retrieve_host_ids(host=host, sources=(self._candidates_ep,))
         await self._add_hosts_to_group(host_ids)
 
+    @convert_object_errors(
+        raise_=ObjectUpdateError, on_errors=(BadRequestError, ConflictError, NotFoundError, PermissionDeniedError)
+    )
     async def remove(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> None:
         host_ids = await self._retrieve_host_ids(host=host, sources=(self._path,))
         await self._remove_hosts_from_group(host_ids)
 
+    @convert_object_errors(
+        raise_=ObjectUpdateError, on_errors=(BadRequestError, ConflictError, NotFoundError, PermissionDeniedError)
+    )
     async def set(self: Self, host: Union["Host", Iterable["Host"], Filter]) -> None:
         hosts_to_set = await self._retrieve_host_ids(host=host, sources=(self._candidates_ep, self._path))
 
@@ -147,6 +164,7 @@ class HostGroupNode[
     Parent: Cluster | Service | Component | HostProvider,
     Child: ConfigHostGroup | ActionHostGroup,
 ](PaginatedChildAccessor[Parent, Child]):
+    # @convert_object_errors()
     async def create(  # TODO: can create HG with subset of `hosts` if adding some of them leads to an error
         self: Self, name: str, description: str = "", hosts: list["Host"] | None = None
     ) -> Child:

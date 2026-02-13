@@ -21,9 +21,11 @@ import asyncio
 from adcm_aio_client import Filter
 from adcm_aio_client._filters import FilterByDisplayName, FilterByName, FilterByStatus, Filtering
 from adcm_aio_client._types import ComponentID, HostID, Requester
+from adcm_aio_client.errors import ConflictError, ObjectUpdateError, PermissionDeniedError
 from adcm_aio_client.mapping import apply_local_changes, apply_remote_changes
 from adcm_aio_client.mapping._types import LocalMappings, MappingEntry, MappingPair, MappingRefreshStrategy
 from adcm_aio_client.objects._accessors import NonPaginatedAccessor, filters_to_inline
+from adcm_aio_client.objects._base import convert_object_errors
 
 if TYPE_CHECKING:
     from adcm_aio_client.objects import Cluster, Component, Host, Service
@@ -160,6 +162,7 @@ class ClusterMapping(ActionMapping):
         await instance.refresh(strategy=apply_remote_changes)
         return instance
 
+    @convert_object_errors(raise_=ObjectUpdateError, on_errors=(ConflictError, PermissionDeniedError))
     async def save(self: Self) -> Self:
         data = self._to_payload()
 

@@ -19,7 +19,11 @@ from adcm_aio_client import Filter
 from adcm_aio_client.actions._objects import ActionsAccessor
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.config._objects import HostGroupConfig
-from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.errors import (
+    MultipleObjectsReturnedError,
+    ObjectDoesNotExistError,
+    ObjectUpdateError,
+)
 from adcm_aio_client.host_groups._action_group import (
     ActionHostGroup,
     ActionHostGroupNode,
@@ -68,6 +72,14 @@ async def test_host_groups(adcm_client: ADCMClient, cluster: Cluster, hostprovid
     await action_host_group.hosts.add(host=await cluster.hosts.filter(name__contains="test-host"))
     await config_host_groups_provider.hosts.add(host=await adcm_client.hosts.filter(name__contains="test-host"))
     await config_host_groups_cluster.hosts.add(host=await adcm_client.hosts.filter(name__contains="test-host"))
+
+    # add the same hosts again
+    with pytest.raises(ObjectUpdateError):
+        await action_host_group.hosts.add(host=await cluster.hosts.filter(name__contains="test-host"))
+    with pytest.raises(ObjectUpdateError):
+        await config_host_groups_provider.hosts.add(host=await adcm_client.hosts.filter(name__contains="test-host"))
+    with pytest.raises(ObjectUpdateError):
+        await config_host_groups_cluster.hosts.add(host=await adcm_client.hosts.filter(name__contains="test-host"))
 
     await _test_host_group_properties(cluster.action_host_groups)
     await _test_host_group_accessors(cluster.action_host_groups)

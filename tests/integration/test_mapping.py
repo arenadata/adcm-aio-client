@@ -22,7 +22,7 @@ import pytest_asyncio
 
 from adcm_aio_client import ADCMSession, Credentials, Filter
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.errors import ConflictError
+from adcm_aio_client.errors import ConflictError, ObjectUpdateError
 from adcm_aio_client.mapping import apply_local_changes, apply_remote_changes
 from adcm_aio_client.mapping._types import MappingPair
 from adcm_aio_client.objects import Bundle, Cluster, Component, Host
@@ -204,6 +204,16 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
     )
     actual_mapping = build_name_mapping(mapping.iter())
     assert actual_mapping == expected_mapping
+
+    # add not linked host to cluster
+    mapping.empty()
+    await mapping.save()
+    await cluster.hosts.remove(h5)
+    await h5.refresh()
+    assert await h5.cluster is None
+    await mapping.add(component=c1, host=h5)
+    with pytest.raises(ObjectUpdateError):
+        await mapping.save()
 
 
 async def test_refresh_strategies(cluster: Cluster, hosts: FiveHosts) -> None:

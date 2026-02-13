@@ -5,7 +5,7 @@ from httpx import AsyncClient, Timeout
 import pytest
 
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectCreationError, ObjectDoesNotExistError
 from adcm_aio_client.objects import BuiltInRole, CustomRole, Permission
 
 pytestmark = [pytest.mark.asyncio]
@@ -76,6 +76,14 @@ async def _test_create_delete_api(adcm_client: ADCMClient, httpx_client: AsyncCl
         ],
     }
     await assert_role(role, expected, httpx_client)
+
+    # create duplicate
+    with pytest.raises(ObjectCreationError):
+        await adcm_client.roles.create(display_name="Test role", permissions=[permission], description="123")
+
+    # wrong arguments
+    with pytest.raises(ObjectCreationError):
+        await adcm_client.roles.create(display_name="Test role", permissions=[role], description="123")  # pyright: ignore[reportArgumentType]
 
     await role.delete()
     response = await httpx_client.get(f"rbac/roles/{role.id}/")

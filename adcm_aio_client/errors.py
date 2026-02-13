@@ -124,6 +124,15 @@ class OperationError(AccessorError):
 class HostNotInClusterError(ADCMClientError): ...
 
 
+class ObjectCreationError(ADCMClientError): ...
+
+
+class ObjectDeleteError(ADCMClientError): ...
+
+
+class ObjectUpdateError(ADCMClientError): ...
+
+
 # Config
 
 

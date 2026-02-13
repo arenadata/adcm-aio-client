@@ -17,13 +17,19 @@ from asyncstdlib.functools import cached_property as async_cached_property  # no
 
 from adcm_aio_client.actions._objects import ActionsAccessor, UpgradeNode
 from adcm_aio_client.config._objects import ConfigHistoryNode, ConfigOwner, HostGroupConfig, ObjectConfig
+from adcm_aio_client.errors import ConflictError, NotFoundError, ObjectDeleteError, ObjectDoesNotExistError
 from adcm_aio_client.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
 from adcm_aio_client.objects._imports import Imports
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):
     async def delete(self: Self) -> None:
-        await self._requester.delete(*self.get_own_path())
+        try:
+            await self._requester.delete(*self.get_own_path())
+        except NotFoundError as e:
+            raise ObjectDoesNotExistError from e
+        except ConflictError as e:
+            raise ObjectDeleteError(str(e)) from e
 
 
 class WithStatus(WithProtectedRequester, AwareOfOwnPath):

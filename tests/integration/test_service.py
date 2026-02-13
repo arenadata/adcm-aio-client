@@ -23,7 +23,12 @@ import pytest_asyncio
 from adcm_aio_client import Filter
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.config._objects import ConfigHistoryNode, ObjectConfig
-from adcm_aio_client.errors import ConflictError, MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.errors import (
+    ConflictError,
+    MultipleObjectsReturnedError,
+    ObjectDoesNotExistError,
+    ObjectUpdateError,
+)
 from adcm_aio_client.objects import Cluster, License, Service
 from adcm_aio_client.objects._imports import Imports
 from tests.integration.bundle import pack_bundle
@@ -140,6 +145,10 @@ async def _test_service_create_delete_api(name: str, cluster: Cluster, httpx_cli
     await service.delete()
     response = await httpx_client.get(service_url_part)
     assert response.status_code == 404
+
+    # add non-existent service
+    with pytest.raises(ObjectUpdateError):
+        await cluster.services.add(filter_=Filter(attr="name", op="eq", value="123"), accept_license=True)
 
 
 async def _test_services_node(cluster: Cluster, num_services: int) -> None:

@@ -11,9 +11,10 @@
 # limitations under the License.
 
 from collections import deque
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from functools import cached_property
-from typing import Any, Self
+from functools import cached_property, wraps
+from typing import Any, ParamSpec, Self, TypeVar
 
 from asyncstdlib.functools import CachedProperty
 
@@ -25,6 +26,36 @@ from adcm_aio_client._types import (
     WithProtectedRequester,
     WithRequesterProperty,
 )
+from adcm_aio_client.errors import (
+    ADCMClientError,
+    NotFoundError,
+    ObjectUpdateError,
+    PermissionDeniedError,
+)
+
+P = ParamSpec("P")
+R = TypeVar("R")
+AsyncFunc = Callable[P, Awaitable[R]]
+DecoratedAsyncFunc = Callable[P, Awaitable[R]]
+
+
+def convert_object_errors(
+    raise_: type[ADCMClientError], on_errors: tuple[type[ADCMClientError], ...]
+) -> Callable[[AsyncFunc[P, R]], DecoratedAsyncFunc[P, R]]:
+    def decorator(func: AsyncFunc[P, R]) -> DecoratedAsyncFunc[P, R]:
+        @wraps(func)
+        async def wrapper(*arg: P.args, **kwargs: P.kwargs) -> R:
+            try:
+                res = await func(*arg, **kwargs)
+            except* on_errors as e:
+                msg = str(e.exceptions[0]) if isinstance(e, BaseExceptionGroup) else str(e)
+                raise raise_(msg) from e
+
+            return res
+
+        return wrapper
+
+    return decorator
 
 
 class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOwnPath):
@@ -144,12 +175,14 @@ class MaintenanceMode:
     def value(self: Self) -> str:
         return self._maintenance_mode_status
 
+    @convert_object_errors(raise_=ObjectUpdateError, on_errors=(PermissionDeniedError, NotFoundError))
     async def on(self: Self) -> None:
         current_mm_status = await self._requester.post(
             *self._path, "maintenance-mode", data={"maintenanceMode": MaintenanceModeStatus.ON}
         )
         self._maintenance_mode_status = current_mm_status.as_dict()["maintenanceMode"]
 
+    @convert_object_errors(raise_=ObjectUpdateError, on_errors=(PermissionDeniedError, NotFoundError))
     async def off(self: Self) -> None:
         current_mm_status = await self._requester.post(
             *self._path, "maintenance-mode", data={"maintenanceMode": MaintenanceModeStatus.OFF}

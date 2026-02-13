@@ -18,7 +18,7 @@ import pytest
 import pytest_asyncio
 
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.errors import ObjectDoesNotExistError
+from adcm_aio_client.errors import ObjectCreationError, ObjectDoesNotExistError
 from adcm_aio_client.objects import Bundle
 from adcm_aio_client.requesters import BundleRetrieverInterface, DefaultRequester
 from tests.integration.bundle import create_bundles_by_template, pack_bundle
@@ -45,6 +45,9 @@ class Expected(NamedTuple):
 async def load_bundles(adcm_client: ADCMClient, tmp_path: Path) -> list[Bundle]:
     created_bundles = []
     for folder_path in BUNDLES.iterdir():
+        if folder_path.name == "broken_bundle":
+            continue
+
         folder_path = BUNDLES / folder_path
         if folder_path.is_dir():
             target_path = tmp_path / folder_path.name
@@ -108,6 +111,15 @@ async def _test_bundle_create_delete(context: Context) -> None:
     bundle = await context.client.bundles.create(source=bundle_path, accept_license=True)
 
     assert (await bundle.license).state == "accepted"
+
+    # create duplicate
+    with pytest.raises(ObjectCreationError):
+        await context.client.bundles.create(source=bundle_path, accept_license=True)
+
+    # broken bundle
+    with pytest.raises(ObjectCreationError):
+        bundle_path = pack_bundle(from_dir=BUNDLES / "broken_bundle", to=context.tempdir)
+        await context.client.bundles.create(source=bundle_path, accept_license=True)
 
 
 async def _test_bundle_accessors(context: Context) -> None:

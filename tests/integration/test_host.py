@@ -18,7 +18,12 @@ import pytest_asyncio
 from adcm_aio_client import Filter
 from adcm_aio_client.actions._objects import ActionsAccessor
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.errors import (
+    MultipleObjectsReturnedError,
+    ObjectCreationError,
+    ObjectDoesNotExistError,
+    ObjectUpdateError,
+)
 from adcm_aio_client.host_groups._action_group import HostsInActionHostGroupNode
 from adcm_aio_client.host_groups._config_group import HostsInConfigHostGroupNode
 from adcm_aio_client.objects import (
@@ -65,6 +70,10 @@ async def test_host(adcm_client: ADCMClient, hostprovider: HostProvider, cluster
             name=f"test-host-{i}",
         )
 
+    # create duplicate
+    with pytest.raises(ObjectCreationError):
+        await adcm_client.hosts.create(hostprovider=hostprovider, name="test-host-0")
+
     expected = Expected(name="test-host-0", description="", cluster_id=cluster.id, provider_id=hostprovider.id)
     host = await adcm_client.hosts.get(name__eq=expected.name)
     await cluster.hosts.add(host=host)
@@ -79,7 +88,23 @@ async def test_host(adcm_client: ADCMClient, hostprovider: HostProvider, cluster
     await _test_pagination(cluster.hosts)
     host = await adcm_client.hosts.get(name__icontains="T-10")
     await cluster.hosts.remove(host)
+
+    # remove already removed host
+    with pytest.raises(ObjectUpdateError):
+        await cluster.hosts.remove(host)
+
     await host.delete()
+
+    # remove mapped host
+    service = (await cluster.services.add(filter_=Filter(attr="name", op="eq", value="example_1")))[0]
+    mapping = await cluster.mapping
+    component = await service.components.get(name__eq="first")
+    mapped_host = await cluster.hosts.get(name__eq="test-host-11")
+    await mapping.add(component=component, host=mapped_host)
+    await mapping.save()
+
+    with pytest.raises(ObjectUpdateError):
+        await cluster.hosts.remove(mapped_host)
 
 
 async def test_host_in_host_group(adcm_client: ADCMClient, hostprovider: HostProvider, cluster: Cluster) -> None:
