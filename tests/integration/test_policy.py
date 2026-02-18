@@ -5,6 +5,7 @@ from httpx import AsyncClient, Timeout
 import pytest
 import pytest_asyncio
 
+from adcm_aio_client import Filter
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
 from adcm_aio_client.objects import (
@@ -15,6 +16,7 @@ from adcm_aio_client.objects import (
     LocalGroup,
     Permission,
     Policy,
+    Service,
 )
 
 pytestmark = [pytest.mark.asyncio]
@@ -71,11 +73,26 @@ async def simple_cluster(adcm_client: ADCMClient, simple_cluster_bundle: Bundle)
     return await adcm_client.clusters.create(bundle=simple_cluster_bundle, name="Simple cluster")
 
 
+@pytest_asyncio.fixture()
+async def complex_cluster_with_service(adcm_client: ADCMClient, complex_cluster_bundle: Bundle) -> Cluster:
+    cluster = await adcm_client.clusters.create(bundle=complex_cluster_bundle, name="Complex cluster")
+    await cluster.services.add(filter_=Filter(attr="name", op="eq", value="example_1"))
+
+    return cluster
+
+
 async def test_policy(
-    adcm_client: ADCMClient, httpx_client: AsyncClient, simple_cluster: Cluster, group: LocalGroup
+    adcm_client: ADCMClient,
+    httpx_client: AsyncClient,
+    simple_cluster: Cluster,
+    complex_cluster_with_service: Cluster,
+    group: LocalGroup,
 ) -> None:
     await _test_create_delete_api(
         adcm_client=adcm_client, httpx_client=httpx_client, group=group, cluster=simple_cluster
+    )
+    await _test_policy_objects(
+        adcm_client=adcm_client, httpx_client=httpx_client, group=group, cluster=complex_cluster_with_service
     )
     await _test_policies_node(adcm_client=adcm_client, httpx_client=httpx_client, cluster=simple_cluster, group=group)
 
@@ -98,7 +115,9 @@ async def _test_create_delete_api(
         "name": name,
         "description": "dsc",
         "isBuiltIn": False,
-        "objects": [{"id": cluster.id, "type": "cluster", "name": cluster.name, "displayName": cluster.name}],
+        "objects": [
+            {"id": cluster.id, "type": "cluster", "name": cluster.name, "displayName": cluster.name, "parentId": None}
+        ],
         "groups": [{"id": group.id, "name": f"{group.display_name} [local]", "displayName": group.display_name}],
         "role": {"id": role.id, "name": role.name, "displayName": role.display_name},
     }
@@ -133,6 +152,41 @@ async def _test_create_delete_api(
     await policy_without_objects.delete()
     response = await httpx_client.get(f"rbac/policies/{policy_without_objects.id}/")
     assert response.status_code == 404
+
+
+async def _test_policy_objects(
+    adcm_client: ADCMClient, httpx_client: AsyncClient, group: LocalGroup, cluster: Cluster
+) -> None:
+    service = await cluster.services.get(name__eq="example_1")
+    role = cast(BuiltInRole, await adcm_client.roles.get(display_name__eq="Service Administrator"))
+    policy = await adcm_client.policies.create(name="My service policy", role=role, objects=[service], groups=[group])
+
+    expected = {
+        "id": policy.id,
+        "name": "My service policy",
+        "description": "",
+        "isBuiltIn": False,
+        "objects": [
+            {
+                "id": service.id,
+                "type": "service",
+                "name": service.name,
+                "displayName": service.display_name,
+                "parentId": cluster.id,
+            }
+        ],
+        "groups": [{"id": group.id, "name": f"{group.display_name} [local]", "displayName": group.display_name}],
+        "role": {"id": role.id, "name": role.name, "displayName": role.display_name},
+    }
+    await assert_policy(policy, expected, httpx_client)
+
+    objects = await policy.objects
+    assert len(objects) == 1
+
+    obj = objects[0]
+    assert isinstance(obj, Service)
+    assert obj == service
+    assert obj._parent == cluster
 
 
 async def _test_policies_node(

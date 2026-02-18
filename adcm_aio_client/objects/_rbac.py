@@ -248,8 +248,6 @@ class Policy(Deletable, RootInteractiveObject):
     PATH_PREFIX = "rbac/policies"
     _obj_type_cls_map = {
         "cluster": Cluster,
-        "service": Service,
-        "component": Component,
         "provider": HostProvider,
         "host": Host,
     }
@@ -268,19 +266,19 @@ class Policy(Deletable, RootInteractiveObject):
 
     @async_cached_property
     async def objects(self: Self) -> list[PolicyObject]:
-        cls_ids_map = defaultdict(set)
-        for obj in self._data["objects"]:
-            if (obj_type := obj["type"]) in {"service", "component"}:
-                # TODO: now it is impossible to get service/component object from policy.objects
-                #  since there is no info about parent objects in policy.objects field
-                continue
+        cls_create_kwargs_map = defaultdict(list)
 
-            obj_cls = self._obj_type_cls_map[obj_type]
-            cls_ids_map[obj_cls].add(obj["id"])
+        for obj in self._data["objects"]:
+            if (obj_type := obj["type"]) == "service":
+                parent = await Cluster.with_id(requester=self._requester, object_id=obj["parentId"])
+                cls_create_kwargs_map[Service].append({"parent": parent, "object_id": obj["id"]})
+            else:
+                obj_cls = self._obj_type_cls_map[obj_type]
+                cls_create_kwargs_map[obj_cls].append({"requester": self._requester, "object_id": obj["id"]})
 
         coros = []
-        for cls_, ids in cls_ids_map.items():
-            coros.extend(cls_.with_id(requester=self.requester, object_id=id_) for id_ in ids)
+        for cls_, kwargs_list in cls_create_kwargs_map.items():
+            coros.extend(cls_.with_id(**kwargs) for kwargs in kwargs_list)
 
         return list(await asyncio.gather(*coros))
 
