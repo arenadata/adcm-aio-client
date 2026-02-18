@@ -186,7 +186,7 @@ async def _test_policy_objects(
     obj = objects[0]
     assert isinstance(obj, Service)
     assert obj == service
-    assert obj._parent == cluster
+    assert obj.cluster == obj._parent == cluster
 
 
 async def _test_policies_node(
