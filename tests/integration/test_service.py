@@ -126,7 +126,7 @@ async def test_service_api(cluster_52: Cluster, httpx_client: AsyncClient) -> No
 async def _test_service_create_delete_api(name: str, cluster: Cluster, httpx_client: AsyncClient) -> None:
     target_service_filter = Filter(attr="name", op="eq", value=name)
 
-    with pytest.raises(ObjectUpdateError, match="LICENSE_ERROR"):
+    with pytest.raises(ObjectUpdateError, match=f"clusters/{cluster.id}/services: .*LICENSE_ERROR"):
         await cluster.services.add(filter_=target_service_filter)
 
     service = await cluster.services.add(filter_=target_service_filter, accept_license=True)

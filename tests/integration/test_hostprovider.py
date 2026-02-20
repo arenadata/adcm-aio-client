@@ -87,7 +87,7 @@ async def _test_hostprovider_accessors(
     await hostprovider.delete()
 
     # wrong bundle
-    with pytest.raises(ObjectCreationError):
+    with pytest.raises(ObjectCreationError, match="hostproviders: .*HOSTPROVIDER_CREATE_ERROR"):
         await adcm_client.hostproviders.create(bundle=simple_cluster_bundle, name="pr")
 
 

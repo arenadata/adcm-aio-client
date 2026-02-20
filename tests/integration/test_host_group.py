@@ -67,7 +67,7 @@ async def test_host_groups(adcm_client: ADCMClient, cluster: Cluster, hostprovid
         await cluster.config_host_groups.create(name=f"host-group-{i}", description=f"host group description {i}")
 
     # create duplicate
-    with pytest.raises(ObjectCreationError):
+    with pytest.raises(ObjectCreationError, match=f"clusters/{cluster.id}/action-host-groups: .*CREATE_CONFLICT"):
         await cluster.action_host_groups.create(name="host-group-1")
 
     action_host_group = await cluster.action_host_groups.get(name__eq="host-group-35")
@@ -79,15 +79,29 @@ async def test_host_groups(adcm_client: ADCMClient, cluster: Cluster, hostprovid
     await config_host_groups_cluster.hosts.add(host=await adcm_client.hosts.filter(name__contains="test-host"))
 
     # add the same hosts again
-    with pytest.raises(ExceptionGroup) as exc:
+    msg = (
+        f"clusters/{cluster.id}/action-host-groups/{action_host_group.id}/hosts: "
+        f"Some hosts can't be added to action host group"
+    )
+    with pytest.raises(ExceptionGroup, match=msg) as exc:
         await action_host_group.hosts.add(host=await cluster.hosts.filter(name__contains="test-host"))
-        assert exc.group_contains(ObjectUpdateError, match="HOST_GROUP_CONFLICT")
-    with pytest.raises(ExceptionGroup) as exc:
+        assert exc.group_contains(ObjectUpdateError, match="GROUP_CONFIG_HOST_EXISTS")
+
+    msg = (
+        f"hostproviders/{hostprovider.id}/config-groups/{config_host_groups_provider.id}/hosts: "
+        f"Some hosts can't be added to config host group"
+    )
+    with pytest.raises(ExceptionGroup, match=msg) as exc:
         await config_host_groups_provider.hosts.add(host=await adcm_client.hosts.filter(name__contains="test-host"))
-        assert exc.group_contains(ObjectUpdateError, match="HOST_GROUP_CONFLICT")
-    with pytest.raises(ExceptionGroup) as exc:
+        assert exc.group_contains(ObjectUpdateError, match="GROUP_CONFIG_HOST_EXISTS")
+
+    msg = (
+        f"clusters/{cluster.id}/config-groups/{config_host_groups_cluster.id}/hosts: "
+        f"Some hosts can't be added to config host group"
+    )
+    with pytest.raises(ExceptionGroup, match=msg) as exc:
         await config_host_groups_cluster.hosts.add(host=await adcm_client.hosts.filter(name__contains="test-host"))
-        assert exc.group_contains(ObjectUpdateError, match="HOST_GROUP_CONFLICT")
+        assert exc.group_contains(ObjectUpdateError, match="GROUP_CONFIG_HOST_EXISTS")
 
     await _test_host_group_properties(cluster.action_host_groups)
     await _test_host_group_accessors(cluster.action_host_groups)

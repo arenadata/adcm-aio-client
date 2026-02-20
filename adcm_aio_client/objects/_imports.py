@@ -21,10 +21,9 @@ if TYPE_CHECKING:
 
 
 class Imports:
-    def __init__(self: Self, requester: Requester, path: Endpoint, object_repr: str) -> None:
+    def __init__(self: Self, requester: Requester, path: Endpoint) -> None:
         self._requester = requester
         self._path = path
-        self._object_repr = f"{object_repr} imports"
 
     async def _get_source_binds(self: Self) -> set[tuple[int, str]]:
         response = await self._requester.get(*self._path)
@@ -63,3 +62,6 @@ class Imports:
         sources_binds = self._sources_to_binds(sources)
         binds_to_set = current_binds.difference(sources_binds)
         await self._requester.post(*self._path, data=self._create_post_data(binds_to_set))
+
+    def __str__(self: Self) -> str:
+        return "/".join(str(item) for item in self._path)

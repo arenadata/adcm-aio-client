@@ -74,7 +74,6 @@ class WithMaintenanceMode(WithProtectedRequester, AwareOfOwnPath):
             maintenance_mode_status=self._data["maintenanceMode"],  # pyright: ignore[reportAttributeAccessIssue]
             requester=self._requester,
             path=self.get_own_path(),
-            object_repr=str(self),
         )
         self._data["maintenanceMode"] = maintenance_mode.value  # pyright: ignore[reportAttributeAccessIssue]
         return maintenance_mode
@@ -89,4 +88,4 @@ class WithJobStatus(WithProtectedRequester, AwareOfOwnPath):
 class WithImports(WithProtectedRequester, AwareOfOwnPath):
     @async_cached_property
     async def imports(self: Self) -> Imports:
-        return Imports(requester=self._requester, path=(*self.get_own_path(), "imports"), object_repr=str(self))
+        return Imports(requester=self._requester, path=(*self.get_own_path(), "imports"))

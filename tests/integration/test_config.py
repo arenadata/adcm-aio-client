@@ -651,7 +651,10 @@ async def two_sessions_case_6(obj1: Service, obj2: Service, host: Host) -> None:
     await chg1.hosts.add(host=host)
 
     # user 2
-    with pytest.raises(ObjectUpdateError, match="GROUP_CONFIG_HOST_ERROR"):
+    msg_pattern = (
+        f"clusters/{obj2.cluster.id}/services/{obj2.id}/config-groups/{chg2.id}/hosts: .*GROUP_CONFIG_HOST_ERROR"
+    )
+    with pytest.raises(ObjectUpdateError, match=msg_pattern):
         await chg2.hosts.add(host=host)
 
 

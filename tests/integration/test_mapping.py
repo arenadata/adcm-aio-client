@@ -205,14 +205,14 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
     actual_mapping = build_name_mapping(mapping.iter())
     assert actual_mapping == expected_mapping
 
-    # add not linked host to cluster
+    # add foreign host
     mapping.empty()
     await mapping.save()
     await cluster.hosts.remove(h5)
     await h5.refresh()
     assert await h5.cluster is None
     await mapping.add(component=c1, host=h5)
-    with pytest.raises(ObjectUpdateError):
+    with pytest.raises(ObjectUpdateError, match=f"clusters/{cluster.id}/mapping: .*HOST_NOT_FOUND"):
         await mapping.save()
 
 
@@ -530,5 +530,6 @@ async def test_mapping_and_ahg(cluster: Cluster, second_adcm_client: ADCMClient,
     cluster2 = await second_adcm_client.clusters.get(name__eq=cluster.name)
     service2 = await cluster2.services.get(name__eq=service.name)
 
-    with pytest.raises(ObjectCreationError, match="HOST_GROUP_CONFLICT"):
+    msg = f"clusters/{cluster2.id}/services/{service2.id}/action-host-groups: .*HOST_GROUP_CONFLICT"
+    with pytest.raises(ObjectCreationError, match=msg):
         await service2.action_host_groups.create(name="Service AHG 2", hosts=[host])

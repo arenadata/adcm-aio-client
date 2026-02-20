@@ -78,11 +78,11 @@ async def _test_create_delete_api(adcm_client: ADCMClient, httpx_client: AsyncCl
     await assert_role(role, expected, httpx_client)
 
     # create duplicate
-    with pytest.raises(ObjectCreationError):
+    with pytest.raises(ObjectCreationError, match="rbac/roles: .*ROLE_CREATE_ERROR"):
         await adcm_client.roles.create(display_name="Test role", permissions=[permission], description="123")
 
     # wrong arguments
-    with pytest.raises(ObjectCreationError):
+    with pytest.raises(ObjectCreationError, match="rbac/roles: .*BAD_REQUEST"):
         await adcm_client.roles.create(display_name="Test role", permissions=[role], description="123")  # pyright: ignore[reportArgumentType]
 
     await role.delete()

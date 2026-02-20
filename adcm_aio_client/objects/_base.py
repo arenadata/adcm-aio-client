@@ -43,7 +43,7 @@ DecoratedAsyncFunc = Callable[P, Awaitable[R]]
 
 
 def _convert_object_errors(
-    raise_: type[ADCMClientError], on_errors: tuple[type[ADCMClientError], ...]
+    raise_as: type[ADCMClientError], on_errors: tuple[type[ADCMClientError], ...]
 ) -> Callable[[AsyncFunc[P, R]], DecoratedAsyncFunc[P, R]]:
     def decorator(func: AsyncFunc[P, R]) -> DecoratedAsyncFunc[P, R]:
         @wraps(func)
@@ -52,8 +52,7 @@ def _convert_object_errors(
                 res = await func(*args, **kwargs)
             except* on_errors as e:
                 self = args[0]
-                obj_ref = str(self) if isinstance(self, InteractiveObject) else getattr(self, "_object_repr", "")
-                to_raise = _process_exception_group(e, raise_, obj_ref)
+                to_raise = _process_exception_group(exc=e, raise_as=raise_as, obj_ref=str(self))
 
                 raise to_raise from e
 
@@ -65,27 +64,27 @@ def _convert_object_errors(
 
 
 def _process_exception_group(
-    exc: ExceptionGroup, raise_: type[ADCMClientError], obj_ref: str
+    exc: ExceptionGroup, raise_as: type[ADCMClientError], obj_ref: str
 ) -> ADCMClientError | ExceptionGroup:
     if len(exc.exceptions) == 1:
-        return raise_(f"{obj_ref}: {str(exc.exceptions[0])}")
+        return raise_as(f"{obj_ref}: {str(exc.exceptions[0])}")
 
     exceptions = []
     for e in exc.exceptions:
-        exceptions.append(raise_(str(e)))
+        exceptions.append(raise_as(str(e)))
 
-    msg_part = f" {exc.message}" if exc.message else " errors"
-    return ExceptionGroup(f"{obj_ref}{msg_part}", exceptions)
+    msg_part = exc.message if exc.message else "errors"
+    return ExceptionGroup(f"{obj_ref}: {msg_part}", exceptions)
 
 
 convert_create_errors = _convert_object_errors(
-    raise_=ObjectCreationError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
+    raise_as=ObjectCreationError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
 )
 convert_update_errors = _convert_object_errors(
-    raise_=ObjectUpdateError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
+    raise_as=ObjectUpdateError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
 )
 convert_delete_errors = _convert_object_errors(
-    raise_=ObjectDeleteError, on_errors=(ConflictError, PermissionDeniedError)
+    raise_as=ObjectDeleteError, on_errors=(ConflictError, PermissionDeniedError)
 )
 
 
@@ -190,18 +189,16 @@ class MaintenanceMode:
         maintenance_mode_status: MaintenanceModeStatus,
         requester: Requester,
         path: Endpoint,
-        object_repr: str,
     ) -> None:
         self._maintenance_mode_status = maintenance_mode_status
         self._requester = requester
         self._path = path
-        self._object_repr = f"{object_repr} maintenance mode"
 
     def __repr__(self: Self) -> str:
         return self._maintenance_mode_status
 
     def __str__(self: Self) -> str:
-        return self._maintenance_mode_status
+        return "/".join(str(item) for item in self._path)
 
     @property
     def value(self: Self) -> str:

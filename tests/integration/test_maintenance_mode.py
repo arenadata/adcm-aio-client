@@ -266,7 +266,7 @@ async def _test_mm_effects_on_mapping(context: Context) -> None:
     await cluster.refresh()
     mapping = await cluster.mapping
     await mapping.add(component=component, host=host_1)
-    with pytest.raises(ObjectUpdateError, match="You can't save hc with hosts in maintenance mode"):
+    with pytest.raises(ObjectUpdateError, match=f"clusters/{cluster.id}/mapping: .*INVALID_HC_HOST_IN_MM"):
         await mapping.save()
 
     # test map host_2 not in mm

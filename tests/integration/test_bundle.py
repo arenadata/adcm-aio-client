@@ -113,11 +113,11 @@ async def _test_bundle_create_delete(context: Context) -> None:
     assert (await bundle.license).state == "accepted"
 
     # create duplicate
-    with pytest.raises(ObjectCreationError):
+    with pytest.raises(ObjectCreationError, match="bundles: .*BUNDLE_ERROR.*already exists"):
         await context.client.bundles.create(source=bundle_path, accept_license=True)
 
     # broken bundle
-    with pytest.raises(ObjectCreationError):
+    with pytest.raises(ObjectCreationError, match="bundles: .*BUNDLE_VALIDATION_ERROR"):
         bundle_path = pack_bundle(from_dir=BUNDLES / "broken_bundle", to=context.tempdir)
         await context.client.bundles.create(source=bundle_path, accept_license=True)
 

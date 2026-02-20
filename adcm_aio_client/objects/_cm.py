@@ -225,7 +225,7 @@ class Cluster(
 
     @async_cached_property
     async def mapping(self: Self) -> ClusterMapping:
-        return await ClusterMapping.for_cluster(owner=self, object_repr=str(self))
+        return await ClusterMapping.for_cluster(owner=self)
 
     @cached_property
     def services(self: Self) -> "ServicesNode":

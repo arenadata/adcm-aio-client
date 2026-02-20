@@ -72,7 +72,7 @@ async def test_host(adcm_client: ADCMClient, hostprovider: HostProvider, cluster
         )
 
     # create duplicate
-    with pytest.raises(ObjectCreationError, match="HOST_CONFLICT"):
+    with pytest.raises(ObjectCreationError, match="hosts: .*HOST_CONFLICT"):
         await adcm_client.hosts.create(hostprovider=hostprovider, name="test-host-0")
 
     expected = Expected(name="test-host-0", description="", cluster_id=cluster.id, provider_id=hostprovider.id)
@@ -91,7 +91,7 @@ async def test_host(adcm_client: ADCMClient, hostprovider: HostProvider, cluster
     await cluster.hosts.remove(host)
 
     # remove already removed host
-    with pytest.raises(ExceptionGroup) as exc:
+    with pytest.raises(ExceptionGroup, match="Some hosts can't be deleted from cluster") as exc:
         await cluster.hosts.remove(host)
         assert exc.group_contains(NotFoundError)
 
@@ -105,7 +105,7 @@ async def test_host(adcm_client: ADCMClient, hostprovider: HostProvider, cluster
     await mapping.add(component=component, host=mapped_host)
     await mapping.save()
 
-    with pytest.raises(ObjectUpdateError):
+    with pytest.raises(ObjectUpdateError, match=f"clusters/{cluster.id}/hosts: .*HOST_CONFLICT"):
         await cluster.hosts.remove(mapped_host)
 
 

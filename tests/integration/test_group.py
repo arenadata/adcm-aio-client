@@ -113,7 +113,7 @@ async def _test_create_delete_api(
     await assert_group(group, expected, httpx_client)
 
     # create duplicate
-    with pytest.raises(ObjectCreationError):
+    with pytest.raises(ObjectCreationError, match="rbac/groups: .*GROUP_CREATE_ERROR"):
         await adcm_client.groups.create(display_name=name)
 
     await group.delete()

@@ -105,10 +105,8 @@ async def _test_create_delete_api(
     await assert_policy(policy, expected, httpx_client)
 
     # create duplicate
-    with pytest.raises(ObjectCreationError):
-        policy = await adcm_client.policies.create(
-            name=name, role=role, objects=[cluster], groups=[group], description="dsc"
-        )
+    with pytest.raises(ObjectCreationError, match="rbac/policies: .*BAD_REQUEST"):
+        await adcm_client.policies.create(name=name, role=role, objects=[cluster], groups=[group], description="dsc")
 
     await policy.delete()
     response = await httpx_client.get(f"rbac/policies/{policy.id}/")

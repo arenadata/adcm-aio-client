@@ -141,7 +141,7 @@ async def test_cluster(
     await host.refresh()
 
     # add the same host to another cluster
-    with pytest.raises(ObjectUpdateError):
+    with pytest.raises(ObjectUpdateError, match=f"clusters/{simple_cluster.id}/hosts: .*FOREIGN_HOST"):
         await simple_cluster.hosts.add(host=host)
 
     cluster_data = await _test_cluster_object_api(
@@ -182,7 +182,7 @@ async def _test_cluster_create_delete_api(
     await assert_cluster(cluster, expected, httpx_client)
 
     # wrong bundle
-    with pytest.raises(ObjectCreationError):
+    with pytest.raises(ObjectCreationError, match="clusters: .*PROTOTYPE_NOT_FOUND"):
         await adcm_client.clusters.create(bundle=simple_hostprovider_bundle, name=name, description=description)
 
 
@@ -292,7 +292,7 @@ async def _test_cluster_object_api(httpx_client: AsyncClient, cluster: Cluster, 
     assert cluster.name == new_name
 
     # wrong value
-    with pytest.raises(ObjectUpdateError):
+    with pytest.raises(ObjectUpdateError, match=f"{cluster}: .*CONFIG_VALUE_ERROR"):
         await cluster.set_ansible_forks(value="test")  # pyright: ignore[reportArgumentType]
 
     return cluster_id, bundle_id, description, status

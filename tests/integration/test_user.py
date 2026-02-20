@@ -120,7 +120,7 @@ async def _test_create_delete_api(
     await assert_user(user, expected, httpx_client)
 
     # create duplicate
-    with pytest.raises(ObjectCreationError):
+    with pytest.raises(ObjectCreationError, match="rbac/users: .*USER_CREATE_ERROR"):
         await adcm_client.users.create(username=username, password=username * 2)
 
     await user.delete()
@@ -131,7 +131,7 @@ async def _test_create_delete_api(
         await ldap_user.delete()  # pyright: ignore[reportAttributeAccessIssue]
 
     # too short password
-    with pytest.raises(ObjectCreationError):
+    with pytest.raises(ObjectCreationError, match="rbac/users: .*USER_PASSWORD_ERROR"):
         await adcm_client.users.create(username=username, password="a")  # noqa: S106
 
 

@@ -152,13 +152,13 @@ class ActionMapping:
 
 
 class ClusterMapping(ActionMapping):
-    def __init__(self: Self, owner: Cluster, entries: Iterable[MappingPair], object_repr: str) -> None:
-        self._object_repr = f"{object_repr} mapping"
+    def __init__(self: Self, owner: Cluster, entries: Iterable[MappingPair]) -> None:
+        self._path = (*owner.get_own_path(), "mapping")
         super().__init__(owner=owner, cluster=owner, entries=entries)
 
     @classmethod
-    async def for_cluster(cls: type[Self], owner: Cluster, object_repr: str) -> Self:
-        instance = cls(owner=owner, entries=(), object_repr=f"{object_repr}")
+    async def for_cluster(cls: type[Self], owner: Cluster) -> Self:
+        instance = cls(owner=owner, entries=())
         await instance.refresh(strategy=apply_remote_changes)
         return instance
 
@@ -166,14 +166,14 @@ class ClusterMapping(ActionMapping):
     async def save(self: Self) -> Self:
         data = self._to_payload()
 
-        await self._requester.post(*self._cluster.get_own_path(), "mapping", data=data)
+        await self._requester.post(*self._path, data=data)
 
         self._initial = copy(self._current)
 
         return self
 
     async def refresh(self: Self, strategy: MappingRefreshStrategy = apply_local_changes) -> Self:
-        response = await self._requester.get(*self._cluster.get_own_path(), "mapping")
+        response = await self._requester.get(*self._path)
         remote = {
             MappingEntry(component_id=entry["componentId"], host_id=entry["hostId"]) for entry in response.as_list()
         }
@@ -223,3 +223,6 @@ class ClusterMapping(ActionMapping):
         query = {"id__in": ids_str, "limit": records_amount}
 
         return asyncio.create_task(method(query))
+
+    def __str__(self: Self) -> str:
+        return "/".join(str(item) for item in self._path)
