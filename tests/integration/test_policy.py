@@ -98,7 +98,9 @@ async def _test_create_delete_api(
         "name": name,
         "description": "dsc",
         "isBuiltIn": False,
-        "objects": [{"id": cluster.id, "type": "cluster", "name": cluster.name, "displayName": cluster.name}],
+        "objects": [
+            {"id": cluster.id, "parentId": None, "type": "cluster", "name": cluster.name, "displayName": cluster.name}
+        ],
         "groups": [{"id": group.id, "name": f"{group.display_name} [local]", "displayName": group.display_name}],
         "role": {"id": role.id, "name": role.name, "displayName": role.display_name},
     }
