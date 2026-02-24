@@ -108,7 +108,7 @@ async def _test_create_delete_api(
     policy = await adcm_client.policies.create(
         name=name, role=role, objects=[cluster], groups=[group], description="dsc"
     )
-
+ # comment
     assert isinstance(policy, Policy)
     expected = {
         "id": policy.id,
