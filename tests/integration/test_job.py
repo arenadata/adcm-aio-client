@@ -113,7 +113,7 @@ async def _test_basic_api(adcm_client: ADCMClient) -> None:
     assert job.finish_time is None
     assert (await job.action).id == action.id
 
-    await job.wait(exit_condition=is_running, timeout=60, poll_interval=3)
+    await job.wait(exit_condition=is_running, timeout=60, poll_interval=1)
     assert job.start_time is None
     await job.refresh()
     assert isinstance(job.start_time, datetime)

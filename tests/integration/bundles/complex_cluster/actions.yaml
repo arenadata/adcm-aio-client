@@ -4,6 +4,12 @@
   gather_facts: no
 
   tasks:
+    - name: Sleep
+      debug:
+        msg: "successful sleep"
+      sleep: 2
+      tags: [ sleep ]
+
     - name: Success
       debug:
         msg: "successful step"
