@@ -5,9 +5,8 @@
 
   tasks:
     - name: Sleep
-      debug:
-        msg: "successful sleep"
-      sleep: 2
+      pause:
+        seconds: 2
       tags: [ sleep ]
 
     - name: Success
