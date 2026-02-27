@@ -6,7 +6,7 @@
   tasks:
     - name: Sleep
       pause:
-        seconds: 2
+        seconds: 3
       tags: [ sleep ]
 
     - name: Success
