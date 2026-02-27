@@ -85,6 +85,9 @@ class Accessor[ReturnObject: InteractiveObject](ABC):
     def _create_object(self: Self, data: dict[str, Any]) -> ReturnObject:
         return self.class_type(requester=self._requester, data=data)
 
+    def __str__(self: Self) -> str:
+        return "/".join(str(item) for item in self._path)
+
 
 class PaginatedAccessor[ReturnObject: InteractiveObject](Accessor[ReturnObject]):
     async def iter(self: Self, **filters: FilterValue) -> AsyncGenerator[ReturnObject, None]:

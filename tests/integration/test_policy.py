@@ -7,7 +7,7 @@ import pytest_asyncio
 
 from adcm_aio_client import Filter
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectCreationError, ObjectDoesNotExistError
 from adcm_aio_client.objects import (
     BuiltInRole,
     Bundle,
@@ -122,6 +122,10 @@ async def _test_create_delete_api(
         "role": {"id": role.id, "name": role.name, "displayName": role.display_name},
     }
     await assert_policy(policy, expected, httpx_client)
+
+    # create duplicate
+    with pytest.raises(ObjectCreationError, match="rbac/policies: .*BAD_REQUEST"):
+        await adcm_client.policies.create(name=name, role=role, objects=[cluster], groups=[group], description="dsc")
 
     await policy.delete()
     response = await httpx_client.get(f"rbac/policies/{policy.id}/")

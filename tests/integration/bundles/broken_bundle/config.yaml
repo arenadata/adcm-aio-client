@@ -1,0 +1,7 @@
+- type: cluster
+  name: Simple Cluster
+  version: 2
+
+- type: provider
+  name: simple_provider
+  version: 4
