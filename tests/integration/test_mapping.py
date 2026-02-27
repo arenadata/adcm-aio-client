@@ -22,7 +22,7 @@ import pytest_asyncio
 
 from adcm_aio_client import ADCMSession, Credentials, Filter
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.errors import ConflictError
+from adcm_aio_client.errors import ObjectCreationError, ObjectUpdateError
 from adcm_aio_client.mapping import apply_local_changes, apply_remote_changes
 from adcm_aio_client.mapping._types import MappingPair
 from adcm_aio_client.objects import Bundle, Cluster, Component, Host
@@ -205,6 +205,16 @@ async def test_cluster_mapping(adcm_client: ADCMClient, cluster: Cluster, hosts:
     actual_mapping = build_name_mapping(mapping.iter())
     assert actual_mapping == expected_mapping
 
+    # add foreign host
+    mapping.empty()
+    await mapping.save()
+    await cluster.hosts.remove(h5)
+    await h5.refresh()
+    assert await h5.cluster is None
+    await mapping.add(component=c1, host=h5)
+    with pytest.raises(ObjectUpdateError, match=f"clusters/{cluster.id}/mapping: .*HOST_NOT_FOUND"):
+        await mapping.save()
+
 
 async def test_refresh_strategies(cluster: Cluster, hosts: FiveHosts) -> None:
     service_1 = await cluster.services.get(display_name__eq="First Example")
@@ -330,7 +340,7 @@ async def test_mapping_with_hosts_in_mm(adcm: ADCMContainer, cluster: Cluster, h
     mapping_session_1 = await cluster.mapping
     await mapping_session_1.add(c1, h1)
 
-    with suppress(ConflictError):
+    with suppress(ObjectUpdateError):
         await mapping_session_1.save()
 
     await mapping_session_1.refresh()
@@ -409,7 +419,7 @@ async def test_remapping_host_with_mm(adcm: ADCMContainer, cluster: Cluster, hos
     mapping_session_1 = await cluster.mapping
     await mapping_session_1.add(c1, h1)
 
-    with suppress(ConflictError):
+    with suppress(ObjectUpdateError):
         await mapping_session_1.save()
 
     await mapping_session_1.refresh(strategy=apply_remote_changes)
@@ -438,7 +448,7 @@ async def test_mapping_service_with_dependency_from_another_service(
     mapping = await cluster.mapping
     await mapping.add(c1, h1)
 
-    with suppress(ConflictError):
+    with suppress(ObjectUpdateError):
         await mapping.save()
 
     await mapping.refresh(strategy=apply_remote_changes)
@@ -471,7 +481,7 @@ async def test_mapping_component_with_dependency_from_another_service(
     mapping = await cluster.mapping
     await mapping.add(c1, h1)
 
-    with suppress(ConflictError):
+    with suppress(ObjectUpdateError):
         await mapping.save()
 
     await mapping.refresh(strategy=apply_remote_changes)
@@ -520,6 +530,6 @@ async def test_mapping_and_ahg(cluster: Cluster, second_adcm_client: ADCMClient,
     cluster2 = await second_adcm_client.clusters.get(name__eq=cluster.name)
     service2 = await cluster2.services.get(name__eq=service.name)
 
-    with pytest.raises(ExceptionGroup) as exc:
+    msg = f"clusters/{cluster2.id}/services/{service2.id}/action-host-groups: .*HOST_GROUP_CONFLICT"
+    with pytest.raises(ObjectCreationError, match=msg):
         await service2.action_host_groups.create(name="Service AHG 2", hosts=[host])
-    assert exc.group_contains(ConflictError, match="HOST_GROUP_CONFLICT")

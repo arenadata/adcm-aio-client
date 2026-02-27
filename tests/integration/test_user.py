@@ -6,7 +6,7 @@ import pytest_asyncio
 
 from adcm_aio_client._types import EntitySourceType
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectCreationError, ObjectDoesNotExistError
 from adcm_aio_client.objects import LDAPUser, LocalGroup, LocalUser
 from tests.integration.setup_environment import DB_USER, ADCMContainer, ADCMPostgresContainer
 
@@ -119,12 +119,20 @@ async def _test_create_delete_api(
     }
     await assert_user(user, expected, httpx_client)
 
+    # create duplicate
+    with pytest.raises(ObjectCreationError, match="rbac/users: .*USER_CREATE_ERROR"):
+        await adcm_client.users.create(username=username, password=username * 2)
+
     await user.delete()
     response = await httpx_client.get(f"rbac/users/{user.id}/")
     assert response.status_code == 404
 
     with pytest.raises(AttributeError):
         await ldap_user.delete()  # pyright: ignore[reportAttributeAccessIssue]
+
+    # too short password
+    with pytest.raises(ObjectCreationError, match="rbac/users: .*USER_PASSWORD_ERROR"):
+        await adcm_client.users.create(username=username, password="a")  # noqa: S106
 
 
 async def _test_users_accessor(adcm_client: ADCMClient, httpx_client: AsyncClient, local_group: LocalGroup) -> None:

@@ -18,15 +18,17 @@ from adcm_aio_client.config._objects import (
     ConfigHistoryNode,
     ObjectConfig,
 )
-from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectCreationError, ObjectDoesNotExistError
 from adcm_aio_client.objects import Bundle, HostProvider
 
 pytestmark = [pytest.mark.asyncio]
 
 
-async def test_hostprovider(adcm_client: ADCMClient, complex_hostprovider_bundle: Bundle) -> None:
+async def test_hostprovider(
+    adcm_client: ADCMClient, complex_hostprovider_bundle: Bundle, simple_cluster_bundle: Bundle
+) -> None:
     await _test_hostprovider_properties(adcm_client, complex_hostprovider_bundle)
-    await _test_hostprovider_accessors(adcm_client, complex_hostprovider_bundle)
+    await _test_hostprovider_accessors(adcm_client, complex_hostprovider_bundle, simple_cluster_bundle)
     await _test_pagination(adcm_client, complex_hostprovider_bundle)
 
 
@@ -45,7 +47,9 @@ async def _test_hostprovider_properties(adcm_client: ADCMClient, complex_hostpro
     assert len(hosts) == 0
 
 
-async def _test_hostprovider_accessors(adcm_client: ADCMClient, complex_hostprovider_bundle: Bundle) -> None:
+async def _test_hostprovider_accessors(
+    adcm_client: ADCMClient, complex_hostprovider_bundle: Bundle, simple_cluster_bundle: Bundle
+) -> None:
     for new_host_provider in ["hostprovider-1", "hostprovider-2", "hostprovider-3"]:
         await adcm_client.hostproviders.create(
             bundle=complex_hostprovider_bundle, name=new_host_provider, description=new_host_provider
@@ -81,6 +85,10 @@ async def _test_hostprovider_accessors(adcm_client: ADCMClient, complex_hostprov
     assert len(await adcm_client.hostproviders.filter(bundle__eq=complex_hostprovider_bundle)) == 4
 
     await hostprovider.delete()
+
+    # wrong bundle
+    with pytest.raises(ObjectCreationError, match="hostproviders: .*HOSTPROVIDER_CREATE_ERROR"):
+        await adcm_client.hostproviders.create(bundle=simple_cluster_bundle, name="pr")
 
 
 async def _test_pagination(adcm_client: ADCMClient, bundle: Bundle) -> None:

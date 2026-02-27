@@ -95,7 +95,7 @@
           script_type: ansible
           script: ./actions.yaml
           params:
-            ansible_tags: ok
+            ansible_tags: ok, sleep
         - <<: *success_job
           name: second
           display_name: AnothEr

@@ -24,6 +24,7 @@ from adcm_aio_client._types import ComponentID, HostID, Requester
 from adcm_aio_client.mapping import apply_local_changes, apply_remote_changes
 from adcm_aio_client.mapping._types import LocalMappings, MappingEntry, MappingPair, MappingRefreshStrategy
 from adcm_aio_client.objects._accessors import NonPaginatedAccessor, filters_to_inline
+from adcm_aio_client.objects._base import convert_update_errors
 
 if TYPE_CHECKING:
     from adcm_aio_client.objects import Cluster, Component, Host, Service
@@ -152,6 +153,7 @@ class ActionMapping:
 
 class ClusterMapping(ActionMapping):
     def __init__(self: Self, owner: Cluster, entries: Iterable[MappingPair]) -> None:
+        self._path = (*owner.get_own_path(), "mapping")
         super().__init__(owner=owner, cluster=owner, entries=entries)
 
     @classmethod
@@ -160,17 +162,18 @@ class ClusterMapping(ActionMapping):
         await instance.refresh(strategy=apply_remote_changes)
         return instance
 
+    @convert_update_errors
     async def save(self: Self) -> Self:
         data = self._to_payload()
 
-        await self._requester.post(*self._cluster.get_own_path(), "mapping", data=data)
+        await self._requester.post(*self._path, data=data)
 
         self._initial = copy(self._current)
 
         return self
 
     async def refresh(self: Self, strategy: MappingRefreshStrategy = apply_local_changes) -> Self:
-        response = await self._requester.get(*self._cluster.get_own_path(), "mapping")
+        response = await self._requester.get(*self._path)
         remote = {
             MappingEntry(component_id=entry["componentId"], host_id=entry["hostId"]) for entry in response.as_list()
         }
@@ -220,3 +223,6 @@ class ClusterMapping(ActionMapping):
         query = {"id__in": ids_str, "limit": records_amount}
 
         return asyncio.create_task(method(query))
+
+    def __str__(self: Self) -> str:
+        return "/".join(str(item) for item in self._path)

@@ -6,7 +6,7 @@ import pytest
 import pytest_asyncio
 
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectCreationError, ObjectDoesNotExistError
 from adcm_aio_client.objects import (
     BuiltInRole,
     Bundle,
@@ -98,11 +98,17 @@ async def _test_create_delete_api(
         "name": name,
         "description": "dsc",
         "isBuiltIn": False,
-        "objects": [{"id": cluster.id, "type": "cluster", "name": cluster.name, "displayName": cluster.name}],
+        "objects": [
+            {"id": cluster.id, "parentId": None, "type": "cluster", "name": cluster.name, "displayName": cluster.name}
+        ],
         "groups": [{"id": group.id, "name": f"{group.display_name} [local]", "displayName": group.display_name}],
         "role": {"id": role.id, "name": role.name, "displayName": role.display_name},
     }
     await assert_policy(policy, expected, httpx_client)
+
+    # create duplicate
+    with pytest.raises(ObjectCreationError, match="rbac/policies: .*BAD_REQUEST"):
+        await adcm_client.policies.create(name=name, role=role, objects=[cluster], groups=[group], description="dsc")
 
     await policy.delete()
     response = await httpx_client.get(f"rbac/policies/{policy.id}/")

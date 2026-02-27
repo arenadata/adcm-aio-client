@@ -6,7 +6,7 @@ import pytest_asyncio
 
 from adcm_aio_client._types import EntitySourceType
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectCreationError, ObjectDoesNotExistError
 from adcm_aio_client.objects import LDAPGroup, LocalGroup, LocalUser
 from tests.integration.setup_environment import DB_USER, ADCMContainer, ADCMPostgresContainer
 
@@ -111,6 +111,10 @@ async def _test_create_delete_api(
         "type": "local",
     }
     await assert_group(group, expected, httpx_client)
+
+    # create duplicate
+    with pytest.raises(ObjectCreationError, match="rbac/groups: .*GROUP_CREATE_ERROR"):
+        await adcm_client.groups.create(display_name=name)
 
     await group.delete()
     response = await httpx_client.get(f"rbac/groups/{group.id}/")
