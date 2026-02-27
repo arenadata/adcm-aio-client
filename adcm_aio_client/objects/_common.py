@@ -17,11 +17,12 @@ from asyncstdlib.functools import cached_property as async_cached_property  # no
 
 from adcm_aio_client.actions._objects import ActionsAccessor, UpgradeNode
 from adcm_aio_client.config._objects import ConfigHistoryNode, ConfigOwner, HostGroupConfig, ObjectConfig
-from adcm_aio_client.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester
+from adcm_aio_client.objects._base import AwareOfOwnPath, MaintenanceMode, WithProtectedRequester, convert_delete_errors
 from adcm_aio_client.objects._imports import Imports
 
 
 class Deletable(WithProtectedRequester, AwareOfOwnPath):
+    @convert_delete_errors
     async def delete(self: Self) -> None:
         await self._requester.delete(*self.get_own_path())
 
@@ -69,7 +70,11 @@ class WithUpgrades(WithProtectedRequester, AwareOfOwnPath):
 class WithMaintenanceMode(WithProtectedRequester, AwareOfOwnPath):
     @async_cached_property
     async def maintenance_mode(self: Self) -> MaintenanceMode:
-        maintenance_mode = MaintenanceMode(self._data["maintenanceMode"], self._requester, self.get_own_path())  # pyright: ignore[reportAttributeAccessIssue]
+        maintenance_mode = MaintenanceMode(
+            maintenance_mode_status=self._data["maintenanceMode"],  # pyright: ignore[reportAttributeAccessIssue]
+            requester=self._requester,
+            path=self.get_own_path(),
+        )
         self._data["maintenanceMode"] = maintenance_mode.value  # pyright: ignore[reportAttributeAccessIssue]
         return maintenance_mode
 

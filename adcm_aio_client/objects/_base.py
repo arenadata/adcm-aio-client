@@ -11,9 +11,10 @@
 # limitations under the License.
 
 from collections import deque
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from functools import cached_property
-from typing import Any, Self
+from functools import cached_property, wraps
+from typing import Any, ParamSpec, Self, TypeVar
 
 from asyncstdlib.functools import CachedProperty
 
@@ -24,6 +25,66 @@ from adcm_aio_client._types import (
     Requester,
     WithProtectedRequester,
     WithRequesterProperty,
+)
+from adcm_aio_client.errors import (
+    ADCMClientError,
+    BadRequestError,
+    ConflictError,
+    ObjectCreationError,
+    ObjectDeleteError,
+    ObjectUpdateError,
+    PermissionDeniedError,
+)
+
+P = ParamSpec("P")
+R = TypeVar("R")
+AsyncFunc = Callable[P, Awaitable[R]]
+DecoratedAsyncFunc = Callable[P, Awaitable[R]]
+
+
+def _convert_object_errors(
+    raise_as: type[ADCMClientError], on_errors: tuple[type[ADCMClientError], ...]
+) -> Callable[[AsyncFunc[P, R]], DecoratedAsyncFunc[P, R]]:
+    def decorator(func: AsyncFunc[P, R]) -> DecoratedAsyncFunc[P, R]:
+        @wraps(func)
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            try:
+                res = await func(*args, **kwargs)
+            except* on_errors as e:
+                self = args[0]
+                to_raise = _process_exception_group(exc=e, raise_as=raise_as, obj_ref=str(self))
+
+                raise to_raise from e
+
+            return res
+
+        return wrapper
+
+    return decorator
+
+
+def _process_exception_group(
+    exc: ExceptionGroup, raise_as: type[ADCMClientError], obj_ref: str
+) -> ADCMClientError | ExceptionGroup:
+    if len(exc.exceptions) == 1:
+        return raise_as(f"{obj_ref}: {str(exc.exceptions[0])}")
+
+    exceptions = []
+    for e in exc.exceptions:
+        exceptions.append(raise_as(str(e)))
+
+    msg_part = exc.message if exc.message else "errors"
+    return ExceptionGroup(f"{obj_ref}: {msg_part}", exceptions)
+
+
+convert_create_errors = _convert_object_errors(
+    raise_as=ObjectCreationError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
+)
+convert_update_errors = _convert_object_errors(
+    raise_as=ObjectUpdateError, on_errors=(BadRequestError, ConflictError, PermissionDeniedError)
+)
+convert_delete_errors = _convert_object_errors(
+    raise_as=ObjectDeleteError, on_errors=(ConflictError, PermissionDeniedError)
 )
 
 
@@ -80,13 +141,9 @@ class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOw
                 delattr(self, name)
 
     def __str__(self: Self) -> str:
-        return self._repr
+        return self.__repr__()
 
     def __repr__(self: Self) -> str:
-        return self._repr
-
-    @property
-    def _repr(self: Self) -> str:
         name = getattr(self, "display_name", None) or getattr(self, "name", None)
         name = f" {name}" if isinstance(name, str) else ""
         return f"<{self.__class__.__name__} #{self.id}{name}>"
@@ -128,7 +185,10 @@ class InteractiveChildObject[Parent: InteractiveObject](InteractiveObject):
 
 class MaintenanceMode:
     def __init__(
-        self: Self, maintenance_mode_status: MaintenanceModeStatus, requester: Requester, path: Endpoint
+        self: Self,
+        maintenance_mode_status: MaintenanceModeStatus,
+        requester: Requester,
+        path: Endpoint,
     ) -> None:
         self._maintenance_mode_status = maintenance_mode_status
         self._requester = requester
@@ -138,18 +198,20 @@ class MaintenanceMode:
         return self._maintenance_mode_status
 
     def __str__(self: Self) -> str:
-        return self._maintenance_mode_status
+        return "/".join(str(item) for item in self._path)
 
     @property
     def value(self: Self) -> str:
         return self._maintenance_mode_status
 
+    @convert_update_errors
     async def on(self: Self) -> None:
         current_mm_status = await self._requester.post(
             *self._path, "maintenance-mode", data={"maintenanceMode": MaintenanceModeStatus.ON}
         )
         self._maintenance_mode_status = current_mm_status.as_dict()["maintenanceMode"]
 
+    @convert_update_errors
     async def off(self: Self) -> None:
         current_mm_status = await self._requester.post(
             *self._path, "maintenance-mode", data={"maintenanceMode": MaintenanceModeStatus.OFF}

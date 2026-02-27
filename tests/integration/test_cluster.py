@@ -23,7 +23,12 @@ import pytest_asyncio
 from adcm_aio_client import Filter
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.config._objects import ConfigHistoryNode, ObjectConfig
-from adcm_aio_client.errors import MultipleObjectsReturnedError, ObjectDoesNotExistError
+from adcm_aio_client.errors import (
+    MultipleObjectsReturnedError,
+    ObjectCreationError,
+    ObjectDoesNotExistError,
+    ObjectUpdateError,
+)
 from adcm_aio_client.mapping._objects import ClusterMapping
 from adcm_aio_client.objects import Bundle, Cluster, Host
 from adcm_aio_client.objects._imports import Imports
@@ -108,15 +113,18 @@ async def test_cluster(
     complex_cluster_bundle: Bundle,
     many_complex_clusters: int,
     simple_cluster_bundle: Bundle,
-    simple_cluster: Cluster,  # for filtering by bundle
+    simple_hostprovider_bundle: Bundle,
+    simple_cluster: Cluster,
     host: Host,
     httpx_client: AsyncClient,
 ) -> None:
-    _ = simple_cluster
     num_clusters = many_complex_clusters + 1  # + simple_cluster
 
     await _test_cluster_create_delete_api(
-        adcm_client=adcm_client, bundle=complex_cluster_bundle, httpx_client=httpx_client
+        adcm_client=adcm_client,
+        bundle=complex_cluster_bundle,
+        httpx_client=httpx_client,
+        simple_hostprovider_bundle=simple_hostprovider_bundle,
     )
 
     await _test_clusters_node(
@@ -131,6 +139,10 @@ async def test_cluster(
     component = await service.components.get(name__eq="first")
     await cluster.hosts.add(host=host)
     await host.refresh()
+
+    # add the same host to another cluster
+    with pytest.raises(ObjectUpdateError, match=f"clusters/{simple_cluster.id}/hosts: .*FOREIGN_HOST"):
+        await simple_cluster.hosts.add(host=host)
 
     cluster_data = await _test_cluster_object_api(
         httpx_client=httpx_client, cluster=cluster, cluster_bundle=complex_cluster_bundle
@@ -152,7 +164,9 @@ async def test_cluster(
     assert cluster_data == from_host_data == from_service_data == from_component_data
 
 
-async def _test_cluster_create_delete_api(adcm_client: ADCMClient, bundle: Bundle, httpx_client: AsyncClient) -> None:
+async def _test_cluster_create_delete_api(
+    adcm_client: ADCMClient, bundle: Bundle, httpx_client: AsyncClient, simple_hostprovider_bundle: Bundle
+) -> None:
     name = "Test-cluster"
     description = "des\ncription"
     cluster = await adcm_client.clusters.create(bundle=bundle, name=name, description=description)
@@ -166,6 +180,10 @@ async def _test_cluster_create_delete_api(adcm_client: ADCMClient, bundle: Bundl
 
     expected = {"id": cluster.id, "name": name, "description": ""}
     await assert_cluster(cluster, expected, httpx_client)
+
+    # wrong bundle
+    with pytest.raises(ObjectCreationError, match="clusters: .*PROTOTYPE_NOT_FOUND"):
+        await adcm_client.clusters.create(bundle=simple_hostprovider_bundle, name=name, description=description)
 
 
 async def _test_clusters_node(
@@ -272,6 +290,10 @@ async def _test_cluster_object_api(httpx_client: AsyncClient, cluster: Cluster, 
     assert cluster.name != new_name
     await cluster.refresh()
     assert cluster.name == new_name
+
+    # wrong value
+    with pytest.raises(ObjectUpdateError, match=f"{cluster}: .*CONFIG_VALUE_ERROR"):
+        await cluster.set_ansible_forks(value="test")  # pyright: ignore[reportArgumentType]
 
     return cluster_id, bundle_id, description, status
 

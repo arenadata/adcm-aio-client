@@ -31,7 +31,7 @@ from adcm_aio_client.config import (
     apply_remote_changes,
 )
 from adcm_aio_client.config._objects import HostGroupConfig, ObjectConfig
-from adcm_aio_client.errors import ConfigNoParameterError, ConflictError
+from adcm_aio_client.errors import ConfigNoParameterError, ObjectUpdateError
 from adcm_aio_client.host_groups._config_group import ConfigHostGroup
 from adcm_aio_client.objects import Bundle, Cluster, Host, Service
 
@@ -651,9 +651,11 @@ async def two_sessions_case_6(obj1: Service, obj2: Service, host: Host) -> None:
     await chg1.hosts.add(host=host)
 
     # user 2
-    with pytest.raises(ExceptionGroup) as exc:
+    msg_pattern = (
+        f"clusters/{obj2.cluster.id}/services/{obj2.id}/config-groups/{chg2.id}/hosts: .*GROUP_CONFIG_HOST_ERROR"
+    )
+    with pytest.raises(ObjectUpdateError, match=msg_pattern):
         await chg2.hosts.add(host=host)
-    assert exc.group_contains(ConflictError, match="GROUP_CONFIG_HOST_ERROR")
 
 
 async def two_sessions_case_7(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
