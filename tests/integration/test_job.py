@@ -124,7 +124,7 @@ async def _test_basic_api(adcm_client: ADCMClient) -> None:
     assert target.id == component.id
     assert target.service.id == component.service.id
 
-    await job.wait(timeout=60, poll_interval=3)
+    await job.wait(timeout=60, poll_interval=1)
 
     assert await job.get_status() == "success"
     assert job.finish_time is None
