@@ -108,7 +108,7 @@ def adcm_image(network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir:
     with tarfile.open(mode="w:gz", fileobj=file) as tar:
         tar.add(ssl_certs_dir, "")
     file.seek(0)
-    adcm = ADCMContainer(image=f"{base_repo}:{adcm_tag}", network=network, db=db, migration_mode=True)
+    adcm = ADCMContainer(image=f"{base_repo}:{adcm_tag}", network=network, db=db, migration_mode=False)
 
     with adcm:
         container = adcm.get_wrapped_container()
