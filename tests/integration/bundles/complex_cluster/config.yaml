@@ -310,6 +310,34 @@
           type: json
           default: []
 
+    - name: protagonist
+      type: selection_group
+      group_customization: false
+      default: young
+      subs: &choices
+        - name: young
+          type: group
+          subs:
+            - name: strength
+              type: integer
+              default: 4
+        - name: mediocre
+          type: group
+          subs:
+            - name: wealth
+              type: integer
+        - name: old
+          type: group
+          subs:
+            - name: wizdom
+              type: integer
+
+    - name: antagonist
+      type: selection_group
+      group_customization: false
+      required: false
+      subs: *choices
+
   components:
     component1:
 

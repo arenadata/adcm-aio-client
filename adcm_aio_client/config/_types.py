@@ -296,8 +296,22 @@ class ConfigSchema:
         if "oneOf" not in attributes:
             return attributes
 
+        # Title will be for selection group, for now it's a special case.
+        # You may need to make this check more precise.
+        if "title" not in attributes:
+            return self._get_first_non_null_from_one_of(attributes)
+
+        if any("_selection" in entry.get("properties", {}) for entry in attributes["oneOf"]):
+            # It's required selection group, all data is in root
+            return attributes
+
+        # Non required selection group has info split between "root" and non-null entry
+        group_extra_info = self._get_first_non_null_from_one_of(attributes)
+        return attributes | group_extra_info
+
+    def _get_first_non_null_from_one_of(self: Self, attributes: dict) -> dict:
         # bald search, a lot may fail,
-        # but for more precise work with spec if require incapsulation in a separate handler class
+        # but for more precise work with spec it requires encapsulation in a separate handler class
         return next(entry for entry in attributes["oneOf"] if entry.get("type") != "null")
 
 
