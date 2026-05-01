@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from adcm_aio_client.actions._objects import Action, Upgrade
+from adcm_aio_client.actions._objects import Action, Flow, Upgrade
 from adcm_aio_client.host_groups._config_group import ConfigHostGroup
 from adcm_aio_client.objects._cm import (
     ADCM,
@@ -44,6 +44,7 @@ __all__ = [
     "Component",
     "Host",
     "HostProvider",
+    "Flow",
     "Job",
     "License",
     "Service",

@@ -154,6 +154,9 @@ class NoMappingInActionError(ADCMClientError): ...
 class NoConfigInActionError(ADCMClientError): ...
 
 
+class ProcessCompleteError(ADCMClientError): ...
+
+
 # Filtering
 
 
