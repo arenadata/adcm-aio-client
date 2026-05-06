@@ -31,7 +31,12 @@ from adcm_aio_client.config._types import (
     LevelNames,
     LocalConfigs,
 )
-from adcm_aio_client.errors import ConfigComparisonError, ConfigNoParameterError, RequesterError
+from adcm_aio_client.errors import (
+    ConfigComparisonError,
+    ConfigNoParameterError,
+    InvalidSelectionGroupError,
+    RequesterError,
+)
 
 
 class ConfigOwner(WithRequesterProperty, AwareOfOwnPath, Protocol): ...
@@ -64,13 +69,19 @@ class _Group(_ConfigWrapper):
         super().__init__(name, data, schema)
         self._wrappers_cache = {}
 
-    def _find_and_wrap_config_entry[ValueW: _ConfigWrapper, GroupW: _ConfigWrapper, AGroupW: _ConfigWrapper](
+    def _find_and_wrap_config_entry[
+        ValueW: _ConfigWrapper,
+        GroupW: _ConfigWrapper,
+        AGroupW: _ConfigWrapper,
+        SGroupW: _ConfigWrapper,
+    ](
         self: Self,
         item: AnyParameterName | tuple[AnyParameterName, type[ValueW | GroupW | AGroupW]],
         value_class: type[ValueW],
         group_class: type[GroupW],
         a_group_class: type[AGroupW],
-    ) -> ValueW | GroupW | AGroupW:
+        s_group_class: type[SGroupW] | None,
+    ) -> ValueW | GroupW | AGroupW | SGroupW:
         if isinstance(item, str):
             name = item
         else:
@@ -95,6 +106,8 @@ class _Group(_ConfigWrapper):
         class_ = value_class
         if self._schema.is_group(parameter_full_name):
             class_ = a_group_class if self._schema.is_activatable_group(parameter_full_name) else group_class
+        elif self._schema.is_selection_group(parameter_full_name) and s_group_class:
+            class_ = s_group_class
 
         wrapper = class_(name=parameter_full_name, data=self._data, schema=self._schema)
 
@@ -222,7 +235,11 @@ class ParameterGroup(_Group):
         NOTE: types aren't checked, they are just helpers for users' type checking setups.
         """
         return self._find_and_wrap_config_entry(
-            item=item, value_class=Parameter, group_class=ParameterGroup, a_group_class=ActivatableParameterGroup
+            item=item,
+            value_class=Parameter,
+            group_class=ParameterGroup,
+            a_group_class=ActivatableParameterGroup,
+            s_group_class=SelectableParameterGroup,
         )
 
 
@@ -251,6 +268,7 @@ class ParameterGroupHG(_Group):
             value_class=ParameterHG,
             group_class=ParameterGroupHG,
             a_group_class=ActivatableParameterGroupHG,
+            s_group_class=None,  # TODO: incompatible with CHGs
         )
 
 
@@ -277,6 +295,40 @@ class ActivatableParameterGroupHG(_Desyncable, _Activatable, ParameterGroupHG):
         super().deactivate()
         self.desync()
         return self
+
+
+class _Selectable(_Group):
+    def select(self: Self, value: str) -> None:
+        schema = self._schema._param_map[self._name]
+
+        if value not in schema.choices:
+            group_name = schema._raw["title"]
+            raise InvalidSelectionGroupError(f'"{value}" is not a valid choice for "{group_name}" selection group.')
+
+        real_value = self._schema._display_name_map[tuple(self._name), value] if value is not None else None
+        inner_value = {"_selection": real_value}
+
+        if value is not None:
+            # inner_value = self._data.get_value(self._name) or {}  # todo: merge already filled with defaults?
+            inner_value[real_value] = self._schema.get_default(self._name)[real_value]
+
+        self._data.set_value(parameter=self._name, value=inner_value)
+
+    @property
+    def choices(self: Self) -> list[str | None]:
+        return self._schema._param_map[self._name].choices
+
+    @property
+    def value(self: Self) -> str | None:
+        value = self._data.get_value(self._name)
+        if value is not None:
+            selected_group = value["_selection"]
+            return self._schema._param_map[*self._name, selected_group]["title"]
+
+        return value
+
+
+class SelectableParameterGroup(_Selectable, ParameterGroup): ...
 
 
 class _ConfigWrapperCreator[T: GenericConfigData](_ConfigWrapper):

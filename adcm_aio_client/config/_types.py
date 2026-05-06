@@ -204,6 +204,39 @@ class ConfigDifference:
         return simplified
 
 
+@dataclass()
+class SelectionGroupSchema:
+    def __init__(self: Self, jsonschema: dict) -> None:
+        self._raw = jsonschema
+
+    @property
+    def choices(self: Self) -> list[str | None]:
+        choices = sorted([prop["title"] for prop in self.properties.values()])
+        if not self.is_required:
+            return [None, *choices]
+
+        return choices
+
+    @property
+    def is_required(self: Self) -> bool:
+        return not any(group.get("type") == "null" for group in self._raw["oneOf"])
+
+    @property
+    def properties(self: Self) -> dict:
+        properties = {}
+        for group in self._raw["oneOf"]:
+            if group.get("type") == "null":
+                continue
+
+            if "properties" in group and "oneOf" not in group:  # required
+                properties.update({k: v for k, v in group["properties"].items() if k != "_selection"})
+            else:  # not required
+                for subgroup in group["oneOf"]:
+                    properties.update({k: v for k, v in subgroup["properties"].items() if k != "_selection"})
+
+        return properties
+
+
 class ConfigSchema:
     def __init__(self: Self, spec_as_jsonschema: dict) -> None:
         self._raw = spec_as_jsonschema
@@ -211,9 +244,10 @@ class ConfigSchema:
         self._jsons: set[LevelNames] = set()
         self._groups: set[LevelNames] = set()
         self._activatable_groups: set[LevelNames] = set()
+        self._selection_groups: set[LevelNames] = set()
         self._invisible_fields: set[LevelNames] = set()
         self._display_name_map: dict[tuple[LevelNames, ParameterDisplayName], ParameterName] = {}
-        self._param_map: dict[LevelNames, dict] = {}
+        self._param_map: dict[LevelNames, dict | SelectionGroupSchema] = {}
 
         self._analyze_schema()
 
@@ -236,6 +270,9 @@ class ConfigSchema:
     def is_activatable_group(self: Self, parameter_name: LevelNames) -> bool:
         return parameter_name in self._activatable_groups
 
+    def is_selection_group(self: Self, parameter_name: LevelNames) -> bool:
+        return parameter_name in self._selection_groups
+
     def is_invisible(self: Self, parameter_name: LevelNames) -> bool:
         return parameter_name in self._invisible_fields
 
@@ -248,10 +285,16 @@ class ConfigSchema:
 
     def get_default(self: Self, parameter_name: LevelNames) -> Any:  # noqa: ANN401
         param_spec = self._param_map[parameter_name]
-        if not self.is_group(parameter_name):
-            return param_spec.get("default", None)
 
-        return {child_name: self.get_default((*parameter_name, child_name)) for child_name in param_spec["properties"]}
+        if self.is_group(parameter_name):
+            return {
+                child_name: self.get_default((*parameter_name, child_name)) for child_name in param_spec["properties"]
+            }
+
+        if self.is_selection_group(parameter_name):
+            return {child_name: self.get_default((*parameter_name, child_name)) for child_name in param_spec.properties}
+
+        return param_spec.get("default", None)
 
     def iterate_parameters(self: Self) -> Iterable[tuple[LevelNames, dict]]:
         yield from self._iterate_parameters(object_schema=self._raw)
@@ -262,27 +305,39 @@ class ConfigSchema:
 
             yield (level_name,), attributes
 
-            if is_group_v2(attributes):
+            is_selection_group = isinstance(attributes, SelectionGroupSchema)
+
+            if is_selection_group or is_group_v2(attributes):
+                if is_selection_group:
+                    attributes = {"properties": attributes.properties}
+
                 for inner_level, inner_optional_attrs in self._iterate_parameters(attributes):
                     inner_attributes = self._unwrap_optional(inner_optional_attrs)
                     yield (level_name, *inner_level), inner_attributes
 
     def _analyze_schema(self: Self) -> None:
         for level_names, param_spec in self._iterate_parameters(object_schema=self._raw):
-            if is_group_v2(param_spec):
+            is_selection_group = isinstance(param_spec, SelectionGroupSchema)
+
+            if is_selection_group:
+                display_name = param_spec._raw["title"]
+                self._selection_groups.add(level_names)
+
+            elif is_group_v2(param_spec):
+                display_name = param_spec["title"]
                 self._groups.add(level_names)
 
                 if is_activatable_v2(param_spec):
                     self._activatable_groups.add(level_names)
 
             elif is_json_v2(param_spec):
+                display_name = param_spec["title"]
                 self._jsons.add(level_names)
 
-            if param_spec.get("adcmMeta", {}).get("isInvisible"):
+            if not is_selection_group and param_spec.get("adcmMeta", {}).get("isInvisible"):
                 self._invisible_fields.add(level_names)
 
             *group, own_level_name = level_names
-            display_name = param_spec["title"]
             self._display_name_map[tuple(group), display_name] = own_level_name
             self._param_map[level_names] = param_spec
 
@@ -292,22 +347,11 @@ class ConfigSchema:
             for level_names, param_spec in self._iterate_parameters(object_schema=self._raw)
         }
 
-    def _unwrap_optional(self: Self, attributes: dict) -> dict:
-        if "oneOf" not in attributes:
-            return attributes
+    def _unwrap_optional(self: Self, attributes: dict) -> dict | SelectionGroupSchema:
+        if is_selection_group_v2(attributes):
+            return SelectionGroupSchema(attributes)
 
-        # Title will be for selection group, for now it's a special case.
-        # You may need to make this check more precise.
-        if "title" not in attributes:
-            return self._get_first_non_null_from_one_of(attributes)
-
-        if any("_selection" in entry.get("properties", {}) for entry in attributes["oneOf"]):
-            # It's required selection group, all data is in root
-            return attributes
-
-        # Non required selection group has info split between "root" and non-null entry
-        group_extra_info = self._get_first_non_null_from_one_of(attributes)
-        return attributes | group_extra_info
+        return attributes
 
     def _get_first_non_null_from_one_of(self: Self, attributes: dict) -> dict:
         # bald search, a lot may fail,
@@ -321,6 +365,15 @@ def is_group_v2(attributes: dict) -> bool:
 
 def is_activatable_v2(attributes: dict) -> bool:
     return (attributes["adcmMeta"].get("activation") or {}).get("isAllowChange", False)
+
+
+def is_selection_group_v2(attributes: dict) -> bool:
+    return attributes.get("oneOf") and (
+        attributes.get("discriminator", {}).get("propertyName") == "_selection"  # required
+        or any(
+            inner.get("discriminator", {}).get("propertyName") == "_selection" for inner in attributes.get("oneOf")
+        )  # not required
+    )
 
 
 def is_json_v2(attributes: dict) -> bool:

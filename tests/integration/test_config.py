@@ -12,6 +12,7 @@
 
 from collections.abc import Iterable
 from functools import reduce
+from pathlib import Path
 from typing import Any
 import asyncio
 
@@ -31,9 +32,11 @@ from adcm_aio_client.config import (
     apply_remote_changes,
 )
 from adcm_aio_client.config._objects import HostGroupConfig, ObjectConfig
-from adcm_aio_client.errors import ConfigNoParameterError, ObjectUpdateError
+from adcm_aio_client.errors import ConfigNoParameterError, InvalidSelectionGroupError, ObjectUpdateError
 from adcm_aio_client.host_groups._config_group import ConfigHostGroup
 from adcm_aio_client.objects import Bundle, Cluster, Host, Service
+from tests.integration.bundle import pack_bundle
+from tests.integration.conftest import BUNDLES
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -84,6 +87,19 @@ async def cluster(adcm_client: ADCMClient, complex_cluster_bundle: Bundle) -> Cl
     cluster = await adcm_client.clusters.create(bundle=complex_cluster_bundle, name="Awesome Cluster")
     await cluster.services.add(filter_=Filter(attr="name", op="eq", value="complex_config"))
     return cluster
+
+
+@pytest_asyncio.fixture()
+async def bundle_with_selection_groups(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
+    bundle_path = pack_bundle(from_dir=BUNDLES / "cluster_requires_service", to=tmp_path)
+    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
+
+
+@pytest_asyncio.fixture()
+async def service_with_selection_groups(adcm_client: ADCMClient, bundle_with_selection_groups: Bundle) -> Service:
+    cluster = await adcm_client.clusters.create(bundle=bundle_with_selection_groups, name="Test cluster")
+    service, *_ = await cluster.services.add(filter_=Filter(attr="name", op="eq", value="selection_groups_config"))
+    return service
 
 
 async def test_config_history(cluster: Cluster) -> None:
@@ -411,6 +427,53 @@ async def test_config_two_sessions(
     await two_sessions_case_7(service_1, service_2, httpx_client=httpx_client)
     await two_sessions_case_8(service_1, service_2, httpx_client=httpx_client)
     await two_sessions_case_9(service_1, service_2, httpx_client=httpx_client)
+
+
+async def test_selection_groups(service_with_selection_groups: Service) -> None:
+    service = service_with_selection_groups
+    config = await service.config
+
+    expected_initial = {"pick_me": None, "not_required": None, "with_default": {"_selection": "a", "a": {"a1": None}}}
+    assert config.data._values == expected_initial
+
+    pick_me_group = config["pick_me"]
+    with_default_group = config["with_default"]
+    not_required_group = config["not_required"]
+
+    assert pick_me_group.value is None
+    assert with_default_group.value == 'Group "a" of selection group "with_default"'
+    assert not_required_group.value is None
+
+    assert pick_me_group is config["Pick me selection group"]
+    assert with_default_group is config["With default selection group"]
+    assert not_required_group is config["Not required selection group"]
+
+    expected_pick_me_group_choices = [
+        'Group "a" of selection group "pick_me"',
+        'Group "b" of selection group "pick_me"',
+    ]
+    expected_with_default_group_choices = [
+        'Group "a" of selection group "with_default"',
+        'Group "b" of selection group "with_default"',
+    ]
+    expected_not_required_group_choices = [None, 'Group "a" of selection group "not_required"']
+
+    assert pick_me_group.choices == expected_pick_me_group_choices
+    assert with_default_group.choices == expected_with_default_group_choices
+    assert not_required_group.choices == expected_not_required_group_choices
+
+    with pytest.raises(
+        InvalidSelectionGroupError, match='"wrong" is not a valid choice for "Pick me selection group" selection group.'
+    ):
+        pick_me_group.select("wrong")
+
+    pick_me_group.select('Group "b" of selection group "pick_me"')
+    with_default_group['Group "a" of selection group "with_default"']["a1"].set("some value")
+    not_required_group.select('Group "a" of selection group "not_required"')
+    await config.save()
+
+    not_required_group.select(None)
+    await config.save()
 
 
 async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
