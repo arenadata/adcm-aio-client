@@ -306,11 +306,12 @@ class _Selectable(_Group):
             raise InvalidSelectionGroupError(f'"{value}" is not a valid choice for "{group_name}" selection group.')
 
         real_value = self._schema._display_name_map[tuple(self._name), value] if value is not None else None
-        inner_value = {"_selection": real_value}
 
         if value is not None:
-            # inner_value = self._data.get_value(self._name) or {}  # todo: merge already filled with defaults?
+            inner_value = {"_selection": real_value, real_value: self._schema.get_default(self._name)[real_value]}
             inner_value[real_value] = self._schema.get_default(self._name)[real_value]
+        else:
+            inner_value = None
 
         self._data.set_value(parameter=self._name, value=inner_value)
 
@@ -328,7 +329,28 @@ class _Selectable(_Group):
         return value
 
 
-class SelectableParameterGroup(_Selectable, ParameterGroup): ...
+class SelectableParameterGroup(_Selectable, ParameterGroup):
+    def __getitem__[ExpectedType: "ConfigEntry"](
+        self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
+    ) -> "ConfigEntry":
+        real_name = self._schema._display_name_map[tuple(self._name), item]
+        current_selection = (self._data.get_value(self._name) or {}).get("_selection")
+
+        if current_selection != real_name:
+            display_name = self._find_display_name(current_selection)
+            raise InvalidSelectionGroupError(
+                f'Can\'t access "{item}" selection group, currently selected: "{display_name}".'
+            )
+
+        return super().__getitem__(item=item)
+
+    def _find_display_name(self: Self, name: str | None) -> str | None:
+        if name is None:
+            return name
+
+        target_names = {k: v for k, v in self._schema._display_name_map.items() if k[0] == self._name and v == name}
+
+        return next(iter(target_names))[1]
 
 
 class _ConfigWrapperCreator[T: GenericConfigData](_ConfigWrapper):
@@ -351,7 +373,7 @@ class ObjectConfigWrapper(ParameterGroup, _ConfigWrapperCreator[ConfigData]): ..
 class HostGroupConfigWrapper(ParameterGroupHG, _ConfigWrapperCreator[ConfigData]): ...
 
 
-type ConfigEntry = Parameter | ParameterGroup | ActivatableParameterGroup
+type ConfigEntry = Parameter | ParameterGroup | ActivatableParameterGroup | SelectableParameterGroup
 type ConfigEntryHG = ParameterHG | ParameterGroupHG | ActivatableParameterGroupHG
 
 # API Objects

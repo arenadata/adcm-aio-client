@@ -31,10 +31,10 @@ from adcm_aio_client.config import (
     apply_local_changes,
     apply_remote_changes,
 )
-from adcm_aio_client.config._objects import HostGroupConfig, ObjectConfig
+from adcm_aio_client.config._objects import HostGroupConfig, ObjectConfig, SelectableParameterGroup
 from adcm_aio_client.errors import ConfigNoParameterError, InvalidSelectionGroupError, ObjectUpdateError
 from adcm_aio_client.host_groups._config_group import ConfigHostGroup
-from adcm_aio_client.objects import Bundle, Cluster, Host, Service
+from adcm_aio_client.objects import Bundle, Cluster, Host, Job, Service
 from tests.integration.bundle import pack_bundle
 from tests.integration.conftest import BUNDLES
 
@@ -80,6 +80,10 @@ async def refresh_and_get_configs(*objects: Service | ConfigHostGroup) -> list[O
         configs.append(await obj.config)
 
     return configs
+
+
+async def is_success(job: Job) -> bool:
+    return await job.get_status() == "success"
 
 
 @pytest_asyncio.fixture()
@@ -430,7 +434,11 @@ async def test_config_two_sessions(
 
 
 async def test_selection_groups(service_with_selection_groups: Service) -> None:
-    service = service_with_selection_groups
+    await _selection_groups_in_object_config(service=service_with_selection_groups)
+    await _selection_groups_in_action_config(service=service_with_selection_groups)
+
+
+async def _selection_groups_in_object_config(service: Service) -> None:
     config = await service.config
 
     expected_initial = {"pick_me": None, "not_required": None, "with_default": {"_selection": "a", "a": {"a1": None}}}
@@ -440,13 +448,17 @@ async def test_selection_groups(service_with_selection_groups: Service) -> None:
     with_default_group = config["with_default"]
     not_required_group = config["not_required"]
 
-    assert pick_me_group.value is None
-    assert with_default_group.value == 'Group "a" of selection group "with_default"'
-    assert not_required_group.value is None
-
     assert pick_me_group is config["Pick me selection group"]
     assert with_default_group is config["With default selection group"]
     assert not_required_group is config["Not required selection group"]
+
+    assert isinstance(pick_me_group, SelectableParameterGroup)
+    assert isinstance(with_default_group, SelectableParameterGroup)
+    assert isinstance(not_required_group, SelectableParameterGroup)
+
+    assert pick_me_group.value is None
+    assert with_default_group.value == 'Group "a" of selection group "with_default"'
+    assert not_required_group.value is None
 
     expected_pick_me_group_choices = [
         'Group "a" of selection group "pick_me"',
@@ -472,8 +484,47 @@ async def test_selection_groups(service_with_selection_groups: Service) -> None:
     not_required_group.select('Group "a" of selection group "not_required"')
     await config.save()
 
+    with pytest.raises(
+        InvalidSelectionGroupError,
+        match='Can\'t access "Group "a" of selection group "pick_me"" selection group, '
+        'currently selected: "Group "b" of selection group "pick_me"".',
+    ):
+        pick_me_group['Group "a" of selection group "pick_me"']
+
+    expected_config = {
+        "pick_me": {"_selection": "b", "b": {"b1": 4}},
+        "with_default": {"_selection": "a", "a": {"a1": "some value"}},
+        "not_required": {"_selection": "a", "a": {"a1": None}},
+    }
+    assert config.data._values == expected_config
+
     not_required_group.select(None)
     await config.save()
+
+    # TODO
+    # expected_config = {
+    #     "pick_me": {"_selection": "b", "b": {"b1": 4}},
+    #     "with_default": {"_selection": "a", "a": {"a1": "some value"}},
+    #     "not_required": None,
+    # }
+    # assert config.data._values == expected_config
+
+
+async def _selection_groups_in_action_config(service: Service) -> None:
+    action = await service.actions.get(name__eq="action_with_sgroups_config")
+    config = await action.config
+
+    pick_me_group = config["pick_me"]
+    with_default_group = config["with_default"]
+    not_required_group = config["not_required"]
+
+    pick_me_group.select('Group "b" of selection group "pick_me"')
+    with_default_group.select('Group "b" of selection group "with_default"')
+    not_required_group.select('Group "a" of selection group "not_required"')
+
+    job = await action.run()
+    assert await job.get_status() in ("created", "running")
+    await job.wait(exit_condition=is_success, timeout=30, poll_interval=1)
 
 
 async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:

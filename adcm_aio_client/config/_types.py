@@ -334,6 +334,9 @@ class ConfigSchema:
                 display_name = param_spec["title"]
                 self._jsons.add(level_names)
 
+            else:
+                display_name = param_spec["title"]
+
             if not is_selection_group and param_spec.get("adcmMeta", {}).get("isInvisible"):
                 self._invisible_fields.add(level_names)
 
@@ -350,6 +353,11 @@ class ConfigSchema:
     def _unwrap_optional(self: Self, attributes: dict) -> dict | SelectionGroupSchema:
         if is_selection_group_v2(attributes):
             return SelectionGroupSchema(attributes)
+
+        # Title will be for selection group, for now it's a special case.
+        # You may need to make this check more precise.
+        if "title" not in attributes:
+            return self._get_first_non_null_from_one_of(attributes)
 
         return attributes
 
@@ -369,10 +377,10 @@ def is_activatable_v2(attributes: dict) -> bool:
 
 def is_selection_group_v2(attributes: dict) -> bool:
     return attributes.get("oneOf") and (
-        attributes.get("discriminator", {}).get("propertyName") == "_selection"  # required
+        attributes.get("discriminator", {}).get("propertyName") == "_selection"  # required selection group
         or any(
             inner.get("discriminator", {}).get("propertyName") == "_selection" for inner in attributes.get("oneOf")
-        )  # not required
+        )  # not required selection group
     )
 
 
