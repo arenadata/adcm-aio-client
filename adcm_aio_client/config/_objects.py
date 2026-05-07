@@ -309,7 +309,6 @@ class _Selectable(_Group):
 
         if value is not None:
             inner_value = {"_selection": real_value, real_value: self._schema.get_default(self._name)[real_value]}
-            inner_value[real_value] = self._schema.get_default(self._name)[real_value]
         else:
             inner_value = None
 

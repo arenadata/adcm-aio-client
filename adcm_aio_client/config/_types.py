@@ -299,7 +299,9 @@ class ConfigSchema:
     def iterate_parameters(self: Self) -> Iterable[tuple[LevelNames, dict]]:
         yield from self._iterate_parameters(object_schema=self._raw)
 
-    def _iterate_parameters(self: Self, object_schema: dict) -> Iterable[tuple[LevelNames, dict]]:
+    def _iterate_parameters(
+        self: Self, object_schema: dict
+    ) -> Iterable[tuple[LevelNames, dict | SelectionGroupSchema]]:
         for level_name, optional_attrs in object_schema["properties"].items():
             attributes = self._unwrap_optional(optional_attrs)
 
@@ -345,8 +347,10 @@ class ConfigSchema:
             self._param_map[level_names] = param_spec
 
     def _retrieve_name_type_mapping(self: Self) -> dict[LevelNames, str]:
-        return {
-            level_names: param_spec.get("type", "enum")
+        return {  # TODO: non-required selection groups will be `enum`, required `object`
+            level_names: param_spec._raw.get("type", "enum")
+            if isinstance(param_spec, SelectionGroupSchema)
+            else param_spec.get("type", "enum")
             for level_names, param_spec in self._iterate_parameters(object_schema=self._raw)
         }
 
