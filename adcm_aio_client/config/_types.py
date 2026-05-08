@@ -207,6 +207,8 @@ class ConfigDifference:
 class SelectionGroupSchemaUtils:
     """Utility functions for processing selection_group schema"""
 
+    schema_type = "enum"
+
     @staticmethod
     def is_selection_group(schema: dict) -> bool:
         return bool(
@@ -297,16 +299,14 @@ class ConfigSchema:
     def get_default(self: Self, parameter_name: LevelNames) -> Any:  # noqa: ANN401
         param_spec = self._param_map[parameter_name]
 
+        properties = None
         if self.is_group(parameter_name):
-            return {
-                child_name: self.get_default((*parameter_name, child_name)) for child_name in param_spec["properties"]
-            }
+            properties = param_spec["properties"]
+        elif self.is_selection_group(parameter_name):
+            properties = SelectionGroupSchemaUtils.get_properties(param_spec)
 
-        if self.is_selection_group(parameter_name):
-            return {
-                child_name: self.get_default((*parameter_name, child_name))
-                for child_name in SelectionGroupSchemaUtils.get_properties(param_spec)
-            }
+        if properties:
+            return {child_name: self.get_default((*parameter_name, child_name)) for child_name in properties}
 
         return param_spec.get("default", None)
 
@@ -331,10 +331,9 @@ class ConfigSchema:
 
     def _analyze_schema(self: Self) -> None:
         for level_names, param_spec in self._iterate_parameters(object_schema=self._raw):
-            is_selection_group = SelectionGroupSchemaUtils.is_selection_group(param_spec)
             display_name = param_spec["title"]
 
-            if is_selection_group:
+            if SelectionGroupSchemaUtils.is_selection_group(param_spec):
                 self._selection_groups.add(level_names)
 
             elif is_group_v2(param_spec):
@@ -355,7 +354,7 @@ class ConfigSchema:
 
     def _retrieve_name_type_mapping(self: Self) -> dict[LevelNames, str]:
         return {
-            level_names: "enum"
+            level_names: SelectionGroupSchemaUtils.schema_type
             if SelectionGroupSchemaUtils.is_selection_group(param_spec)
             else param_spec.get("type", "enum")
             for level_names, param_spec in self._iterate_parameters(object_schema=self._raw)
@@ -381,19 +380,6 @@ def is_group_v2(attributes: dict) -> bool:
 
 def is_activatable_v2(attributes: dict) -> bool:
     return (attributes["adcmMeta"].get("activation") or {}).get("isAllowChange", False)
-
-
-def is_selection_group_v2(attributes: dict) -> bool:
-    return bool(
-        attributes.get("oneOf")
-        and (
-            attributes.get("discriminator", {}).get("propertyName") == "_selection"  # required selection group
-            or any(
-                inner.get("discriminator", {}).get("propertyName") == "_selection"
-                for inner in attributes.get("oneOf", ())
-            )  # not required selection group
-        )
-    )
 
 
 def is_json_v2(attributes: dict) -> bool:
