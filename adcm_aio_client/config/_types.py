@@ -15,7 +15,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from functools import reduce
-from typing import Any, NamedTuple, Protocol, Self, cast
+from typing import Any, NamedTuple, Protocol, Self
 
 # External Section
 # these functions are heavily inspired by configuration rework in ADCM (ADCM-6034)
@@ -308,7 +308,7 @@ class ConfigSchema:
                 for child_name in SelectionGroupSchemaUtils.get_properties(param_spec)
             }
 
-        return cast(dict, param_spec).get("default", None)
+        return param_spec.get("default", None)
 
     def iterate_parameters(self: Self) -> Iterable[tuple[LevelNames, dict]]:
         yield from self._iterate_parameters(object_schema=self._raw)
