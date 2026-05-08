@@ -13,7 +13,7 @@
 from collections.abc import Callable, Coroutine
 from copy import deepcopy
 from functools import partial
-from typing import Any, Protocol, Self, overload
+from typing import Any, Protocol, Self, cast, overload
 import json
 import asyncio
 
@@ -299,7 +299,7 @@ class ActivatableParameterGroupHG(_Desyncable, _Activatable, ParameterGroupHG):
 
 
 class _Selectable(_Group):
-    def select(self: Self, value: str) -> None:
+    def select(self: Self, value: str | None) -> None:
         self._validate_choices(value=value)
 
         real_value = self._schema._display_name_map[tuple(self._name), value] if value is not None else None
@@ -336,11 +336,12 @@ class _Selectable(_Group):
 
 
 class SelectableParameterGroup(_Selectable, ParameterGroup):
-    def __getitem__[ExpectedType: "ConfigEntry"](
+    def __getitem__[ExpectedType: ParameterGroup](
         self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
-    ) -> "ConfigEntry":
+    ) -> ParameterGroup:
         # item can be display_name or a technical_name, ensure it can be retrieved by any name
-        res = super().__getitem__(item=item)
+        # subs of selection_group are only ParameterGroup
+        res = cast(ParameterGroup, super().__getitem__(item=item))
         item = item[0] if isinstance(item, tuple) else item
 
         if item == self._schema._param_map[*res._name]["title"]:  # it's a display_name, retrieving technical_name

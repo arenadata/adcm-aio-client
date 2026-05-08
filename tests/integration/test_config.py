@@ -168,13 +168,13 @@ async def test_invisible_fields(cluster: Cluster) -> None:
 async def test_structure_groups(cluster: Cluster) -> None:
     service = await get_service_with_config(cluster)
     config = await service.config
-    group = config["A lot of text"]
+    group = config["A lot of text", ParameterGroup]
     assert isinstance(group, ParameterGroup)
-    group_like = group["Group-like structure"]
+    group_like = group["Group-like structure", ParameterGroup]
     # structure with "dict" root is a group
     assert isinstance(group_like, ParameterGroup)
     assert isinstance(group_like["quantity"], Parameter)
-    nested_group = group_like["nested"]
+    nested_group = group_like["nested", ParameterGroup]
     assert isinstance(nested_group, ParameterGroup)
     nested_group["attr", Parameter].set("something")
     nested_group["op", Parameter].set("good")
@@ -444,9 +444,9 @@ async def _selection_groups_in_object_config(service: Service) -> None:
     expected_initial = {"pick_me": None, "not_required": None, "with_default": {"_selection": "a", "a": {"a1": None}}}
     assert config.data._values == expected_initial
 
-    pick_me_group = config["pick_me"]
-    with_default_group = config["with_default"]
-    not_required_group = config["not_required"]
+    pick_me_group = config["pick_me", SelectableParameterGroup]
+    with_default_group = config["with_default", SelectableParameterGroup]
+    not_required_group = config["not_required", SelectableParameterGroup]
 
     assert pick_me_group is config["Pick me selection group"]
     assert with_default_group is config["With default selection group"]
@@ -487,7 +487,7 @@ async def _selection_groups_in_object_config(service: Service) -> None:
         == {"_selection": "b", "b": {"b1": 4}}
     )
 
-    with_default_group['Group "a" of selection group "with_default"', SelectableParameterGroup]["a1"].set("some value")
+    with_default_group['Group "a" of selection group "with_default"', ParameterGroup]["a1", Parameter].set("some value")
     not_required_group.select('Group "a" of selection group "not_required"')
     await config.save()
 
@@ -513,7 +513,7 @@ async def _selection_groups_in_object_config(service: Service) -> None:
     assert config.data._values == expected_config
 
     # get fresh selection_group config after save()
-    not_required_group = (await service.config)["not_required"]
+    not_required_group = (await service.config)["not_required", SelectableParameterGroup]
     not_required_group.select(None)
     await config.save()
 
@@ -529,9 +529,9 @@ async def _selection_groups_in_action_config(service: Service) -> None:
     action = await service.actions.get(name__eq="action_with_sgroups_config")
     config = await action.config
 
-    pick_me_group = config["pick_me"]
-    with_default_group = config["with_default"]
-    not_required_group = config["not_required"]
+    pick_me_group = config["pick_me", SelectableParameterGroup]
+    with_default_group = config["with_default", SelectableParameterGroup]
+    not_required_group = config["not_required", SelectableParameterGroup]
 
     pick_me_group.select('Group "b" of selection group "pick_me"')
     with_default_group.select('Group "b" of selection group "with_default"')
