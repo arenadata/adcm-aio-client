@@ -474,13 +474,20 @@ async def _selection_groups_in_object_config(service: Service) -> None:
     assert with_default_group.choices == expected_with_default_group_choices
     assert not_required_group.choices == expected_not_required_group_choices
 
-    with pytest.raises(
-        InvalidSelectionGroupError, match='"wrong" is not a valid choice for "Pick me selection group" selection group.'
+    with pytest.raises(  # only display_names can be selected
+        InvalidSelectionGroupError, match='"a" is not a valid choice for "Pick me selection group" selection group.'
     ):
-        pick_me_group.select("wrong")
+        pick_me_group.select("a")
 
     pick_me_group.select('Group "b" of selection group "pick_me"')
-    with_default_group['Group "a" of selection group "with_default"']["a1"].set("some value")
+    # check access by technical_name and display_name
+    assert (
+        pick_me_group["b"]._data.values["pick_me"]
+        == pick_me_group['Group "b" of selection group "pick_me"']._data.values["pick_me"]
+        == {"_selection": "b", "b": {"b1": 4}}
+    )
+
+    with_default_group['Group "a" of selection group "with_default"', SelectableParameterGroup]["a1"].set("some value")
     not_required_group.select('Group "a" of selection group "not_required"')
     await config.save()
 
@@ -491,6 +498,13 @@ async def _selection_groups_in_object_config(service: Service) -> None:
     ):
         pick_me_group['Group "a" of selection group "pick_me"']
 
+    with pytest.raises(  # access by a technical_name, raises an error with display_name message
+        InvalidSelectionGroupError,
+        match='Can\'t access "Group "a" of selection group "pick_me"" selection group, '
+        'currently selected: "Group "b" of selection group "pick_me"".',
+    ):
+        pick_me_group["a"]
+
     expected_config = {
         "pick_me": {"_selection": "b", "b": {"b1": 4}},
         "with_default": {"_selection": "a", "a": {"a1": "some value"}},
@@ -498,16 +512,17 @@ async def _selection_groups_in_object_config(service: Service) -> None:
     }
     assert config.data._values == expected_config
 
+    # get fresh selection_group config after save()
+    not_required_group = (await service.config)["not_required"]
     not_required_group.select(None)
     await config.save()
 
-    # TODO
-    # expected_config = {
-    #     "pick_me": {"_selection": "b", "b": {"b1": 4}},
-    #     "with_default": {"_selection": "a", "a": {"a1": "some value"}},
-    #     "not_required": None,
-    # }
-    # assert config.data._values == expected_config
+    expected_config = {
+        "pick_me": {"_selection": "b", "b": {"b1": 4}},
+        "with_default": {"_selection": "a", "a": {"a1": "some value"}},
+        "not_required": None,
+    }
+    assert config.data._values == expected_config
 
 
 async def _selection_groups_in_action_config(service: Service) -> None:

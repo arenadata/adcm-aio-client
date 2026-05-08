@@ -299,16 +299,15 @@ class ActivatableParameterGroupHG(_Desyncable, _Activatable, ParameterGroupHG):
 
 class _Selectable(_Group):
     def select(self: Self, value: str) -> None:
-        schema = self._schema._param_map[self._name]
-
-        if value not in schema.choices:
-            group_name = schema._raw["title"]
-            raise InvalidSelectionGroupError(f'"{value}" is not a valid choice for "{group_name}" selection group.')
+        self._validate_choices(value=value)
 
         real_value = self._schema._display_name_map[tuple(self._name), value] if value is not None else None
 
         if value is not None:
-            inner_value = {"_selection": real_value, real_value: self._schema.get_default(self._name)[real_value]}
+            inner_value = {
+                "_selection": real_value,
+                real_value: self._schema.get_default((*self._name, real_value)),
+            }
         else:
             inner_value = None
 
@@ -327,23 +326,42 @@ class _Selectable(_Group):
 
         return value
 
+    def _validate_choices(self: Self, value: str | None) -> None:
+        schema = self._schema._param_map[self._name]
+
+        if value not in schema.choices:
+            group_name = schema._raw["title"]
+            raise InvalidSelectionGroupError(f'"{value}" is not a valid choice for "{group_name}" selection group.')
+
 
 class SelectableParameterGroup(_Selectable, ParameterGroup):
     def __getitem__[ExpectedType: "ConfigEntry"](
         self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
     ) -> "ConfigEntry":
-        real_name = self._schema._display_name_map[tuple(self._name), item]
+        # item can be display_name or a technical_name, ensure it can be retrieved by any name
+        res = super().__getitem__(item=item)
+        item = item[0] if isinstance(item, tuple) else item
+
+        if item == self._schema._param_map[*res._name]["title"]:
+            # it's a display_name, need to retrieve technical_name
+            real_name = self._schema._display_name_map[self._name, item]
+            item_display_name = item
+        else:
+            # it's a technical_name, need to retrieve display_name
+            real_name = item
+            item_display_name = self._schema._param_map[res._name]["title"]
+
         current_selection = (self._data.get_value(self._name) or {}).get("_selection")
 
         if current_selection != real_name:
-            display_name = self._find_display_name(current_selection)
+            current_display_name = self._find_current_display_name(current_selection)
             raise InvalidSelectionGroupError(
-                f'Can\'t access "{item}" selection group, currently selected: "{display_name}".'
+                f'Can\'t access "{item_display_name}" selection group, currently selected: "{current_display_name}".'
             )
 
-        return super().__getitem__(item=item)
+        return res
 
-    def _find_display_name(self: Self, name: str | None) -> str | None:
+    def _find_current_display_name(self: Self, name: str | None) -> str | None:
         if name is None:
             return name
 

@@ -204,10 +204,9 @@ class ConfigDifference:
         return simplified
 
 
-@dataclass()
+@dataclass(slots=True, frozen=True)
 class SelectionGroupSchema:
-    def __init__(self: Self, jsonschema: dict) -> None:
-        self._raw = jsonschema
+    _raw: dict
 
     @property
     def choices(self: Self) -> list[str | None]:
