@@ -30,6 +30,7 @@ from adcm_aio_client.config._types import (
     GenericConfigData,
     LevelNames,
     LocalConfigs,
+    SelectionGroupSchemaUtils,
 )
 from adcm_aio_client.errors import (
     ConfigComparisonError,
@@ -315,7 +316,7 @@ class _Selectable(_Group):
 
     @property
     def choices(self: Self) -> list[str | None]:
-        return self._schema._param_map[self._name].choices
+        return SelectionGroupSchemaUtils.get_choices(schema=self._schema._param_map[self._name])
 
     @property
     def value(self: Self) -> str | None:
@@ -329,8 +330,8 @@ class _Selectable(_Group):
     def _validate_choices(self: Self, value: str | None) -> None:
         schema = self._schema._param_map[self._name]
 
-        if value not in schema.choices:
-            group_name = schema._raw["title"]
+        if value not in SelectionGroupSchemaUtils.get_choices(schema=schema):
+            group_name = schema["title"]
             raise InvalidSelectionGroupError(f'"{value}" is not a valid choice for "{group_name}" selection group.')
 
 
@@ -342,12 +343,10 @@ class SelectableParameterGroup(_Selectable, ParameterGroup):
         res = super().__getitem__(item=item)
         item = item[0] if isinstance(item, tuple) else item
 
-        if item == self._schema._param_map[*res._name]["title"]:
-            # it's a display_name, need to retrieve technical_name
+        if item == self._schema._param_map[*res._name]["title"]:  # it's a display_name, retrieving technical_name
             real_name = self._schema._display_name_map[self._name, item]
             item_display_name = item
-        else:
-            # it's a technical_name, need to retrieve display_name
+        else:  # it's a technical_name, retrieving display_name
             real_name = item
             item_display_name = self._schema._param_map[res._name]["title"]
 
