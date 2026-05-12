@@ -157,6 +157,9 @@ class NoConfigInActionError(ADCMClientError): ...
 class ProcessCompleteError(ADCMClientError): ...
 
 
+class UnitExecutionError(ADCMClientError): ...
+
+
 # Filtering
 
 
