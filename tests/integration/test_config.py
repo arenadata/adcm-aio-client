@@ -28,10 +28,11 @@ from adcm_aio_client.config import (
     Parameter,
     ParameterGroup,
     ParameterHG,
+    SelectableParameterGroup,
     apply_local_changes,
     apply_remote_changes,
 )
-from adcm_aio_client.config._objects import HostGroupConfig, ObjectConfig, SelectableParameterGroup
+from adcm_aio_client.config._objects import HostGroupConfig, ObjectConfig
 from adcm_aio_client.errors import ConfigNoParameterError, InvalidSelectionGroupError, ObjectUpdateError
 from adcm_aio_client.host_groups._config_group import ConfigHostGroup
 from adcm_aio_client.objects import Bundle, Cluster, Host, Job, Service
@@ -434,8 +435,10 @@ async def test_config_two_sessions(
 
 
 async def test_selection_groups(service_with_selection_groups: Service) -> None:
-    await _selection_groups_in_object_config(service=service_with_selection_groups)
-    await _selection_groups_in_action_config(service=service_with_selection_groups)
+    # await _selection_groups_in_object_config(service=service_with_selection_groups)
+    # await _selection_groups_in_action_config(service=service_with_selection_groups)
+
+    await _selection_and_activation_groups(cluster=service_with_selection_groups.cluster)
 
 
 async def _selection_groups_in_object_config(service: Service) -> None:
@@ -540,6 +543,67 @@ async def _selection_groups_in_action_config(service: Service) -> None:
     job = await action.run()
     assert await job.get_status() in ("created", "running")
     await job.wait(exit_condition=is_success, timeout=30, poll_interval=1)
+
+
+async def _selection_and_activation_groups(cluster: Cluster) -> None:
+    service, *_ = await cluster.services.add(
+        filter_=Filter(attr="name", op="eq", value="selection_and_activation_groups")
+    )
+    expected_initial_config = {"root_act_gr": {"inner_sel_gr": None}, "root_sel_gr": None}
+    expected_initial_attrs = {"/root_act_gr": {"isActive": False}}
+
+    # case1: select simple group. No inner activatable_groups attrs are expected
+    config = await service.config
+    assert config.data.values == expected_initial_config
+    assert config.data.attributes == expected_initial_attrs
+
+    root_selection_group = config["root_sel_gr", SelectableParameterGroup]
+    root_selection_group.select('Subgroup 2 of "Root Selection Group"')
+
+    expected_config = {
+        "root_act_gr": {"inner_sel_gr": None},
+        "root_sel_gr": {"_selection": "subgr_2", "subgr_2": {"x": 1, "y": 2}},
+    }
+    expected_attrs = {"/root_act_gr": {"isActive": False}}
+    assert config.data.values == expected_config
+    assert config.data.attributes == expected_attrs
+    await config.save()
+
+    # case2: select group with activatable_group in subs, expect attrs has this key
+    config = await service.config
+    root_selection_group = config["root_sel_gr", SelectableParameterGroup]
+    root_selection_group.select('Subgroup 1 of "Root Selection Group"')
+    inner_act_subgr = root_selection_group["subgr_1", SelectableParameterGroup][
+        "inner_act_subgr", ActivatableParameterGroup
+    ]
+
+    expected_config = {
+        "root_act_gr": {"inner_sel_gr": None},
+        "root_sel_gr": {"_selection": "subgr_1", "subgr_1": {"inner_act_subgr": {"x": 1, "y": 2}}},
+    }
+    expected_attrs = {"/root_act_gr": {"isActive": False}, "/root_sel_gr/subgr_1/inner_act_subgr": {"isActive": False}}
+    assert config.data.values == expected_config
+    assert config.data.attributes == expected_attrs
+
+    inner_act_subgr.activate()
+    expected_attrs["/root_sel_gr/subgr_1/inner_act_subgr"]["isActive"] = True
+    assert config.data.attributes == expected_attrs
+    await config.save()
+
+    # case3: selection_group in activatable_group subs
+    config = await service.config
+    root_activation_group = config["root_act_gr", ActivatableParameterGroup]
+    root_activation_group.activate()
+    root_activation_group["Inner Selection Group", SelectableParameterGroup].select("Inner Group 2")
+
+    expected_config = {
+        "root_act_gr": {"inner_sel_gr": {"_selection": "inner_gr_2", "inner_gr_2": {"x": 1, "y": 2}}},
+        "root_sel_gr": {"_selection": "subgr_1", "subgr_1": {"inner_act_subgr": {"x": 1, "y": 2}}},
+    }
+    expected_attrs = {"/root_act_gr": {"isActive": True}, "/root_sel_gr/subgr_1/inner_act_subgr": {"isActive": True}}
+    assert config.data.values == expected_config
+    assert config.data.attributes == expected_attrs
+    await config.save()
 
 
 async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:

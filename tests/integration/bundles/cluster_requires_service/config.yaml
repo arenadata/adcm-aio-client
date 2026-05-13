@@ -113,3 +113,48 @@
                   required: False
 
   config: *selection_groups_config
+
+- type: service
+  name: selection_and_activation_groups
+  version: "sagr"
+  config:
+    - name: root_sel_gr
+      display_name: "Root Selection Group"
+      type: selection_group
+      subs:
+        - name: subgr_1
+          display_name: 'Subgroup 1 of "Root Selection Group"'
+          type: group
+          subs:
+            - name: inner_act_subgr
+              type: group
+              activatable: True
+              active: False
+              subs: &simple_subs
+                - name: x
+                  type: integer
+                  default: 1
+                - name: y
+                  type: integer
+                  default: 2
+        - name: subgr_2
+          display_name: 'Subgroup 2 of "Root Selection Group"'
+          type: group
+          subs: *simple_subs
+    - name: root_act_gr
+      type: group
+      activatable: True
+      active: False
+      subs:
+        - name: inner_sel_gr
+          display_name: "Inner Selection Group"
+          type: selection_group
+          subs:
+            - name: inner_gr_1
+              display_name: "Inner Group 1"
+              type: group
+              subs: *simple_subs
+            - name: inner_gr_2
+              display_name: "Inner Group 2"
+              type: group
+              subs: *simple_subs

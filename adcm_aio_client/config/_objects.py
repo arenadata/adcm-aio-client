@@ -309,6 +309,7 @@ class _Selectable(_Group):
                 "_selection": real_value,
                 real_value: self._schema.get_default((*self._name, real_value)),
             }
+            self._set_default_attributes(group_name=real_value)
         else:
             inner_value = None
 
@@ -333,6 +334,18 @@ class _Selectable(_Group):
         if value not in SelectionGroupSchemaUtils.get_choices(schema=schema):
             group_name = schema["title"]
             raise InvalidSelectionGroupError(f'"{value}" is not a valid choice for "{group_name}" selection group.')
+
+    def _set_default_attributes(self: Self, group_name: str | None) -> None:
+        """Check subs of selected `group_name` group, sets default attributes if needed"""
+        if group_name is None:
+            return
+
+        group_full_name = (*self._name, group_name)
+        for param_name in self._schema._param_map[group_full_name]["properties"]:
+            param_full_name = (*group_full_name, param_name)
+            if param_full_name in self._schema._activatable_groups:
+                is_active = self._schema._param_map[param_full_name]["adcmMeta"]["activation"]["default"]
+                self._data.set_attribute(parameter=param_full_name, attribute="isActive", value=is_active)
 
 
 class SelectableParameterGroup(_Selectable, ParameterGroup):
