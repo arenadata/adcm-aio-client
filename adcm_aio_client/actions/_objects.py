@@ -358,7 +358,7 @@ class OperationUnit(BaseUnit):
         try:
             task_status = await self._wait_task(task_id=task_id, timeout=timeout)
         except WaitTimeoutError as error:
-            raise TimeoutError("Timed out while waiting for related job to finish") from error
+            raise TimeoutError(f"Timed out while waiting for related job (id={task_id}) to finish") from error
 
         if task_status != "success":
             raise UnitExecutionError(f'Related job (id={task_id}) finished with the status "{task_status}"')

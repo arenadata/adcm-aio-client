@@ -17,6 +17,19 @@
           type: jinja2
       states:
         available: any
+
+    wizard_fail:
+      type: job
+      script: ./sleep.yaml
+      script_type: ansible
+      wizard_template:
+        file:
+          path: wizard_jinja/stages_fail.j2
+        engine:
+          type: jinja2
+      states:
+        available: any
+
     simple: &simple_action
       type: job
       script: ./simple_action.yaml
