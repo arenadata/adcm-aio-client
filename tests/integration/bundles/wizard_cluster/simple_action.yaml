@@ -1,0 +1,10 @@
+---
+- name: simple action
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  tasks:
+    - name: Print marker
+      debug:
+        msg: "simple action executed"

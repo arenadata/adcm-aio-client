@@ -12,18 +12,27 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from functools import cached_property
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, Self
 
 from asyncstdlib import cached_property as async_cached_property
 
 from adcm_aio_client._filters import FilterByDisplayName, FilterByName, Filtering
+from adcm_aio_client._types import Requester
 from adcm_aio_client.config._objects import ActionConfig
 from adcm_aio_client.config._types import ActionConfigData, ConfigSchema
-from adcm_aio_client.errors import HostNotInClusterError, NoConfigInActionError, NoMappingInActionError
+from adcm_aio_client.errors import (
+    HostNotInClusterError,
+    NoConfigInActionError,
+    NoMappingInActionError,
+    ProcessCompleteError,
+)
 from adcm_aio_client.mapping._objects import ActionMapping
 from adcm_aio_client.objects._accessors import NonPaginatedChildAccessor
-from adcm_aio_client.objects._base import InteractiveChildObject, InteractiveObject
+from adcm_aio_client.objects._base import InteractiveChildObject, InteractiveObject, convert_create_errors
 
 if TYPE_CHECKING:
     from adcm_aio_client.objects import Bundle, Cluster, Job
@@ -160,6 +169,10 @@ class Action(_GenericAction):
 
         return Job(requester=self._requester, data=response.as_dict())
 
+    @cached_property
+    def pre_process(self: Self) -> PreProcess:
+        return PreProcess(requester=self._requester, action=self)
+
 
 class ActionsAccessor[Parent: InteractiveObject](NonPaginatedChildAccessor[Parent, Action]):
     class_type = Action
@@ -195,6 +208,77 @@ class Upgrade(_GenericAction):
 class UpgradeNode[Parent: InteractiveObject](NonPaginatedChildAccessor[Parent, Upgrade]):
     class_type = Upgrade
     filtering = Filtering(FilterByName, FilterByDisplayName)
+
+
+class PreProcess:
+    def __init__(
+        self: Self,
+        requester: Requester,
+        action: Action,
+    ) -> None:
+        self._action = action
+        self._requester = requester
+
+    @convert_create_errors
+    async def init(self: Self) -> Flow:
+        process_path = *self._action.get_own_path(), Flow.PATH_PREFIX
+        response = await self._requester.post(*process_path, data={})
+        return Flow(parent=self._action, data=response.as_dict())
+
+    @asynccontextmanager
+    async def flow(self: Self) -> AsyncIterator[Flow]:
+        flow = await self.init()
+
+        yield flow
+
+        is_complete = await flow.complete()
+        if not is_complete:
+            message = "The process wasn't completed"
+            raise ProcessCompleteError(message)
+
+
+class Flow(InteractiveChildObject[Action]):
+    PATH_PREFIX = "processes"
+
+    def __init__(self: Self, parent: Action, data: dict[str, Any]) -> None:
+        super().__init__(parent=parent, data=data)
+        self.id = self._data["id"]
+        self._sync_key = self._data["syncKey"]
+
+    async def get_state(self: Self) -> str:
+        res = await self._retrieve_data()
+        return res["state"]
+
+    async def complete(self: Self) -> bool:
+        res = await self._requester.post(
+            *self.get_own_path(),
+            "operation",
+            data={
+                "method": "complete",
+                "params": {
+                    "processSyncKey": self._sync_key,
+                },
+            },
+        )
+        return res.get_status_code() == HTTPStatus.OK
+
+    @cached_property
+    def units(self: Self) -> list[dict]:
+        # todo: return list of units
+        return [
+            {
+                **step,
+                "stage": stage.get("displayName"),
+            }
+            for stage in self._data["stages"]
+            for step in stage["steps"]
+        ]
+
+    def _set_sync_key(self: Self, value: str) -> None:
+        self._sync_key = value
+
+    def _get_sync_key(self: Self) -> str:
+        return self._sync_key
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:
