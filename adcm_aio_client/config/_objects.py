@@ -31,6 +31,7 @@ from adcm_aio_client.config._types import (
     LevelNames,
     LocalConfigs,
     SelectionGroupSchemaUtils,
+    level_names_to_full_name,
 )
 from adcm_aio_client.errors import (
     ConfigComparisonError,
@@ -345,7 +346,7 @@ class _Selectable(_Group):
             param_full_name = (*group_full_name, param_name)
             if param_full_name in self._schema._activatable_groups:
                 is_active = self._schema._param_map[param_full_name]["adcmMeta"]["activation"]["default"]
-                self._data.set_attribute(parameter=param_full_name, attribute="isActive", value=is_active)
+                self._data._attributes.setdefault(level_names_to_full_name(param_full_name), {})["isActive"] = is_active
 
 
 class SelectableParameterGroup(_Selectable, ParameterGroup):

@@ -435,9 +435,8 @@ async def test_config_two_sessions(
 
 
 async def test_selection_groups(service_with_selection_groups: Service) -> None:
-    # await _selection_groups_in_object_config(service=service_with_selection_groups)
-    # await _selection_groups_in_action_config(service=service_with_selection_groups)
-
+    await _selection_groups_in_object_config(service=service_with_selection_groups)
+    await _selection_groups_in_action_config(service=service_with_selection_groups)
     await _selection_and_activation_groups(cluster=service_with_selection_groups.cluster)
 
 

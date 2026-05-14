@@ -110,7 +110,7 @@ class GenericConfigData(ABC):  # noqa: B024
 
     def set_attribute(self: Self, parameter: LevelNames, attribute: str, value: bool) -> bool:  # noqa: FBT001
         full_name = level_names_to_full_name(parameter)
-        self._attributes.setdefault(full_name, {})[attribute] = value
+        self._attributes[full_name][attribute] = value
         return value
 
 
