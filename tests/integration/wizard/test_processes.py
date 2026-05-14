@@ -2,64 +2,83 @@ import pytest
 import pytest_asyncio
 
 from adcm_aio_client import Filter
-from adcm_aio_client.actions._objects import OperationUnit
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.errors import ConflictError, WaitTimeoutError, UnitExecutionError
+from adcm_aio_client.errors import UnitExecutionError, WaitTimeoutError
 from adcm_aio_client.objects import Action, Bundle, Cluster
 
 pytestmark = [pytest.mark.asyncio]
 
-OPERATION_STEPS_COUNT = 2
-SUCCESS_TIMEOUT = 5
+OPERATION_STEPS_COUNT = 3
+SUCCESS_TIMEOUT = 10
 FAIL_TIMEOUT = 1
 
 
 @pytest_asyncio.fixture()
 async def wizard_cluster(adcm_client: ADCMClient, wizard_cluster_bundle: Bundle) -> Cluster:
-    cluster = await adcm_client.clusters.create(bundle=wizard_cluster_bundle, name="Awesome Cluster")
+    cluster = await adcm_client.clusters.create(bundle=wizard_cluster_bundle, name="Wizard Cluster")
     await cluster.services.add(filter_=Filter(attr="name", op="eq", value="service_1"))
     return cluster
 
 
 async def _test_action_flow_success(action: Action) -> None:
-    async with action.pre_process.flow() as flow:
-        units = flow.units
-        assert len(units) == OPERATION_STEPS_COUNT
-
-        first_step = units[0]
-        assert first_step.name == "stage1_step1"
-        assert first_step.stage == "First stage"
-
-        for unit in units:
-            assert isinstance(unit, OperationUnit)
-            await unit.execute(timeout=SUCCESS_TIMEOUT)
+    flow = await action.pre_process.init()
+    units = flow.units
+    assert len(units) == OPERATION_STEPS_COUNT
+    unit1, unit2, unit3 = units
+    # check the data definition for steps
+    assert unit1.name == "stage1_step1"
+    assert unit1.stage == "First stage"
+    assert unit3.stage == "Second stage"
+    # check execute and skip units
+    await unit1.execute()
+    assert await unit2.skip() is True  # pyright: ignore[reportAttributeAccessIssue]
+    await unit3.execute()
+    assert await flow.complete() is True
+    # check states
+    assert await unit1.get_state() == "completed"
+    assert await unit2.get_state() == "skipped"
+    assert await unit3.get_state() == "completed"
+    assert await flow.get_state() == "completed"
 
 
 async def _test_action_flow_fail_context_manager(action: Action) -> None:
-    with pytest.raises(ConflictError, match="All steps must be completed"):
-        async with action.pre_process.flow() as flow:
-            assert flow
+    # All steps must be completed for a successful complete of a process
+    flow = await action.pre_process.init()
+    assert await flow.complete() is False
 
 
-async def _test_action_flow_fail_timeout(action: Action) -> None:
+async def _test_action_flow_fail_timeout(adcm_client: ADCMClient, cluster: Cluster, action: Action) -> None:
+    flow = await action.pre_process.init()
+    unit = flow.units[0]
     with pytest.raises(WaitTimeoutError):
-        async with action.pre_process.flow() as flow:
-            for unit in flow.units:
-                await unit.execute(timeout=FAIL_TIMEOUT)
+        await unit.execute(timeout=FAIL_TIMEOUT)
+
+    # get the last task and wait for complete for next tests
+    jobs = await adcm_client.jobs.filter(object=cluster, name__eq=action.name)
+    job = max(jobs, key=lambda job: job.id)
+    await job.wait(timeout=SUCCESS_TIMEOUT, poll_interval=1)
 
 
-async def _test_action_flow_fail_job_status(action: Action) -> None:
-    with pytest.raises(UnitExecutionError, match='finished with the status "failed"'):
-        flow = await action.pre_process.init()
+async def _test_action_flow_fail_job_status(wizard_cluster: Cluster) -> None:
+    action = await wizard_cluster.actions.get(name__eq="wizard_fail")
+
+    async with action.pre_process.flow() as flow:
         unit = flow.units[0]
+        with pytest.raises(UnitExecutionError, match='finished with the status "failed"'):
+            await unit.execute()
+
+
+async def _test_action_flow_fail_status_code(action: Action) -> None:
+    flow = await action.pre_process.init()
+    unit = flow.units[1]
+    with pytest.raises(UnitExecutionError, match="Only current step can be submitted"):
         await unit.execute()
 
 
-async def test_action_flow(wizard_cluster: Cluster) -> None:
+async def test_action_flow(adcm_client: ADCMClient, wizard_cluster: Cluster) -> None:
     action = await wizard_cluster.actions.get(name__eq="wizard_jinja")
     await _test_action_flow_success(action)
     await _test_action_flow_fail_context_manager(action)
-    await _test_action_flow_fail_timeout(action)
-
-    action_with_fail_step = await wizard_cluster.actions.get(name__eq="wizard_fail")
-    await _test_action_flow_fail_job_status(action_with_fail_step)
+    await _test_action_flow_fail_timeout(adcm_client, wizard_cluster, action)
+    await _test_action_flow_fail_status_code(action)
+    await _test_action_flow_fail_job_status(wizard_cluster)

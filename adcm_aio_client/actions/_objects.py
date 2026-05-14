@@ -15,29 +15,31 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
 from functools import cached_property
-from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, Self
-import asyncio
 
 from asyncstdlib import cached_property as async_cached_property
 
 from adcm_aio_client._filters import FilterByDisplayName, FilterByName, Filtering
-from adcm_aio_client._types import DEFAULT_JOB_TERMINAL_STATUSES, Requester
+from adcm_aio_client._types import Requester
 from adcm_aio_client.config._objects import ActionConfig
 from adcm_aio_client.config._types import ActionConfigData, ConfigSchema
 from adcm_aio_client.errors import (
+    ConflictError,
     HostNotInClusterError,
     NoConfigInActionError,
     NoMappingInActionError,
-    ProcessCompleteError,
+    ServerError,
     UnitExecutionError,
-    WaitTimeoutError,
 )
 from adcm_aio_client.mapping._objects import ActionMapping
 from adcm_aio_client.objects._accessors import NonPaginatedChildAccessor
-from adcm_aio_client.objects._base import InteractiveChildObject, InteractiveObject, convert_create_errors
+from adcm_aio_client.objects._base import (
+    InteractiveChildObject,
+    InteractiveObject,
+    convert_create_errors,
+    convert_unit_execution_errors,
+)
 
 if TYPE_CHECKING:
     from adcm_aio_client.objects import Bundle, Cluster, Job
@@ -233,13 +235,8 @@ class PreProcess:
     @asynccontextmanager
     async def flow(self: Self) -> AsyncIterator[Flow]:
         flow = await self.init()
-
         yield flow
-
-        is_complete = await flow.complete()
-        if not is_complete:
-            message = "The process wasn't completed"
-            raise ProcessCompleteError(message)
+        await flow.complete()
 
 
 class Flow(InteractiveChildObject[Action]):
@@ -255,17 +252,20 @@ class Flow(InteractiveChildObject[Action]):
         return res["state"]
 
     async def complete(self: Self) -> bool:
-        res = await self._requester.post(
-            *self.get_own_path(),
-            "operation",
-            data={
-                "method": "complete",
-                "params": {
-                    "processSyncKey": self._sync_key,
+        try:
+            await self._requester.post(
+                *self.get_own_path(),
+                "operation",
+                data={
+                    "method": "complete",
+                    "params": {
+                        "processSyncKey": self._sync_key,
+                    },
                 },
-            },
-        )
-        return res.get_status_code() == HTTPStatus.OK
+            )
+        except (ConflictError, ServerError):
+            return False
+        return True
 
     @cached_property
     def units(self: Self) -> list[ConfigurationUnit | OperationUnit | MappingUnit]:
@@ -275,7 +275,7 @@ class Flow(InteractiveChildObject[Action]):
             "mapping": MappingUnit,
         }
 
-        units: list[ConfigurationUnit | OperationUnit | MappingUnit] = []
+        units = []
 
         for stage in self._data["stages"]:
             for step in stage["steps"]:
@@ -284,7 +284,15 @@ class Flow(InteractiveChildObject[Action]):
                     "stage": stage.get("displayName"),
                 }
                 unit_class = units_mapping[step["type"]]
-                units.append(unit_class(parent=self, data=step_data))
+                units.append(
+                    unit_class(
+                        parent=self,
+                        data=step_data,
+                        get_sync_key=self._get_sync_key,
+                        set_synk_key=self._set_sync_key,
+                        refresh_sync_key=self._refresh_sync_key,
+                    )
+                )
         return units
 
     def _set_sync_key(self: Self, value: str) -> None:
@@ -299,15 +307,22 @@ class Flow(InteractiveChildObject[Action]):
         return self._sync_key
 
 
-class BaseUnit(InteractiveChildObject["Flow"]):
+class _BaseUnit(InteractiveChildObject[Flow]):
     PATH_PREFIX = "steps"
 
-    def __init__(self: Self, parent: Flow, data: dict[str, Any]) -> None:
+    def __init__(
+        self: Self,
+        parent: Flow,
+        data: dict[str, Any],
+        get_sync_key: Callable,
+        set_synk_key: Callable,
+        refresh_sync_key: Callable,
+    ) -> None:
         super().__init__(parent=parent, data=data)
         self.unit_id: int | None = self._data.get("id")
-        self._get_flow_sync_key: Callable = parent._get_sync_key
-        self._set_flow_sync_key: Callable = parent._set_sync_key
-        self._refresh_sync_key: Callable = parent._refresh_sync_key
+        self._get_flow_sync_key: Callable = get_sync_key
+        self._set_flow_sync_key_after_execute: Callable = set_synk_key
+        self._refresh_sync_key_after_job_complete: Callable = refresh_sync_key
 
     @cached_property
     def name(self: Self) -> str:
@@ -318,30 +333,25 @@ class BaseUnit(InteractiveChildObject["Flow"]):
         return self._data["displayName"]
 
     @cached_property
-    def stage(self: Self) -> str | None:
-        return self._data.get("stage")
+    def stage(self: Self) -> str:
+        return self._data["stage"]
 
     async def get_state(self: Self) -> str:
         response = await self._retrieve_data()
-        self._data = response
-        self._clear_cache()
-        self.unit_id = self._data.get("id")
         return response["state"]
 
     @abstractmethod
     async def execute(self: Self, timeout: int | None = None) -> Self: ...
 
+    @convert_unit_execution_errors
     async def _post_operation_r(self: Self, payload: dict) -> dict:
         response = await self._requester.post(*self._parent.get_own_path(), "operation", data=payload)
-
-        if response.get_status_code() != HTTPStatus.OK:
-            raise UnitExecutionError("Failed to execute submit operation")
 
         return response.as_dict()
 
 
-class OperationUnit(BaseUnit):
-    async def execute(self: Self, timeout: int | None = None) -> Self:
+class OperationUnit(_BaseUnit):
+    async def execute(self: Self, timeout: int | None = None, poll_interval: int = 1) -> Self:
         payload = {
             "method": "submit_step",
             "params": {
@@ -350,55 +360,52 @@ class OperationUnit(BaseUnit):
             },
         }
 
-        response = await self._post_operation_r(payload)
+        response_data = await self._post_operation_r(payload)
 
-        self._set_flow_sync_key(response["syncKey"])
+        self._set_flow_sync_key_after_execute(response_data["syncKey"])
 
         task_id = await self._get_task_id()
-        try:
-            task_status = await self._wait_task(task_id=task_id, timeout=timeout)
-        except WaitTimeoutError as error:
-            raise TimeoutError(f"Timed out while waiting for related job (id={task_id}) to finish") from error
 
-        if task_status != "success":
-            raise UnitExecutionError(f'Related job (id={task_id}) finished with the status "{task_status}"')
+        from adcm_aio_client.objects import Job
 
-        await self._refresh_sync_key()
+        job = await Job.with_id(object_id=task_id, requester=self._requester)
+        await job.wait(timeout=timeout, poll_interval=poll_interval)
+
+        status = await job.get_status()
+        if status != "success":
+            raise UnitExecutionError(f'Related job (id={task_id}) finished with the status "{status}"')
+
+        await self._refresh_sync_key_after_job_complete()
 
         return self
 
-    async def _wait_task(self: Self, task_id: int, timeout: int | None = None, poll_interval: int = 1) -> str:
-        timeout_condition = datetime.max if timeout is None else (datetime.now() + timedelta(seconds=timeout))  # noqa: DTZ005
+    async def skip(self: Self) -> bool:
+        payload = {
+            "method": "skip_step",
+            "params": {
+                "stepId": self.id,
+                "processSyncKey": self._get_flow_sync_key(),
+            },
+        }
+        try:
+            response_data = await self._post_operation_r(payload)
+        except UnitExecutionError:
+            return False
 
-        while datetime.now() < timeout_condition:  # noqa: DTZ005
-            task_status = await self._get_task_status(task_id)
-            if task_status in DEFAULT_JOB_TERMINAL_STATUSES:
-                return task_status
-
-            await asyncio.sleep(poll_interval)
-
-        message = "Failed to meet exit condition for job"
-        if timeout:
-            message = f"{message} in {timeout} seconds with {poll_interval} second interval"
-
-        raise WaitTimeoutError(message)
+        self._set_flow_sync_key_after_execute(response_data["syncKey"])
+        return True
 
     async def _get_task_id(self: Self) -> int:
         resp = await self._retrieve_data()
         return resp["task"]["id"]
 
-    async def _get_task_status(self: Self, task_id: int) -> str:
-        task_path = "/api/v2/tasks", task_id
-        response = await self._requester.get(*task_path)
-        return response.as_dict()["status"]
 
-
-class ConfigurationUnit(BaseUnit):
+class ConfigurationUnit(_BaseUnit):
     async def execute(self: Self, timeout: int | None = None) -> Self:
         raise NotImplementedError()
 
 
-class MappingUnit(BaseUnit):
+class MappingUnit(_BaseUnit):
     async def execute(self: Self, timeout: int | None = None) -> Self:
         raise NotImplementedError()
 

@@ -23,3 +23,17 @@ def generate_scripts(context: dict) -> list[dict]:
     }
 
     return [script1]
+
+
+def generate_scripts_fail(context: dict) -> list[dict]:
+    cluster_data = context["cluster"]
+
+    script1 = {
+        "display_name": "Sleep",
+        "name": "sleep_script",
+        "params": {"test_params": [cluster_data["state"]]},
+        "script": "fail.yaml",
+        "script_type": "ansible",
+    }
+
+    return [script1]
