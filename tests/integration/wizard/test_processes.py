@@ -1,9 +1,11 @@
+from httpx import AsyncClient
 import pytest
 import pytest_asyncio
 
 from adcm_aio_client import Filter
-from adcm_aio_client.actions._objects import OperationUnit
+from adcm_aio_client.actions._objects import ConfigurationUnit, OperationUnit
 from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.config import Parameter
 from adcm_aio_client.errors import ConflictError, UnitExecutionError, WaitTimeoutError
 from adcm_aio_client.objects import Action, Bundle, Cluster
 
@@ -63,3 +65,35 @@ async def test_action_flow(wizard_cluster: Cluster) -> None:
 
     action_with_fail_step = await wizard_cluster.actions.get(name__eq="wizard_fail")
     await _test_action_flow_fail_job_status(action_with_fail_step)
+
+
+async def test_configuration_unit(wizard_cluster: Cluster, httpx_client: AsyncClient) -> None:
+    action = await wizard_cluster.actions.get(name__eq="single_config_step")
+
+    flow = await action.pre_process.init()
+    assert len(flow.units) == 1
+    unit = flow.units[0]
+    assert isinstance(unit, ConfigurationUnit)
+
+    process_url = "/".join(str(item) for item in flow.get_own_path()) + "/"
+    response = await httpx_client.get(process_url)
+    assert response.json()["currentStep"] == unit.id
+    assert response.json()["state"] == "created"
+
+    config = await unit.config
+    config["integer_field", Parameter].set("wrong value")
+
+    with pytest.raises(ConflictError, match=r"CONFIG_VALUE_ERROR.*/integer_field \[value\]: should be of type integer"):
+        await unit.execute()
+
+    config["integer_field", Parameter].set(123)
+    await unit.execute()
+
+    response = await httpx_client.get(process_url)
+    assert response.json()["currentStep"] is None
+    assert response.json()["state"] == "created"
+
+    await flow.complete()
+    response = await httpx_client.get(process_url)
+    assert response.json()["currentStep"] is None
+    assert response.json()["state"] == "completed"

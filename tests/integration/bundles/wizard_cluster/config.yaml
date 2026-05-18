@@ -37,6 +37,18 @@
       states:
         available: any
 
+    single_config_step:
+      type: job
+      script: ./sleep.yaml
+      script_type: ansible
+      wizard_template:
+        file:
+          path: single_config_step/stages.j2
+        engine:
+          type: jinja2
+      states:
+        available: any
+
   config: &config
     - name: float
       type: float

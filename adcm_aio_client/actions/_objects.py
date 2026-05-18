@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from functools import cached_property
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Self, overload
 import asyncio
 
 from asyncstdlib import cached_property as async_cached_property
@@ -328,8 +328,13 @@ class BaseUnit(InteractiveChildObject["Flow"]):
         self.unit_id = self._data.get("id")
         return response["state"]
 
+    @overload
     @abstractmethod
     async def execute(self: Self, timeout: int | None = None) -> Self: ...
+
+    @overload
+    @abstractmethod
+    async def execute(self: Self) -> Self: ...
 
     async def _post_operation_r(self: Self, payload: dict) -> dict:
         response = await self._requester.post(*self._parent.get_own_path(), "operation", data=payload)
@@ -395,7 +400,33 @@ class OperationUnit(BaseUnit):
 
 class ConfigurationUnit(BaseUnit):
     async def execute(self: Self, timeout: int | None = None) -> Self:
-        raise NotImplementedError()
+        _ = timeout  # TODO: fix types
+
+        config_payload = (await self.config)._to_payload()
+        payload = {
+            "method": "submit_step",
+            "params": {
+                "stepId": self.id,
+                "processSyncKey": self._get_flow_sync_key(),
+                "configuration": config_payload,
+            },
+        }
+
+        # TODO: wrap exceptions
+        response = await self._post_operation_r(payload)
+
+        self._set_flow_sync_key(response["syncKey"])
+
+        return self
+
+    @async_cached_property
+    async def config(self: Self) -> ActionConfig:
+        response = (await self.requester.get(*self.get_own_path())).as_dict()["configuration"]
+
+        schema = ConfigSchema(spec_as_jsonschema=response["configSchema"])
+        data = ActionConfigData(values=response["config"], attributes=response["adcmMeta"])
+
+        return ActionConfig(schema=schema, config=data, parent=self)
 
 
 class MappingUnit(BaseUnit):
