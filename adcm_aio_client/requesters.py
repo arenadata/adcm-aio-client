@@ -193,7 +193,6 @@ class DefaultRequester(Requester):
 
         self._credentials = credentials
         self.client.headers["X-CSRFToken"] = response.cookies["csrftoken"]
-        # self.client.headers["X-CSRFToken"] = response.cookies["csrftoken"]
         self.client.headers["Referer"] = str(self.client.base_url)
 
         return self
