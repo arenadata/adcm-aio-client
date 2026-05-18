@@ -4,7 +4,7 @@ import pytest_asyncio
 from adcm_aio_client import Filter
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.errors import UnitExecutionError, WaitTimeoutError
-from adcm_aio_client.objects import Action, Bundle, Cluster
+from adcm_aio_client.objects import Action, Bundle, Cluster, Flow
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -75,26 +75,32 @@ async def _test_action_flow_fail_status_code(action: Action) -> None:
         await unit.execute()
 
 
-async def _test_action_flow_operation_with_wrong_synk_key(action: Action) -> None:
-    for unit_method in ("execute", "skip"):
-        async with action.pre_process.flow() as flow:
-            unit1, unit2, *_ = flow.units
-            # send a request to skip a step outside flow units
-            await flow.requester.post(
-                *flow.get_own_path(),
-                "operation",
-                data={
-                    "method": "skip_step",
-                    "params": {"stepId": unit1.id, "processSyncKey": flow._sync_key},
-                },
-            )
+async def _skip_unit_from_outside(flow: Flow, unit_id: int) -> None:
+    await flow.requester.post(
+        *flow.get_own_path(),
+        "operation",
+        data={
+            "method": "skip_step",
+            "params": {"stepId": unit_id, "processSyncKey": flow._sync_key},
+        },
+    )
 
-            match unit_method:
-                case "execute":
-                    with pytest.raises(UnitExecutionError, match="Can't find Process"):
-                        await unit2.execute()
-                case "skip":
-                    assert await unit2.skip() is False  # pyright: ignore[reportAttributeAccessIssue]
+
+async def _test_execute_unit_with_wrong_synk_key(action: Action) -> None:
+    async with action.pre_process.flow() as flow:
+        unit1, unit2, *_ = flow.units
+        await _skip_unit_from_outside(flow=flow, unit_id=unit1.id)
+
+        with pytest.raises(UnitExecutionError, match="Can't find Process"):
+            await unit2.execute()
+
+
+async def _test_skip_unit_with_wrong_synk_key(action: Action) -> None:
+    async with action.pre_process.flow() as flow:
+        unit1, unit2, *_ = flow.units
+        await _skip_unit_from_outside(flow=flow, unit_id=unit1.id)
+
+        assert await unit2.skip() is False  # pyright: ignore[reportAttributeAccessIssue]
 
 
 async def test_action_flow(adcm_client: ADCMClient, wizard_cluster: Cluster) -> None:
@@ -104,4 +110,5 @@ async def test_action_flow(adcm_client: ADCMClient, wizard_cluster: Cluster) -> 
     await _test_action_flow_fail_timeout(adcm_client, wizard_cluster, action)
     await _test_action_flow_fail_status_code(action)
     await _test_action_flow_fail_job_status(wizard_cluster)
-    await _test_action_flow_operation_with_wrong_synk_key(action)
+    await _test_execute_unit_with_wrong_synk_key(action)
+    await _test_skip_unit_with_wrong_synk_key(action)
