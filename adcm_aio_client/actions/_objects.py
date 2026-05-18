@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Self
@@ -314,15 +314,15 @@ class _BaseUnit(InteractiveChildObject[Flow]):
         self: Self,
         parent: Flow,
         data: dict[str, Any],
-        get_sync_key: Callable,
-        set_synk_key: Callable,
-        refresh_sync_key: Callable,
+        get_sync_key: Callable[[], str],
+        set_synk_key: Callable[[str], None],
+        refresh_sync_key: Callable[[], Awaitable[str]],
     ) -> None:
         super().__init__(parent=parent, data=data)
         self.unit_id: int | None = self._data.get("id")
-        self._get_flow_sync_key: Callable = get_sync_key
-        self._set_flow_sync_key_after_execute: Callable = set_synk_key
-        self._refresh_sync_key_after_job_complete: Callable = refresh_sync_key
+        self._get_flow_sync_key = get_sync_key
+        self._set_flow_sync_key_after_execute = set_synk_key
+        self._refresh_sync_key_after_job_complete = refresh_sync_key
 
     @cached_property
     def name(self: Self) -> str:

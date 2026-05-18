@@ -75,6 +75,28 @@ async def _test_action_flow_fail_status_code(action: Action) -> None:
         await unit.execute()
 
 
+async def _test_action_flow_operation_with_wrong_synk_key(action: Action) -> None:
+    for unit_method in ("execute", "skip"):
+        async with action.pre_process.flow() as flow:
+            unit1, unit2, *_ = flow.units
+            # send a request to skip a step outside flow units
+            await flow.requester.post(
+                *flow.get_own_path(),
+                "operation",
+                data={
+                    "method": "skip_step",
+                    "params": {"stepId": unit1.id, "processSyncKey": flow._sync_key},
+                },
+            )
+
+            match unit_method:
+                case "execute":
+                    with pytest.raises(UnitExecutionError, match="Can't find Process"):
+                        await unit2.execute()
+                case "skip":
+                    assert await unit2.skip() is False  # pyright: ignore[reportAttributeAccessIssue]
+
+
 async def test_action_flow(adcm_client: ADCMClient, wizard_cluster: Cluster) -> None:
     action = await wizard_cluster.actions.get(name__eq="wizard_jinja")
     await _test_action_flow_success(action)
@@ -82,3 +104,4 @@ async def test_action_flow(adcm_client: ADCMClient, wizard_cluster: Cluster) -> 
     await _test_action_flow_fail_timeout(adcm_client, wizard_cluster, action)
     await _test_action_flow_fail_status_code(action)
     await _test_action_flow_fail_job_status(wizard_cluster)
+    await _test_action_flow_operation_with_wrong_synk_key(action)
