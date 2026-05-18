@@ -16,7 +16,7 @@ from abc import abstractmethod
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Self, overload
+from typing import TYPE_CHECKING, Any, Self
 
 from asyncstdlib import cached_property as async_cached_property
 
@@ -416,7 +416,7 @@ class ConfigurationUnit(_BaseUnit):
 
         response = await self._post_operation_r(payload)
 
-        self._set_flow_sync_key(response["syncKey"])
+        self._set_flow_sync_key_after_execute(response["syncKey"])
 
         return self
 

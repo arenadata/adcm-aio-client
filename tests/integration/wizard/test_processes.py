@@ -3,10 +3,10 @@ import pytest
 import pytest_asyncio
 
 from adcm_aio_client import Filter
-from adcm_aio_client.actions._objects import ConfigurationUnit, OperationUnit
+from adcm_aio_client.actions._objects import ConfigurationUnit
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.config import Parameter
-from adcm_aio_client.errors import ConflictError, UnitExecutionError, WaitTimeoutError
+from adcm_aio_client.errors import UnitExecutionError, WaitTimeoutError
 from adcm_aio_client.objects import Action, Bundle, Cluster
 
 pytestmark = [pytest.mark.asyncio]
@@ -126,7 +126,11 @@ async def test_configuration_unit(wizard_cluster: Cluster, httpx_client: AsyncCl
     config = await unit.config
     config["integer_field", Parameter].set("wrong value")
 
-    with pytest.raises(ConflictError, match=r"CONFIG_VALUE_ERROR.*/integer_field \[value\]: should be of type integer"):
+    with pytest.raises(
+        UnitExecutionError,
+        match="<ConfigurationUnit #1 Stage1.ConfigurationStep1>.*"
+        r"CONFIG_VALUE_ERROR.*/integer_field \[value\]: should be of type integer",
+    ):
         await unit.execute()
 
     config["integer_field", Parameter].set(123)
