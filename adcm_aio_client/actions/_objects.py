@@ -12,10 +12,10 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from abc import abstractmethod
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from functools import cached_property
-from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, Self
 
 from asyncstdlib import cached_property as async_cached_property
@@ -25,14 +25,21 @@ from adcm_aio_client._types import Requester
 from adcm_aio_client.config._objects import ActionConfig
 from adcm_aio_client.config._types import ActionConfigData, ConfigSchema
 from adcm_aio_client.errors import (
+    ConflictError,
     HostNotInClusterError,
     NoConfigInActionError,
     NoMappingInActionError,
-    ProcessCompleteError,
+    ServerError,
+    UnitExecutionError,
 )
 from adcm_aio_client.mapping._objects import ActionMapping
 from adcm_aio_client.objects._accessors import NonPaginatedChildAccessor
-from adcm_aio_client.objects._base import InteractiveChildObject, InteractiveObject, convert_create_errors
+from adcm_aio_client.objects._base import (
+    InteractiveChildObject,
+    InteractiveObject,
+    convert_create_errors,
+    convert_unit_execution_errors,
+)
 
 if TYPE_CHECKING:
     from adcm_aio_client.objects import Bundle, Cluster, Job
@@ -228,13 +235,8 @@ class PreProcess:
     @asynccontextmanager
     async def flow(self: Self) -> AsyncIterator[Flow]:
         flow = await self.init()
-
         yield flow
-
-        is_complete = await flow.complete()
-        if not is_complete:
-            message = "The process wasn't completed"
-            raise ProcessCompleteError(message)
+        await flow.complete()
 
 
 class Flow(InteractiveChildObject[Action]):
@@ -250,35 +252,162 @@ class Flow(InteractiveChildObject[Action]):
         return res["state"]
 
     async def complete(self: Self) -> bool:
-        res = await self._requester.post(
-            *self.get_own_path(),
-            "operation",
-            data={
-                "method": "complete",
-                "params": {
-                    "processSyncKey": self._sync_key,
+        try:
+            await self._requester.post(
+                *self.get_own_path(),
+                "operation",
+                data={
+                    "method": "complete",
+                    "params": {
+                        "processSyncKey": self._sync_key,
+                    },
                 },
-            },
-        )
-        return res.get_status_code() == HTTPStatus.OK
+            )
+        except (ConflictError, ServerError):
+            return False
+        return True
 
     @cached_property
-    def units(self: Self) -> list[dict]:
-        # todo: return list of units
-        return [
-            {
-                **step,
-                "stage": stage.get("displayName"),
-            }
-            for stage in self._data["stages"]
-            for step in stage["steps"]
-        ]
+    def units(self: Self) -> list[ConfigurationUnit | OperationUnit | MappingUnit]:
+        units_mapping = {
+            "configuration": ConfigurationUnit,
+            "operation": OperationUnit,
+            "mapping": MappingUnit,
+        }
+
+        units = []
+
+        for stage in self._data["stages"]:
+            for step in stage["steps"]:
+                step_data = {
+                    **step,
+                    "stage": stage.get("displayName"),
+                }
+                unit_class = units_mapping[step["type"]]
+                units.append(
+                    unit_class(
+                        parent=self,
+                        data=step_data,
+                        get_sync_key=self._get_sync_key,
+                        set_synk_key=self._set_sync_key,
+                        refresh_sync_key=self._refresh_sync_key,
+                    )
+                )
+        return units
 
     def _set_sync_key(self: Self, value: str) -> None:
         self._sync_key = value
 
     def _get_sync_key(self: Self) -> str:
         return self._sync_key
+
+    async def _refresh_sync_key(self: Self) -> str:
+        resp = await self._retrieve_data()
+        self._sync_key = resp["syncKey"]
+        return self._sync_key
+
+
+class _BaseUnit(InteractiveChildObject[Flow]):
+    PATH_PREFIX = "steps"
+
+    def __init__(
+        self: Self,
+        parent: Flow,
+        data: dict[str, Any],
+        get_sync_key: Callable[[], str],
+        set_synk_key: Callable[[str], None],
+        refresh_sync_key: Callable[[], Awaitable[str]],
+    ) -> None:
+        super().__init__(parent=parent, data=data)
+        self.unit_id: int | None = self._data.get("id")
+        self._get_flow_sync_key = get_sync_key
+        self._set_flow_sync_key_after_execute = set_synk_key
+        self._refresh_sync_key_after_job_complete = refresh_sync_key
+
+    @cached_property
+    def name(self: Self) -> str:
+        return self._data["name"]
+
+    @cached_property
+    def display_name(self: Self) -> str:
+        return self._data["displayName"]
+
+    @cached_property
+    def stage(self: Self) -> str:
+        return self._data["stage"]
+
+    async def get_state(self: Self) -> str:
+        response = await self._retrieve_data()
+        return response["state"]
+
+    @abstractmethod
+    async def execute(self: Self, timeout: int | None = None) -> Self: ...
+
+    @convert_unit_execution_errors
+    async def _post_operation_r(self: Self, payload: dict) -> dict:
+        response = await self._requester.post(*self._parent.get_own_path(), "operation", data=payload)
+
+        return response.as_dict()
+
+
+class OperationUnit(_BaseUnit):
+    async def execute(self: Self, timeout: int | None = None, poll_interval: int = 1) -> Self:
+        payload = {
+            "method": "submit_step",
+            "params": {
+                "stepId": self.id,
+                "processSyncKey": self._get_flow_sync_key(),
+            },
+        }
+
+        response_data = await self._post_operation_r(payload)
+
+        self._set_flow_sync_key_after_execute(response_data["syncKey"])
+
+        task_id = await self._get_task_id()
+
+        from adcm_aio_client.objects import Job
+
+        job = await Job.with_id(object_id=task_id, requester=self._requester)
+        await job.wait(timeout=timeout, poll_interval=poll_interval)
+
+        status = await job.get_status()
+        if status != "success":
+            raise UnitExecutionError(f'Related job (id={task_id}) finished with the status "{status}"')
+
+        await self._refresh_sync_key_after_job_complete()
+
+        return self
+
+    async def skip(self: Self) -> bool:
+        payload = {
+            "method": "skip_step",
+            "params": {
+                "stepId": self.id,
+                "processSyncKey": self._get_flow_sync_key(),
+            },
+        }
+        try:
+            response_data = await self._post_operation_r(payload)
+        except UnitExecutionError:
+            return False
+
+        self._set_flow_sync_key_after_execute(response_data["syncKey"])
+        return True
+
+    async def _get_task_id(self: Self) -> int:
+        resp = await self._retrieve_data()
+        return resp["task"]["id"]
+
+
+class ConfigurationUnit(_BaseUnit):
+    async def execute(self: Self, timeout: int | None = None) -> Self:
+        raise NotImplementedError()
+
+
+class MappingUnit(_BaseUnit):
+    async def execute(self: Self, timeout: int | None = None) -> Self:
+        raise NotImplementedError()
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:

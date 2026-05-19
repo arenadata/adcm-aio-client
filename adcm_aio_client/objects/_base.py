@@ -34,6 +34,8 @@ from adcm_aio_client.errors import (
     ObjectDeleteError,
     ObjectUpdateError,
     PermissionDeniedError,
+    ServerError,
+    UnitExecutionError,
 )
 
 P = ParamSpec("P")
@@ -85,6 +87,9 @@ convert_update_errors = _convert_object_errors(
 )
 convert_delete_errors = _convert_object_errors(
     raise_as=ObjectDeleteError, on_errors=(ConflictError, PermissionDeniedError)
+)
+convert_unit_execution_errors = _convert_object_errors(
+    raise_as=UnitExecutionError, on_errors=(ConflictError, ServerError)
 )
 
 
