@@ -130,7 +130,7 @@
               type: group
               activatable: True
               active: False
-              subs: &simple_subs
+              subs: &simple_subs_with_defaults
                 - name: x
                   type: integer
                   default: 1
@@ -140,7 +140,7 @@
         - name: subgr_2
           display_name: 'Subgroup 2 of "Root Selection Group"'
           type: group
-          subs: *simple_subs
+          subs: *simple_subs_with_defaults
     - name: root_act_gr
       type: group
       activatable: True
@@ -153,8 +153,56 @@
             - name: inner_gr_1
               display_name: "Inner Group 1"
               type: group
-              subs: *simple_subs
+              subs: *simple_subs_with_defaults
             - name: inner_gr_2
               display_name: "Inner Group 2"
               type: group
-              subs: *simple_subs
+              subs: *simple_subs_with_defaults
+
+- type: service
+  name: deep_nested_selection
+  version: "nsgr"
+  config:
+    - name: lvl_root_group
+      display_name: "Lvl root group"
+      type: group
+      subs:
+        - name: lvl_1_group_1
+          display_name: "Lvl 1 group 1"
+          type: group
+          subs:
+            - name: lvl_2_selection_group
+              display_name: "Lvl 2 selection group"
+              type: selection_group
+              subs:
+                - name: lvl_3_group_1
+                  display_name: "Lvl 3 group 1"
+                  type: group
+                  subs:
+                    - name: lvl_4_selection_group
+                      display_name: "Lvl 4 selection group"
+                      type: selection_group
+                      subs:
+                        - name: lvl_5_group_1
+                          display_name: "Lvl 5 group 1"
+                          type: group
+                          subs: *simple_subs_with_defaults
+                        - name: lvl_5_group_2
+                          display_name: "Lvl 5 group 2"
+                          type: group
+                          subs: *simple_subs_with_defaults
+                    - name: lvl_4_activatable_group
+                      display_name: "Lvl 4 activatable group"
+                      type: group
+                      activatable: True
+                      active: False
+                      subs:
+                        - name: lvl_5_selection_group_not_required
+                          display_name: "Lvl 5 selection group not required"
+                          type: selection_group
+                          required: False
+                          subs:
+                            - name: lvl_6_group
+                              display_name: "Lvl 6 group"
+                              type: group
+                              subs: *simple_subs_with_defaults

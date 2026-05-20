@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from functools import reduce
 from typing import Any, NamedTuple, Protocol, Self
 
+from adcm_aio_client.config import _selection_groups as sg
+
 # External Section
 # these functions are heavily inspired by configuration rework in ADCM (ADCM-6034)
 
@@ -204,52 +206,6 @@ class ConfigDifference:
         return simplified
 
 
-class SelectionGroupSchemaUtils:
-    """Utility functions for processing selection_group schema"""
-
-    schema_type = "enum"
-
-    @staticmethod
-    def is_selection_group(schema: dict) -> bool:
-        return bool(
-            schema.get("oneOf")
-            and (
-                schema.get("discriminator", {}).get("propertyName") == "_selection"  # required selection group
-                or any(
-                    inner.get("discriminator", {}).get("propertyName") == "_selection"
-                    for inner in schema.get("oneOf", ())
-                )  # not required selection group
-            )
-        )
-
-    @staticmethod
-    def get_choices(schema: dict) -> list[str | None]:
-        choices = sorted([prop["title"] for prop in SelectionGroupSchemaUtils.get_properties(schema).values()])
-        if not SelectionGroupSchemaUtils.is_required(schema):
-            return [None, *choices]
-
-        return choices
-
-    @staticmethod
-    def get_properties(schema: dict) -> dict[str, dict]:
-        properties = {}
-        for group in schema["oneOf"]:
-            if group.get("type") == "null":
-                continue
-
-            if "properties" in group and "oneOf" not in group:  # required
-                properties.update({k: v for k, v in group["properties"].items() if k != "_selection"})
-            else:  # not required
-                for subgroup in group["oneOf"]:
-                    properties.update({k: v for k, v in subgroup["properties"].items() if k != "_selection"})
-
-        return properties
-
-    @staticmethod
-    def is_required(schema: dict) -> bool:
-        return not any(group.get("type") == "null" for group in schema["oneOf"])
-
-
 class ConfigSchema:
     def __init__(self: Self, spec_as_jsonschema: dict) -> None:
         self._raw = spec_as_jsonschema
@@ -299,16 +255,24 @@ class ConfigSchema:
     def get_default(self: Self, parameter_name: LevelNames) -> Any:  # noqa: ANN401
         param_spec = self._param_map[parameter_name]
 
-        properties = None
         if self.is_group(parameter_name):
-            properties = param_spec["properties"]
-        elif self.is_selection_group(parameter_name):
-            properties = SelectionGroupSchemaUtils.get_properties(param_spec)
+            if self.is_selection_group(parameter_name):
+                # selection_group's default is indicated explicitly in schema
+                if default := param_spec.get("default", None):
+                    return sg.get_properties(param_spec)[default]
+                return None
 
-        if properties:
-            return {child_name: self.get_default((*parameter_name, child_name)) for child_name in properties}
+            return {
+                child_name: self.get_default((*parameter_name, child_name)) for child_name in param_spec["properties"]
+            }
 
         return param_spec.get("default", None)
+
+    def get_title(self: Self, parameter_name: LevelNames) -> ParameterName | None:
+        return self._param_map[parameter_name]["title"]
+
+    def get_technical_name(self: Self, parameter_name: tuple[LevelNames, ParameterDisplayName]) -> ParameterName | None:
+        return self._display_name_map[parameter_name]
 
     def iterate_parameters(self: Self) -> Iterable[tuple[LevelNames, dict]]:
         yield from self._iterate_parameters(object_schema=self._raw)
@@ -319,11 +283,10 @@ class ConfigSchema:
 
             yield (level_name,), attributes
 
-            is_selection_group = SelectionGroupSchemaUtils.is_selection_group(attributes)
-
-            if is_selection_group or is_group_v2(attributes):
-                if is_selection_group:
-                    attributes = {"properties": SelectionGroupSchemaUtils.get_properties(attributes)}
+            if is_group_v2(attributes):
+                if sg.is_selection_group(attributes):
+                    # unfold `oneOf` to properties dict, ignoring `null` choices for further iteration
+                    attributes = {"properties": sg.get_properties(attributes)}
 
                 for inner_level, inner_optional_attrs in self._iterate_parameters(attributes):
                     inner_attributes = self._unwrap_optional(inner_optional_attrs)
@@ -333,14 +296,14 @@ class ConfigSchema:
         for level_names, param_spec in self._iterate_parameters(object_schema=self._raw):
             display_name = param_spec["title"]
 
-            if SelectionGroupSchemaUtils.is_selection_group(param_spec):
-                self._selection_groups.add(level_names)
-
-            elif is_group_v2(param_spec):
+            if is_group_v2(param_spec):
                 self._groups.add(level_names)
 
                 if is_activatable_v2(param_spec):
                     self._activatable_groups.add(level_names)
+
+                if sg.is_selection_group(param_spec):
+                    self._selection_groups.add(level_names)
 
             elif is_json_v2(param_spec):
                 self._jsons.add(level_names)
@@ -354,13 +317,14 @@ class ConfigSchema:
 
     def _retrieve_name_type_mapping(self: Self) -> dict[LevelNames, str]:
         return {
-            level_names: SelectionGroupSchemaUtils.schema_type
-            if SelectionGroupSchemaUtils.is_selection_group(param_spec)
-            else param_spec.get("type", "enum")
+            level_names: sg.SCHEMA_TYPE if sg.is_selection_group(param_spec) else param_spec.get("type", "enum")
             for level_names, param_spec in self._iterate_parameters(object_schema=self._raw)
         }
 
     def _unwrap_optional(self: Self, attributes: dict) -> dict:
+        if "oneOf" not in attributes:
+            return attributes
+
         # Title will be for selection group, for now it's a special case.
         # You may need to make this check more precise.
         if "title" not in attributes:
@@ -375,7 +339,9 @@ class ConfigSchema:
 
 
 def is_group_v2(attributes: dict) -> bool:
-    return attributes.get("type") == "object" and attributes.get("additionalProperties") is False
+    return (
+        attributes.get("type") == "object" and attributes.get("additionalProperties") is False
+    ) or sg.is_selection_group(attributes)
 
 
 def is_activatable_v2(attributes: dict) -> bool:

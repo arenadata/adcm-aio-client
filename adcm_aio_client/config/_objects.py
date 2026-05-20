@@ -18,6 +18,7 @@ import json
 import asyncio
 
 from adcm_aio_client._types import AwareOfOwnPath, WithRequesterProperty
+from adcm_aio_client.config import _selection_groups as sg
 from adcm_aio_client.config import apply_local_changes
 from adcm_aio_client.config._operations import find_config_difference
 from adcm_aio_client.config._types import (
@@ -30,7 +31,6 @@ from adcm_aio_client.config._types import (
     GenericConfigData,
     LevelNames,
     LocalConfigs,
-    SelectionGroupSchemaUtils,
     level_names_to_full_name,
 )
 from adcm_aio_client.errors import (
@@ -82,7 +82,7 @@ class _Group(_ConfigWrapper):
         value_class: type[ValueW],
         group_class: type[GroupW],
         a_group_class: type[AGroupW],
-        s_group_class: type[SGroupW] | None,
+        s_group_class: type[SGroupW] | None,  # TODO: not None
     ) -> ValueW | GroupW | AGroupW | SGroupW:
         if isinstance(item, str):
             name = item
@@ -107,9 +107,12 @@ class _Group(_ConfigWrapper):
 
         class_ = value_class
         if self._schema.is_group(parameter_full_name):
-            class_ = a_group_class if self._schema.is_activatable_group(parameter_full_name) else group_class
-        elif self._schema.is_selection_group(parameter_full_name) and s_group_class:
-            class_ = s_group_class
+            if self._schema.is_activatable_group(parameter_full_name):
+                class_ = a_group_class
+            elif self._schema.is_selection_group(parameter_full_name):
+                class_ = s_group_class
+            else:
+                class_ = group_class
 
         wrapper = class_(name=parameter_full_name, data=self._data, schema=self._schema)
 
@@ -302,39 +305,41 @@ class ActivatableParameterGroupHG(_Desyncable, _Activatable, ParameterGroupHG):
 class _Selectable(_Group):
     def select(self: Self, value: str | None) -> None:
         self._validate_choices(value=value)
+        technical_name = (
+            self._schema.get_technical_name(parameter_name=(self._name, value)) if value is not None else None
+        )
 
-        real_value = self._schema._display_name_map[tuple(self._name), value] if value is not None else None
-
-        if value is not None:
+        if technical_name is not None:
             inner_value = {
-                "_selection": real_value,
-                real_value: self._schema.get_default((*self._name, real_value)),
+                "_selection": technical_name,
+                technical_name: self._schema.get_default((*self._name, technical_name)),
             }
-            self._set_default_attributes(group_name=real_value)
+            self._data.set_value(parameter=self._name, value=inner_value)
+            self._set_default_attributes(group_name=technical_name)
         else:
-            inner_value = None
-
-        self._data.set_value(parameter=self._name, value=inner_value)
+            self._data.set_value(parameter=self._name, value=None)
 
     @property
     def choices(self: Self) -> list[str | None]:
-        return SelectionGroupSchemaUtils.get_choices(schema=self._schema._param_map[self._name])
+        return sg.get_choices(schema=self._schema._param_map[self._name])
 
     @property
     def value(self: Self) -> str | None:
         value = self._data.get_value(self._name)
         if value is not None:
             selected_group = value["_selection"]
-            return self._schema._param_map[*self._name, selected_group]["title"]
+            return self._schema.get_title(parameter_name=(*self._name, selected_group))
 
         return value
 
     def _validate_choices(self: Self, value: str | None) -> None:
         schema = self._schema._param_map[self._name]
 
-        if value not in SelectionGroupSchemaUtils.get_choices(schema=schema):
+        if value not in (choices := sg.get_choices(schema=schema)):
             group_name = schema["title"]
-            raise InvalidSelectionGroupError(f'"{value}" is not a valid choice for "{group_name}" selection group.')
+            raise InvalidSelectionGroupError(
+                f'Invalid choice "{value}" for "{group_name}" selection group. Available choices: {choices}'
+            )
 
     def _set_default_attributes(self: Self, group_name: str | None) -> None:
         """Check subs of selected `group_name` group, sets default attributes if needed"""
@@ -344,7 +349,8 @@ class _Selectable(_Group):
         group_full_name = (*self._name, group_name)
         for param_name in self._schema._param_map[group_full_name]["properties"]:
             param_full_name = (*group_full_name, param_name)
-            if param_full_name in self._schema._activatable_groups:
+
+            if self._schema.is_activatable_group(param_full_name):
                 is_active = self._schema._param_map[param_full_name]["adcmMeta"]["activation"]["default"]
                 self._data._attributes.setdefault(level_names_to_full_name(param_full_name), {})["isActive"] = is_active
 
@@ -357,20 +363,22 @@ class SelectableParameterGroup(_Selectable, ParameterGroup):
         # subs of selection_group are only ParameterGroup
         res = cast(ParameterGroup, super().__getitem__(item=item))
         item = item[0] if isinstance(item, tuple) else item
+        item_display_name = self._schema.get_title(parameter_name=res._name)
 
-        if item == self._schema._param_map[*res._name]["title"]:  # it's a display_name, retrieving technical_name
-            real_name = self._schema._display_name_map[self._name, item]
+        if item == item_display_name:  # it's a display_name, retrieving technical_name
+            technical_name = self._schema.get_technical_name(parameter_name=(self._name, item))
             item_display_name = item
         else:  # it's a technical_name, retrieving display_name
-            real_name = item
-            item_display_name = self._schema._param_map[res._name]["title"]
+            technical_name = item
 
         current_selection = (self._data.get_value(self._name) or {}).get("_selection")
 
-        if current_selection != real_name:
+        if current_selection != technical_name:
             current_display_name = self._find_current_display_name(current_selection)
+            self_display_name = self._schema.get_title(parameter_name=self._name)
             raise InvalidSelectionGroupError(
-                f'Can\'t access "{item_display_name}" selection group, currently selected: "{current_display_name}".'
+                f'Can\'t access "{item_display_name}" group of "{self_display_name}" selection group, '
+                f'currently selected: "{current_display_name}".'
             )
 
         return res
