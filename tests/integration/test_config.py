@@ -625,7 +625,7 @@ async def _deeply_nested_selection(cluster: Cluster) -> None:
     ]
 
     assert sel_gr.value is None
-    assert sel_gr.choices == ["Lvl 3 group 1"]
+    assert sel_gr.choices == ["Lvl 3 group 1", "Lvl 3 group 2"]
 
     expected_config = {
         "lvl_root_group": {
@@ -644,7 +644,7 @@ async def _deeply_nested_selection(cluster: Cluster) -> None:
         "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group": {"isActive": False}
     }
 
-    with pytest.raises(
+    with pytest.raises(  # access subgroup while selected `None`
         InvalidSelectionGroupError,
         match='Can\'t access "Lvl 3 group 1" group of "Lvl 2 selection group" selection group, '
         'currently selected: "None".',
@@ -654,6 +654,13 @@ async def _deeply_nested_selection(cluster: Cluster) -> None:
     sel_gr.select("Lvl 3 group 1")
     assert config.data.values == expected_config
     assert config.data.attributes == expected_attrs
+
+    with pytest.raises(  # access subgroup while selected another subgroup
+        InvalidSelectionGroupError,
+        match='Can\'t access "Lvl 3 group 2" group of "Lvl 2 selection group" selection group, '
+        'currently selected: "Lvl 3 group 1".',
+    ):
+        sel_gr["lvl_3_group_2"]
 
     nested_sel_gr = sel_gr["lvl_3_group_1"]["lvl_4_selection_group", SelectableParameterGroup]
     assert nested_sel_gr.value is None

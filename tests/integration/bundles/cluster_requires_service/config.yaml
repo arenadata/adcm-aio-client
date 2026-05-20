@@ -206,3 +206,7 @@
                               display_name: "Lvl 6 group"
                               type: group
                               subs: *simple_subs_with_defaults
+                - name: lvl_3_group_2
+                  display_name: "Lvl 3 group 2"
+                  type: group
+                  subs: *simple_subs_with_defaults

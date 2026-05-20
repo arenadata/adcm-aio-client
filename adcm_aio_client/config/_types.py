@@ -274,6 +274,15 @@ class ConfigSchema:
     def get_technical_name(self: Self, parameter_name: tuple[LevelNames, ParameterDisplayName]) -> ParameterName | None:
         return self._display_name_map[parameter_name]
 
+    def get_display_name_by_parameter_name_and_parent_level_names(
+        self: Self, parent_parameter_name: LevelNames, parameter_name: ParameterName
+    ) -> ParameterDisplayName:
+        for (parent_level_names, param_display_name), _parameter_name in self._display_name_map.items():
+            if parent_level_names == parent_parameter_name and _parameter_name == parameter_name:
+                return param_display_name
+
+        raise RuntimeError(f"Parameter `{(*parent_parameter_name, parameter_name)}` is not registered in schema")
+
     def iterate_parameters(self: Self) -> Iterable[tuple[LevelNames, dict]]:
         yield from self._iterate_parameters(object_schema=self._raw)
 

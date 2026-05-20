@@ -374,7 +374,13 @@ class SelectableParameterGroup(_Selectable, ParameterGroup):
         current_selection = (self._data.get_value(self._name) or {}).get("_selection")
 
         if current_selection != technical_name:
-            current_display_name = self._find_current_display_name(current_selection)
+            if current_selection is not None:
+                current_display_name = self._schema.get_display_name_by_parameter_name_and_parent_level_names(
+                    parent_parameter_name=self._name, parameter_name=current_selection
+                )
+            else:
+                current_display_name = None
+
             self_display_name = self._schema.get_title(parameter_name=self._name)
             raise InvalidSelectionGroupError(
                 f'Can\'t access "{item_display_name}" group of "{self_display_name}" selection group, '
@@ -382,14 +388,6 @@ class SelectableParameterGroup(_Selectable, ParameterGroup):
             )
 
         return res
-
-    def _find_current_display_name(self: Self, name: str | None) -> str | None:
-        if name is None:
-            return name
-
-        target_names = {k: v for k, v in self._schema._display_name_map.items() if k[0] == self._name and v == name}
-
-        return next(iter(target_names))[1]
 
 
 class _ConfigWrapperCreator[T: GenericConfigData](_ConfigWrapper):
