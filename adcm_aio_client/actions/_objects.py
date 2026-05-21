@@ -31,7 +31,7 @@ from adcm_aio_client.errors import (
     ServerError,
     UnitExecutionError,
 )
-from adcm_aio_client.mapping._objects import ActionMapping
+from adcm_aio_client.mapping._objects import ActionMapping, WizardMapping
 from adcm_aio_client.objects._accessors import NonPaginatedChildAccessor
 from adcm_aio_client.objects._base import (
     InteractiveChildObject,
@@ -351,7 +351,7 @@ class OperationUnit(_BaseUnit):
         payload = {
             "method": "submit_step",
             "params": {
-                "stepId": self.id,
+                "stepId": self.unit_id,
                 "processSyncKey": self._get_flow_sync_key(),
             },
         }
@@ -379,7 +379,7 @@ class OperationUnit(_BaseUnit):
         payload = {
             "method": "skip_step",
             "params": {
-                "stepId": self.id,
+                "stepId": self.unit_id,
                 "processSyncKey": self._get_flow_sync_key(),
             },
         }
@@ -425,8 +425,53 @@ class ConfigurationUnit(_BaseUnit):
 
 
 class MappingUnit(_BaseUnit):
+    def __init__(
+        self: Self,
+        parent: Flow,
+        data: dict[str, Any],
+        get_sync_key: Callable[[], str],
+        set_synk_key: Callable[[str], None],
+        refresh_sync_key: Callable[[], Awaitable[str]],
+    ) -> None:
+        super().__init__(
+            parent=parent,
+            data=data,
+            get_sync_key=get_sync_key,
+            set_synk_key=set_synk_key,
+            refresh_sync_key=refresh_sync_key,
+        )
+
+        self._mapping: WizardMapping | None = None
+
     async def execute(self: Self, timeout: int | None = None) -> Self:
-        raise NotImplementedError()
+        _ = timeout
+
+        mapping = await self.mapping
+        payload = {
+            "method": "submit_step",
+            "params": {
+                "stepId": self.unit_id,
+                "processSyncKey": self._get_flow_sync_key(),
+                "hostComponentMapDelta": mapping.get_delta(),
+            },
+        }
+        response_data = await self._post_operation_r(payload)
+        self._set_flow_sync_key_after_execute(response_data["syncKey"])
+
+        return self
+
+    @async_cached_property
+    async def mapping(self: Self) -> WizardMapping:
+        if self._mapping is not None:
+            return self._mapping
+        cumulative_delta = await self._cumulative_delta
+        self._mapping = WizardMapping(entries=cumulative_delta)
+        return self._mapping
+
+    @async_cached_property
+    async def _cumulative_delta(self: Self) -> dict | None:
+        unit_data = await self._retrieve_data()
+        return unit_data.get("cumulativeDelta")
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:

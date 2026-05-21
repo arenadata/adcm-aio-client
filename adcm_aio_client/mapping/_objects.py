@@ -226,3 +226,58 @@ class ClusterMapping(ActionMapping):
 
     def __str__(self: Self) -> str:
         return "/".join(str(item) for item in self._path)
+
+
+class WizardMapping:
+    def __init__(self: Self, entries: dict[str, list[dict]] | None = None) -> None:
+        self._effective_mapping = self._calculate_delta(entries=entries)
+        self._add_delta: set[MappingEntry] = set()
+        self._remove_delta: set[MappingEntry] = set()
+
+    def get_delta(self: Self) -> dict[str, list[dict[str, int]]]:
+        return {
+            "add": self._to_payload(self._add_delta),
+            "remove": self._to_payload(self._remove_delta),
+        }
+
+    def add(self: Self, component: Component, host: Host) -> Self:
+        entry = MappingEntry(host_id=host.id, component_id=component.id)
+
+        if entry in self._remove_delta:
+            self._remove_delta.remove(entry)
+
+        elif entry not in self._effective_mapping:
+            self._add_delta.add(entry)
+
+        return self
+
+    def remove(self: Self, component: Component, host: Host) -> Self:
+        entry = MappingEntry(host_id=host.id, component_id=component.id)
+
+        if entry in self._add_delta:
+            self._add_delta.remove(entry)
+
+        elif entry in self._effective_mapping:
+            self._remove_delta.add(entry)
+
+        return self
+
+    def _calculate_delta(self: Self, entries: dict[str, list[dict]] | None) -> set[MappingEntry]:
+        if entries is None:
+            return set()
+
+        add = self._to_entries(entries["add"])
+        remove = self._to_entries(entries["remove"])
+
+        return add - remove
+
+    @staticmethod
+    def _to_entries(data: Iterable[dict]) -> set[MappingEntry]:
+        return {MappingEntry(host_id=item["hostId"], component_id=item["componentId"]) for item in data}
+
+    @staticmethod
+    def _to_payload(entries: set[MappingEntry]) -> list[dict[str, int]]:
+        return [
+            {"hostId": entry.host_id, "componentId": entry.component_id}
+            for entry in sorted(entries, key=lambda item: (item.host_id, item.component_id))
+        ]
