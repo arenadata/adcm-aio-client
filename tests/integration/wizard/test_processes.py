@@ -1,13 +1,10 @@
-from httpx import AsyncClient
 import pytest
 import pytest_asyncio
 
 from adcm_aio_client import Filter
-from adcm_aio_client.actions._objects import ConfigurationUnit, OperationUnit
 from adcm_aio_client.client import ADCMClient
-from adcm_aio_client.config import Parameter
 from adcm_aio_client.errors import UnitExecutionError, WaitTimeoutError
-from adcm_aio_client.objects import Action, Bundle, Cluster, Flow
+from adcm_aio_client.objects import Action, Bundle, Cluster, Component, Flow, Host
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -108,7 +105,86 @@ async def _test_skip_unit_with_wrong_synk_key(action: Action) -> None:
         assert await unit2.skip() is False  # pyright: ignore[reportAttributeAccessIssue]
 
 
-async def test_action_flow(adcm_client: ADCMClient, wizard_cluster: Cluster) -> None:
+async def _get_last_cluster_mapping(cluster: Cluster) -> list:
+    response = await cluster.requester.get("clusters", cluster.id, "mapping")
+    return response.as_list()
+
+
+async def _prepare_mapping_entries(
+    adcm_client: ADCMClient,
+    cluster: Cluster,
+    hostprovider: Bundle,
+) -> tuple[Component, Component, Host, Host]:
+    service = await cluster.services.get(name__eq="service_1")
+    component1 = await service.components.get(name__eq="component_1")
+    component2 = await service.components.get(name__eq="component_2")
+    provider = await adcm_client.hostproviders.create(
+        bundle=hostprovider,
+        name="WizardHP",
+    )
+    host_map1 = await adcm_client.hosts.create(
+        hostprovider=provider,
+        name="w-host1",
+        cluster=cluster,
+    )
+    host_map2 = await adcm_client.hosts.create(
+        hostprovider=provider,
+        name="w-host2",
+        cluster=cluster,
+    )
+    cluster_mapping = await cluster.mapping
+    await cluster_mapping.add(component1, host_map1)
+    await cluster_mapping.save()
+
+    return component1, component2, host_map1, host_map2
+
+
+async def _test_mapping(
+    adcm_client: ADCMClient,
+    wizard_cluster: Cluster,
+    simple_hostprovider_bundle: Bundle,
+) -> None:
+    component1, component2, host_map1, host_map2 = await _prepare_mapping_entries(
+        adcm_client, wizard_cluster, simple_hostprovider_bundle
+    )
+    action = await wizard_cluster.actions.get(name__eq="wizard_with_mapping")
+    flow = await action.pre_process.init()
+    unit1, unit2 = flow.units
+
+    # check mapping delta of first unit
+    mapping = await unit1.mapping  # pyright: ignore[reportAttributeAccessIssue]
+    mapping.add(component1, host_map1)
+    mapping.add(component1, host_map2)
+    mapping.remove(component1, host_map1)
+    assert mapping.get_delta() == {
+        "add": [{"hostId": host_map2.id, "componentId": component1.id}],
+        "remove": [{"hostId": host_map1.id, "componentId": component1.id}],
+    }
+    await unit1.execute()
+
+    # check mapping delta of second unit
+    mapping = await unit2.mapping  # pyright: ignore[reportAttributeAccessIssue]
+    mapping.add(component2, host_map2)
+    mapping.reset_delta()
+    assert mapping.get_delta() == {"add": [], "remove": []}
+    mapping.remove(component1, host_map2)
+    mapping.add(component2, host_map2)
+    assert mapping.get_delta() == {
+        "add": [{"hostId": host_map2.id, "componentId": component2.id}],
+        "remove": [{"hostId": host_map2.id, "componentId": component1.id}],
+    }
+    await unit2.execute()
+    # check a process was completed
+    await flow.complete()
+    stage = await flow.get_state()
+    assert stage == "completed"
+
+
+async def test_action_flow(
+    adcm_client: ADCMClient,
+    wizard_cluster: Cluster,
+    simple_hostprovider_bundle: Bundle,
+) -> None:
     action = await wizard_cluster.actions.get(name__eq="wizard_jinja")
     await _test_action_flow_success(action)
     await _test_action_flow_fail_context_manager(action)
@@ -117,6 +193,11 @@ async def test_action_flow(adcm_client: ADCMClient, wizard_cluster: Cluster) -> 
     await _test_action_flow_fail_job_status(wizard_cluster)
     await _test_execute_unit_with_wrong_synk_key(action)
     await _test_skip_unit_with_wrong_synk_key(action)
+    await _test_mapping(
+        adcm_client=adcm_client,
+        wizard_cluster=wizard_cluster,
+        simple_hostprovider_bundle=simple_hostprovider_bundle,
+    )
 
 
 async def test_configuration_unit(wizard_cluster: Cluster, httpx_client: AsyncClient) -> None:

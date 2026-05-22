@@ -229,8 +229,17 @@ class ClusterMapping(ActionMapping):
 
 
 class WizardMapping:
-    def __init__(self: Self, entries: dict[str, list[dict]] | None = None) -> None:
-        self._effective_mapping = self._calculate_delta(entries=entries)
+    def __init__(
+        self: Self,
+        entries: dict[str, list[dict]] | None = None,
+        initial_entries: list[dict] | None = None,
+    ) -> None:
+        entries_to_add, entries_to_remove = self._to_delta_entries(entries)
+        self._effective_mapping = self._calculate_delta(
+            initial_entries=self._to_entries(initial_entries or []),
+            entries_to_add=entries_to_add,
+            entries_to_remove=entries_to_remove,
+        )
         self._add_delta: set[MappingEntry] = set()
         self._remove_delta: set[MappingEntry] = set()
 
@@ -262,14 +271,28 @@ class WizardMapping:
 
         return self
 
-    def _calculate_delta(self: Self, entries: dict[str, list[dict]] | None) -> set[MappingEntry]:
+    def reset_delta(self: Self) -> Self:
+        self._add_delta.clear()
+        self._remove_delta.clear()
+        return self
+
+    def _calculate_delta(
+        self: Self,
+        initial_entries: set[MappingEntry],
+        entries_to_add: set[MappingEntry],
+        entries_to_remove: set[MappingEntry],
+    ) -> set[MappingEntry]:
+        return (initial_entries | entries_to_add) - entries_to_remove
+
+    def _to_delta_entries(
+        self: Self, entries: dict[str, list[dict]] | None
+    ) -> tuple[set[MappingEntry], set[MappingEntry]]:
         if entries is None:
-            return set()
+            return set(), set()
 
         add = self._to_entries(entries["add"])
         remove = self._to_entries(entries["remove"])
-
-        return add - remove
+        return add, remove
 
     @staticmethod
     def _to_entries(data: Iterable[dict]) -> set[MappingEntry]:

@@ -166,8 +166,10 @@ class Action(_GenericAction):
         self._blocking = value
         return self._blocking
 
-    async def run(self: Self) -> Job:
+    async def run(self: Self, process: Flow | None = None) -> Job:
         payload = await self._prepare_payload() | {"shouldBlockObject": self._blocking}
+        if process is not None:
+            payload |= {"process": {"id": process.id}}
 
         response = await self._requester.post(*self.get_own_path(), "run", data=payload)
 
@@ -290,6 +292,7 @@ class Flow(InteractiveChildObject[Action]):
                         get_sync_key=self._get_sync_key,
                         set_synk_key=self._set_sync_key,
                         refresh_sync_key=self._refresh_sync_key,
+                        get_mapping_initial_entries=self._get_mapping_initial_entries,
                     )
                 )
         return units
@@ -305,6 +308,16 @@ class Flow(InteractiveChildObject[Action]):
         self._sync_key = resp["syncKey"]
         return self._sync_key
 
+    @async_cached_property
+    async def _mapping_initial_entries(self: Self) -> list:
+        cluster = await detect_cluster(owner=self._parent._parent)
+        cluster_mapping = await cluster.mapping
+        return cluster_mapping.all()
+
+    async def _get_mapping_initial_entries(self: Self) -> list[dict]:
+        mapping_pairs = await self._mapping_initial_entries
+        return [{"hostId": host.id, "componentId": component.id} for component, host in mapping_pairs]
+
 
 class _BaseUnit(InteractiveChildObject[Flow]):
     PATH_PREFIX = "steps"
@@ -316,12 +329,14 @@ class _BaseUnit(InteractiveChildObject[Flow]):
         get_sync_key: Callable[[], str],
         set_synk_key: Callable[[str], None],
         refresh_sync_key: Callable[[], Awaitable[str]],
+        get_mapping_initial_entries: Callable[[], Awaitable[list[dict[str, int]]]],
     ) -> None:
         super().__init__(parent=parent, data=data)
         self.unit_id: int | None = self._data.get("id")
         self._get_flow_sync_key = get_sync_key
         self._set_flow_sync_key_after_execute = set_synk_key
         self._refresh_sync_key_after_job_complete = refresh_sync_key
+        self._get_mapping_initial_entries = get_mapping_initial_entries
 
     @cached_property
     def name(self: Self) -> str:
@@ -432,6 +447,7 @@ class MappingUnit(_BaseUnit):
         get_sync_key: Callable[[], str],
         set_synk_key: Callable[[str], None],
         refresh_sync_key: Callable[[], Awaitable[str]],
+        get_mapping_initial_entries: Callable[[], Awaitable[list[dict]]],
     ) -> None:
         super().__init__(
             parent=parent,
@@ -439,13 +455,12 @@ class MappingUnit(_BaseUnit):
             get_sync_key=get_sync_key,
             set_synk_key=set_synk_key,
             refresh_sync_key=refresh_sync_key,
+            get_mapping_initial_entries=get_mapping_initial_entries,
         )
 
         self._mapping: WizardMapping | None = None
 
-    async def execute(self: Self, timeout: int | None = None) -> Self:
-        _ = timeout
-
+    async def execute(self: Self) -> Self:
         mapping = await self.mapping
         payload = {
             "method": "submit_step",
@@ -465,7 +480,8 @@ class MappingUnit(_BaseUnit):
         if self._mapping is not None:
             return self._mapping
         cumulative_delta = await self._cumulative_delta
-        self._mapping = WizardMapping(entries=cumulative_delta)
+        initial_entries = await self._get_mapping_initial_entries()
+        self._mapping = WizardMapping(entries=cumulative_delta, initial_entries=initial_entries)
         return self._mapping
 
     @async_cached_property
