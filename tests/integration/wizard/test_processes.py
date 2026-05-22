@@ -53,8 +53,6 @@ async def _test_action_flow_fail_context_manager(action: Action) -> None:
 async def _test_action_flow_fail_timeout(adcm_client: ADCMClient, cluster: Cluster, action: Action) -> None:
     flow = await action.pre_process.init()
     unit = flow.units[0]
-    assert isinstance(unit, OperationUnit)
-
     with pytest.raises(WaitTimeoutError):
         await unit.execute(timeout=FAIL_TIMEOUT)
 
@@ -80,26 +78,32 @@ async def _test_action_flow_fail_status_code(action: Action) -> None:
         await unit.execute()
 
 
-async def _test_action_flow_operation_with_wrong_synk_key(action: Action) -> None:
-    for unit_method in ("execute", "skip"):
-        async with action.pre_process.flow() as flow:
-            unit1, unit2, *_ = flow.units
-            # send a request to skip a step outside flow units
-            await flow.requester.post(
-                *flow.get_own_path(),
-                "operation",
-                data={
-                    "method": "skip_step",
-                    "params": {"stepId": unit1.id, "processSyncKey": flow._sync_key},
-                },
-            )
+async def _skip_unit_from_outside(flow: Flow, unit_id: int) -> None:
+    await flow.requester.post(
+        *flow.get_own_path(),
+        "operation",
+        data={
+            "method": "skip_step",
+            "params": {"stepId": unit_id, "processSyncKey": flow._sync_key},
+        },
+    )
 
-            match unit_method:
-                case "execute":
-                    with pytest.raises(UnitExecutionError, match="Can't find Process"):
-                        await unit2.execute()
-                case "skip":
-                    assert await unit2.skip() is False  # pyright: ignore[reportAttributeAccessIssue]
+
+async def _test_execute_unit_with_wrong_synk_key(action: Action) -> None:
+    async with action.pre_process.flow() as flow:
+        unit1, unit2, *_ = flow.units
+        await _skip_unit_from_outside(flow=flow, unit_id=unit1.id)
+
+        with pytest.raises(UnitExecutionError, match="Can't find Process"):
+            await unit2.execute()
+
+
+async def _test_skip_unit_with_wrong_synk_key(action: Action) -> None:
+    async with action.pre_process.flow() as flow:
+        unit1, unit2, *_ = flow.units
+        await _skip_unit_from_outside(flow=flow, unit_id=unit1.id)
+
+        assert await unit2.skip() is False  # pyright: ignore[reportAttributeAccessIssue]
 
 
 async def test_action_flow(adcm_client: ADCMClient, wizard_cluster: Cluster) -> None:
@@ -109,8 +113,8 @@ async def test_action_flow(adcm_client: ADCMClient, wizard_cluster: Cluster) -> 
     await _test_action_flow_fail_timeout(adcm_client, wizard_cluster, action)
     await _test_action_flow_fail_status_code(action)
     await _test_action_flow_fail_job_status(wizard_cluster)
-    await _test_action_flow_operation_with_wrong_synk_key(action)
-
+    await _test_execute_unit_with_wrong_synk_key(action)
+    await _test_skip_unit_with_wrong_synk_key(action)
 
 async def test_configuration_unit(wizard_cluster: Cluster, httpx_client: AsyncClient) -> None:
     action = await wizard_cluster.actions.get(name__eq="single_config_step")
