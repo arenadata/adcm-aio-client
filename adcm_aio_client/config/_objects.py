@@ -82,7 +82,7 @@ class _Group(_ConfigWrapper):
         value_class: type[ValueW],
         group_class: type[GroupW],
         a_group_class: type[AGroupW],
-        s_group_class: type[SGroupW] | None,  # TODO: not None
+        s_group_class: type[SGroupW],
     ) -> ValueW | GroupW | AGroupW | SGroupW:
         if isinstance(item, str):
             name = item
@@ -273,7 +273,7 @@ class ParameterGroupHG(_Group):
             value_class=ParameterHG,
             group_class=ParameterGroupHG,
             a_group_class=ActivatableParameterGroupHG,
-            s_group_class=None,  # TODO: incompatible with CHGs
+            s_group_class=SelectableParameterGroupHG,
         )
 
 
@@ -302,7 +302,11 @@ class ActivatableParameterGroupHG(_Desyncable, _Activatable, ParameterGroupHG):
         return self
 
 
-class _Selectable(_Group):
+class _WithSelect:
+    _schema: ConfigSchema
+    _data: GenericConfigData
+    _name: LevelNames
+
     def select(self: Self, value: str | None) -> None:
         self._validate_choices(value=value)
         technical_name = (
@@ -318,19 +322,6 @@ class _Selectable(_Group):
             self._set_default_attributes(group_name=technical_name)
         else:
             self._data.set_value(parameter=self._name, value=None)
-
-    @property
-    def choices(self: Self) -> list[str | None]:
-        return sg.get_choices(schema=self._schema._param_map[self._name])
-
-    @property
-    def value(self: Self) -> str | None:
-        value = self._data.get_value(self._name)
-        if value is not None:
-            selected_group = value["_selection"]
-            return self._schema.get_title(parameter_name=(*self._name, selected_group))
-
-        return value
 
     def _validate_choices(self: Self, value: str | None) -> None:
         schema = self._schema._param_map[self._name]
@@ -355,20 +346,20 @@ class _Selectable(_Group):
                 self._data._attributes.setdefault(level_names_to_full_name(param_full_name), {})["isActive"] = is_active
 
 
-class SelectableParameterGroup(_Selectable, ParameterGroup):
-    def __getitem__[ExpectedType: ParameterGroup](
+class _Selectable(_Group):
+    def __getitem__[ExpectedType: ParameterGroup | ParameterGroupHG](
         self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
-    ) -> ParameterGroup:
+    ) -> ExpectedType:
         # item can be display_name or a technical_name, ensure it can be retrieved by any name
-        # subs of selection_group are only ParameterGroup
-        res = cast(ParameterGroup, super().__getitem__(item=item))
+        # subs of selection_group are only ParameterGroup | ParameterGroupHG
+        res = cast(ExpectedType, super().__getitem__(item=item))  # pyright: ignore[reportAttributeAccessIssue]
         item = item[0] if isinstance(item, tuple) else item
         item_display_name = self._schema.get_title(parameter_name=res._name)
 
-        if item == item_display_name:  # it's a display_name, retrieving technical_name
+        if item == item_display_name:
             technical_name = self._schema.get_technical_name(parameter_name=(self._name, item))
             item_display_name = item
-        else:  # it's a technical_name, retrieving display_name
+        else:
             technical_name = item
 
         current_selection = (self._data.get_value(self._name) or {}).get("_selection")
@@ -388,6 +379,26 @@ class SelectableParameterGroup(_Selectable, ParameterGroup):
             )
 
         return res
+
+    @property
+    def choices(self: Self) -> list[str | None]:
+        return sg.get_choices(schema=self._schema._param_map[self._name])
+
+    @property
+    def value(self: Self) -> str | None:
+        value = self._data.get_value(self._name)
+        if value is not None:
+            selected_group = value["_selection"]
+            return self._schema.get_title(parameter_name=(*self._name, selected_group))
+
+        return value
+
+
+class SelectableParameterGroup(_Selectable, _WithSelect, ParameterGroup): ...
+
+
+class SelectableParameterGroupHG(_Selectable, ParameterGroupHG):
+    """Desynchronization of selection_group is not supported in CHGs"""
 
 
 class _ConfigWrapperCreator[T: GenericConfigData](_ConfigWrapper):
@@ -411,7 +422,7 @@ class HostGroupConfigWrapper(ParameterGroupHG, _ConfigWrapperCreator[ConfigData]
 
 
 type ConfigEntry = Parameter | ParameterGroup | ActivatableParameterGroup | SelectableParameterGroup
-type ConfigEntryHG = ParameterHG | ParameterGroupHG | ActivatableParameterGroupHG
+type ConfigEntryHG = ParameterHG | ParameterGroupHG | ActivatableParameterGroupHG | SelectableParameterGroupHG
 
 # API Objects
 

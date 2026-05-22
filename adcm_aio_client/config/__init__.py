@@ -20,6 +20,7 @@ __all__ = [
     "ActivatableParameterGroup",
     "ActivatableParameterGroupHG",
     "SelectableParameterGroup",
+    "SelectableParameterGroupHG",
     "apply_local_changes",
     "apply_remote_changes",
 ]
@@ -32,4 +33,5 @@ from adcm_aio_client.config._objects import (
     ParameterGroupHG,
     ParameterHG,
     SelectableParameterGroup,
+    SelectableParameterGroupHG,
 )

@@ -28,8 +28,10 @@ from adcm_aio_client.config import (
     ActivatableParameterGroupHG,
     Parameter,
     ParameterGroup,
+    ParameterGroupHG,
     ParameterHG,
     SelectableParameterGroup,
+    SelectableParameterGroupHG,
     apply_local_changes,
     apply_remote_changes,
 )
@@ -102,10 +104,8 @@ async def bundle_with_selection_groups(adcm_client: ADCMClient, tmp_path: Path) 
 
 
 @pytest_asyncio.fixture()
-async def service_with_selection_groups(adcm_client: ADCMClient, bundle_with_selection_groups: Bundle) -> Service:
-    cluster = await adcm_client.clusters.create(bundle=bundle_with_selection_groups, name="Test cluster")
-    service, *_ = await cluster.services.add(filter_=Filter(attr="name", op="eq", value="selection_groups_config"))
-    return service
+async def cluster_with_sg_config(adcm_client: ADCMClient, bundle_with_selection_groups: Bundle) -> Cluster:
+    return await adcm_client.clusters.create(bundle=bundle_with_selection_groups, name="Test cluster")
 
 
 async def test_config_history(cluster: Cluster) -> None:
@@ -435,11 +435,22 @@ async def test_config_two_sessions(
     await two_sessions_case_9(service_1, service_2, httpx_client=httpx_client)
 
 
-async def test_selection_groups(service_with_selection_groups: Service) -> None:
-    await _selection_groups_in_object_config(service=service_with_selection_groups)
-    await _selection_groups_in_action_config(service=service_with_selection_groups)
-    await _selection_and_activation_groups(cluster=service_with_selection_groups.cluster)
-    await _deeply_nested_selection(cluster=service_with_selection_groups.cluster)
+async def test_selection_groups(cluster_with_sg_config: Cluster) -> None:
+    cluster = cluster_with_sg_config
+
+    service, *_ = await cluster.services.add(filter_=Filter(attr="name", op="eq", value="selection_groups_config"))
+    await _selection_groups_in_object_config(service=service)
+    await _selection_groups_in_action_config(service=service)
+
+    service_with_selection_and_activation_groups, *_ = await cluster.services.add(
+        filter_=Filter(attr="name", op="eq", value="selection_and_activation_groups")
+    )
+    await _selection_and_activation_groups(service=service_with_selection_and_activation_groups)
+
+    service_with_deep_sg, *_ = await cluster.services.add(
+        filter_=Filter(attr="name", op="eq", value="deep_nested_selection")
+    )
+    await _deeply_nested_selection_and_chg(service=service_with_deep_sg)
 
 
 async def _selection_groups_in_object_config(service: Service) -> None:
@@ -550,10 +561,7 @@ async def _selection_groups_in_action_config(service: Service) -> None:
     await job.wait(exit_condition=is_success, timeout=30, poll_interval=1)
 
 
-async def _selection_and_activation_groups(cluster: Cluster) -> None:
-    service, *_ = await cluster.services.add(
-        filter_=Filter(attr="name", op="eq", value="selection_and_activation_groups")
-    )
+async def _selection_and_activation_groups(service: Service) -> None:
     expected_initial_config = {"root_act_gr": {"inner_sel_gr": None}, "root_sel_gr": None}
     expected_initial_attrs = {"/root_act_gr": {"isActive": False}}
 
@@ -611,21 +619,43 @@ async def _selection_and_activation_groups(cluster: Cluster) -> None:
     await config.save()
 
 
-async def _deeply_nested_selection(cluster: Cluster) -> None:
-    service, *_ = await cluster.services.add(filter_=Filter(attr="name", op="eq", value="deep_nested_selection"))
+async def _deeply_nested_selection_and_chg(service: Service) -> None:
+    config = await service.config
+    chg = await service.config_host_groups.create(name="Test service CHG")
+    chg_config = await chg.config
+
     expected_initial_config = {"lvl_root_group": {"lvl_1_group_1": {"lvl_2_selection_group": None}}}
     expected_initial_attrs = {}
 
-    config = await service.config
-    assert config.data.values == expected_initial_config
-    assert config.data.attributes == expected_initial_attrs
+    assert config.data.values == chg_config.data.values == expected_initial_config
+    assert config.data.attributes == chg_config.data.attributes == expected_initial_attrs
 
     sel_gr = config["lvl_root_group", ParameterGroup]["lvl_1_group_1", ParameterGroup][
         "Lvl 2 selection group", SelectableParameterGroup
     ]
+    chg_sel_gr = chg_config["lvl_root_group", ParameterGroupHG]["lvl_1_group_1", ParameterGroupHG][
+        "Lvl 2 selection group", SelectableParameterGroupHG
+    ]
 
+    assert isinstance(sel_gr, SelectableParameterGroup)
+    assert isinstance(chg_sel_gr, SelectableParameterGroupHG)
     assert sel_gr.value is None
-    assert sel_gr.choices == ["Lvl 3 group 1", "Lvl 3 group 2"]
+    assert chg_sel_gr.value is None
+    assert sel_gr.choices == chg_sel_gr.choices == ["Lvl 3 group 1", "Lvl 3 group 2"]
+
+    with pytest.raises(  # access subgroup while selected `None`
+        InvalidSelectionGroupError,
+        match='Can\'t access "Lvl 3 group 1" group of "Lvl 2 selection group" selection group, '
+        'currently selected: "None".',
+    ):
+        sel_gr["lvl_3_group_1"]
+
+    with pytest.raises(  # CHG: access subgroup while selected `None`
+        InvalidSelectionGroupError,
+        match='Can\'t access "Lvl 3 group 1" group of "Lvl 2 selection group" selection group, '
+        'currently selected: "None".',
+    ):
+        chg_sel_gr["lvl_3_group_1"]
 
     expected_config = {
         "lvl_root_group": {
@@ -644,14 +674,11 @@ async def _deeply_nested_selection(cluster: Cluster) -> None:
         "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group": {"isActive": False}
     }
 
-    with pytest.raises(  # access subgroup while selected `None`
-        InvalidSelectionGroupError,
-        match='Can\'t access "Lvl 3 group 1" group of "Lvl 2 selection group" selection group, '
-        'currently selected: "None".',
-    ):
-        sel_gr["lvl_3_group_1"]
-
     sel_gr.select("Lvl 3 group 1")
+    with pytest.raises(AttributeError):
+        # CHGs' configs are not desyncable => can not modify
+        chg_sel_gr.select("Lvl 3 group 1")  # pyright: ignore[reportAttributeAccessIssue]
+
     assert config.data.values == expected_config
     assert config.data.attributes == expected_attrs
 
@@ -666,11 +693,13 @@ async def _deeply_nested_selection(cluster: Cluster) -> None:
     assert nested_sel_gr.value is None
     assert nested_sel_gr.choices == ["Lvl 5 group 1", "Lvl 5 group 2"]
 
-    nested_act_gr = sel_gr["lvl_3_group_1"]["lvl_4_activatable_group", ActivatableParameterGroup]
-
     nested_sel_gr.select("Lvl 5 group 2")
+    nested_act_gr = sel_gr["lvl_3_group_1"]["lvl_4_activatable_group", ActivatableParameterGroup]
     nested_act_gr.activate()
 
+    assert nested_sel_gr.value == "Lvl 5 group 2"
+    assert isinstance(nested_sel_gr, SelectableParameterGroup)
+    assert isinstance(nested_act_gr, ActivatableParameterGroup)
     assert nested_act_gr["lvl_5_selection_group_not_required", SelectableParameterGroup].choices == [
         None,
         "Lvl 6 group",
@@ -692,17 +721,57 @@ async def _deeply_nested_selection(cluster: Cluster) -> None:
     expected_attrs = {
         "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group": {"isActive": True}
     }
+    expected_chg_attrs = {
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group": {
+            "isActive": True,
+            "isSynchronized": True,
+        },
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_selection_group/lvl_5_group_2/x": {
+            "isSynchronized": True
+        },
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_selection_group/lvl_5_group_2/y": {
+            "isSynchronized": True
+        },
+    }
+
     assert config.data.values == expected_config
     assert config.data.attributes == expected_attrs
 
     await config.save()
 
-    # retrieve config again, expect to be the same
-    same_service = await cluster.services.get(name__eq="deep_nested_selection")
-    config2 = await same_service.config
-    assert config2 is not config
-    assert config2.data.values == expected_config
-    assert config2.data.attributes == expected_attrs
+    # refresh configs, expect to be the same
+    await config.refresh()
+    await chg_config.refresh()
+
+    chg_sel_gr = chg_config["lvl_root_group", ParameterGroupHG]["lvl_1_group_1", ParameterGroupHG][
+        "Lvl 2 selection group", SelectableParameterGroupHG
+    ]
+    with pytest.raises(  # CHG: access subgroup while selected another subgroup
+        InvalidSelectionGroupError,
+        match='Can\'t access "Lvl 3 group 2" group of "Lvl 2 selection group" selection group, '
+        'currently selected: "Lvl 3 group 1".',
+    ):
+        chg_sel_gr["lvl_3_group_2"]
+
+    assert config.data.values == chg_config.data.values == expected_config
+    assert config.data.attributes == expected_attrs
+    assert chg_config.data.attributes == expected_chg_attrs
+
+    chg_nested_sel_gr = chg_sel_gr["lvl_3_group_1", ParameterGroupHG]["lvl_4_selection_group", SelectableParameterGroupHG]
+    assert chg_nested_sel_gr.value == "Lvl 5 group 2"
+    assert chg_nested_sel_gr.choices == ["Lvl 5 group 1", "Lvl 5 group 2"]
+
+    chg_nested_act_gr = chg_sel_gr["lvl_3_group_1"]["lvl_4_activatable_group", ActivatableParameterGroupHG]
+    assert isinstance(chg_nested_act_gr, ActivatableParameterGroupHG)
+
+    with pytest.raises(AttributeError):
+        chg_nested_act_gr.select("Lvl 5 group 2")  # pyright: ignore[reportAttributeAccessIssue]
+    chg_nested_act_gr.activate()
+
+    assert chg_nested_act_gr["lvl_5_selection_group_not_required", SelectableParameterGroupHG].choices == [
+        None,
+        "Lvl 6 group",
+    ]
 
 
 async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:
