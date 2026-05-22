@@ -3,7 +3,7 @@ import pytest
 import pytest_asyncio
 
 from adcm_aio_client import Filter
-from adcm_aio_client.actions._objects import ConfigurationUnit
+from adcm_aio_client.actions._objects import ConfigurationUnit, OperationUnit
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.config import Parameter
 from adcm_aio_client.errors import UnitExecutionError, WaitTimeoutError
@@ -53,6 +53,8 @@ async def _test_action_flow_fail_context_manager(action: Action) -> None:
 async def _test_action_flow_fail_timeout(adcm_client: ADCMClient, cluster: Cluster, action: Action) -> None:
     flow = await action.pre_process.init()
     unit = flow.units[0]
+    assert isinstance(unit, OperationUnit)
+
     with pytest.raises(WaitTimeoutError):
         await unit.execute(timeout=FAIL_TIMEOUT)
 
@@ -133,8 +135,13 @@ async def test_configuration_unit(wizard_cluster: Cluster, httpx_client: AsyncCl
     ):
         await unit.execute()
 
-    config["integer_field", Parameter].set(123)
+    int_value = 123
+    config["integer_field", Parameter].set(value=int_value)
     await unit.execute()
+
+    step_url = f"{process_url}/steps/{unit.id}/"
+    response = await httpx_client.get(step_url)
+    assert response.json()["configuration"]["config"]["integer_field"] == int_value
 
     response = await httpx_client.get(process_url)
     assert response.json()["currentStep"] is None

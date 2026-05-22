@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-from abc import abstractmethod
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from functools import cached_property
@@ -340,9 +339,6 @@ class _BaseUnit(InteractiveChildObject[Flow]):
         response = await self._retrieve_data()
         return response["state"]
 
-    @abstractmethod
-    async def execute(self: Self, timeout: int | None = None) -> Self: ...
-
     @convert_unit_execution_errors
     async def _post_operation_r(self: Self, payload: dict) -> dict:
         response = await self._requester.post(*self._parent.get_own_path(), "operation", data=payload)
@@ -401,9 +397,7 @@ class OperationUnit(_BaseUnit):
 
 
 class ConfigurationUnit(_BaseUnit):
-    async def execute(self: Self, timeout: int | None = None) -> Self:
-        _ = timeout  # TODO: fix types
-
+    async def execute(self: Self) -> Self:
         config_payload = (await self.config)._to_payload()
         payload = {
             "method": "submit_step",
