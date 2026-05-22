@@ -3,7 +3,7 @@ import pytest
 import pytest_asyncio
 
 from adcm_aio_client import Filter
-from adcm_aio_client.actions._objects import ConfigurationUnit, OperationUnit
+from adcm_aio_client.actions._objects import ConfigurationUnit, OperationUnit, Flow
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.config import Parameter
 from adcm_aio_client.errors import UnitExecutionError, WaitTimeoutError
@@ -115,6 +115,7 @@ async def test_action_flow(adcm_client: ADCMClient, wizard_cluster: Cluster) -> 
     await _test_action_flow_fail_job_status(wizard_cluster)
     await _test_execute_unit_with_wrong_synk_key(action)
     await _test_skip_unit_with_wrong_synk_key(action)
+
 
 async def test_configuration_unit(wizard_cluster: Cluster, httpx_client: AsyncClient) -> None:
     action = await wizard_cluster.actions.get(name__eq="single_config_step")
