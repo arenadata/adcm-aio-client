@@ -757,7 +757,9 @@ async def _deeply_nested_selection_and_chg(service: Service) -> None:
     assert config.data.attributes == expected_attrs
     assert chg_config.data.attributes == expected_chg_attrs
 
-    chg_nested_sel_gr = chg_sel_gr["lvl_3_group_1", ParameterGroupHG]["lvl_4_selection_group", SelectableParameterGroupHG]
+    chg_nested_sel_gr = chg_sel_gr["lvl_3_group_1", ParameterGroupHG][
+        "lvl_4_selection_group", SelectableParameterGroupHG
+    ]
     assert chg_nested_sel_gr.value == "Lvl 5 group 2"
     assert chg_nested_sel_gr.choices == ["Lvl 5 group 1", "Lvl 5 group 2"]
 
