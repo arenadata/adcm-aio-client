@@ -3,7 +3,7 @@ import pytest
 import pytest_asyncio
 
 from adcm_aio_client import Filter
-from adcm_aio_client.actions._objects import ConfigurationUnit, OperationUnit, Flow
+from adcm_aio_client.actions._objects import ConfigurationUnit, Flow, OperationUnit
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.config import Parameter
 from adcm_aio_client.errors import UnitExecutionError, WaitTimeoutError
@@ -53,6 +53,7 @@ async def _test_action_flow_fail_context_manager(action: Action) -> None:
 async def _test_action_flow_fail_timeout(adcm_client: ADCMClient, cluster: Cluster, action: Action) -> None:
     flow = await action.pre_process.init()
     unit = flow.units[0]
+    assert isinstance(unit, OperationUnit)
     with pytest.raises(WaitTimeoutError):
         await unit.execute(timeout=FAIL_TIMEOUT)
 
