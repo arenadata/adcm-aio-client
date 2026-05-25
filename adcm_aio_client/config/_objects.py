@@ -18,9 +18,9 @@ import json
 import asyncio
 
 from adcm_aio_client._types import AwareOfOwnPath, WithRequesterProperty
-from adcm_aio_client.config import _selection_groups as sg
 from adcm_aio_client.config import apply_local_changes
 from adcm_aio_client.config._operations import find_config_difference
+from adcm_aio_client.config._selection_groups import get_choices
 from adcm_aio_client.config._types import (
     ActionConfigData,
     AnyParameterName,
@@ -326,7 +326,7 @@ class _WithSelect:
     def _validate_choices(self: Self, value: str | None) -> None:
         schema = self._schema._param_map[self._name]
 
-        if value not in (choices := sg.get_choices(schema=schema)):
+        if value not in (choices := get_choices(schema=schema)):
             group_name = schema["title"]
             raise InvalidSelectionGroupError(
                 f'Invalid choice "{value}" for "{group_name}" selection group. Available choices: {choices}'
@@ -338,11 +338,13 @@ class _WithSelect:
             return
 
         group_full_name = (*self._name, group_name)
-        for param_name in self._schema._param_map[group_full_name]["properties"]:
+        for param_name, _ in self._schema.iterate_properties(parameter_name=group_full_name):
             param_full_name = (*group_full_name, param_name)
 
             if self._schema.is_activatable_group(param_full_name):
-                is_active = self._schema._param_map[param_full_name]["adcmMeta"]["activation"]["default"]
+                is_active = self._schema.retrieve_field(
+                    parameter_name=param_full_name, field=("adcmMeta", "activation", "default")
+                )
                 self._data._attributes.setdefault(level_names_to_full_name(param_full_name), {})["isActive"] = is_active
 
 
@@ -354,7 +356,7 @@ class _Selectable(_Group):
         # subs of selection_group are only ParameterGroup | ParameterGroupHG
         res = cast(ExpectedType, super().__getitem__(item=item))  # pyright: ignore[reportAttributeAccessIssue]
         item = item[0] if isinstance(item, tuple) else item
-        item_display_name = self._schema.get_title(parameter_name=res._name)
+        item_display_name = self._schema.retrieve_field(parameter_name=res._name, field=("title",))
 
         if item == item_display_name:
             technical_name = self._schema.get_technical_name(parameter_name=(self._name, item))
@@ -372,7 +374,7 @@ class _Selectable(_Group):
             else:
                 current_display_name = None
 
-            self_display_name = self._schema.get_title(parameter_name=self._name)
+            self_display_name = self._schema.retrieve_field(parameter_name=self._name, field=("title",))
             raise InvalidSelectionGroupError(
                 f'Can\'t access "{item_display_name}" group of "{self_display_name}" selection group, '
                 f'currently selected: "{current_display_name}".'
@@ -382,14 +384,14 @@ class _Selectable(_Group):
 
     @property
     def choices(self: Self) -> list[str | None]:
-        return sg.get_choices(schema=self._schema._param_map[self._name])
+        return get_choices(schema=self._schema._param_map[self._name])
 
     @property
     def value(self: Self) -> str | None:
         value = self._data.get_value(self._name)
         if value is not None:
             selected_group = value["_selection"]
-            return self._schema.get_title(parameter_name=(*self._name, selected_group))
+            return self._schema.retrieve_field(parameter_name=(*self._name, selected_group), field=("title",))
 
         return value
 

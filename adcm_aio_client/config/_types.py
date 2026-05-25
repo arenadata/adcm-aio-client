@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from functools import reduce
 from typing import Any, NamedTuple, Protocol, Self
 
-from adcm_aio_client.config import _selection_groups as sg
+from adcm_aio_client.config._selection_groups import SCHEMA_TYPE as SG_SCHEMA_TYPE
+from adcm_aio_client.config._selection_groups import get_properties, is_selection_group
 
 # External Section
 # these functions are heavily inspired by configuration rework in ADCM (ADCM-6034)
@@ -257,9 +258,8 @@ class ConfigSchema:
 
         if self.is_group(parameter_name):
             if self.is_selection_group(parameter_name):
-                # selection_group's default is indicated explicitly in schema
                 if default := param_spec.get("default", None):
-                    return sg.get_properties(param_spec)[default]
+                    return get_properties(param_spec)[default]
                 return None
 
             return {
@@ -267,9 +267,6 @@ class ConfigSchema:
             }
 
         return param_spec.get("default", None)
-
-    def get_title(self: Self, parameter_name: LevelNames) -> ParameterName | None:
-        return self._param_map[parameter_name]["title"]
 
     def get_technical_name(self: Self, parameter_name: tuple[LevelNames, ParameterDisplayName]) -> ParameterName | None:
         return self._display_name_map[parameter_name]
@@ -283,6 +280,12 @@ class ConfigSchema:
 
         raise RuntimeError(f"Parameter `{(*parent_parameter_name, parameter_name)}` is not registered in schema")
 
+    def iterate_properties(self: Self, parameter_name: LevelNames) -> Iterable[tuple[ParameterName, dict]]:
+        yield from self._param_map[parameter_name]["properties"].items()
+
+    def retrieve_field(self: Self, parameter_name: LevelNames, field: tuple[str, ...]) -> Any:  # noqa: ANN401
+        return reduce(dict.get, field, self._param_map[parameter_name])  # pyright: ignore[reportArgumentType]
+
     def iterate_parameters(self: Self) -> Iterable[tuple[LevelNames, dict]]:
         yield from self._iterate_parameters(object_schema=self._raw)
 
@@ -293,9 +296,9 @@ class ConfigSchema:
             yield (level_name,), attributes
 
             if is_group_v2(attributes):
-                if sg.is_selection_group(attributes):
+                if is_selection_group(attributes):
                     # unfold `oneOf` to properties dict, ignoring `null` choices for further iteration
-                    attributes = {"properties": sg.get_properties(attributes)}
+                    attributes = {"properties": get_properties(attributes)}
 
                 for inner_level, inner_optional_attrs in self._iterate_parameters(attributes):
                     inner_attributes = self._unwrap_optional(inner_optional_attrs)
@@ -311,7 +314,7 @@ class ConfigSchema:
                 if is_activatable_v2(param_spec):
                     self._activatable_groups.add(level_names)
 
-                if sg.is_selection_group(param_spec):
+                if is_selection_group(param_spec):
                     self._selection_groups.add(level_names)
 
             elif is_json_v2(param_spec):
@@ -326,7 +329,7 @@ class ConfigSchema:
 
     def _retrieve_name_type_mapping(self: Self) -> dict[LevelNames, str]:
         return {
-            level_names: sg.SCHEMA_TYPE if sg.is_selection_group(param_spec) else param_spec.get("type", "enum")
+            level_names: SG_SCHEMA_TYPE if is_selection_group(param_spec) else param_spec.get("type", "enum")
             for level_names, param_spec in self._iterate_parameters(object_schema=self._raw)
         }
 
@@ -350,7 +353,7 @@ class ConfigSchema:
 def is_group_v2(attributes: dict) -> bool:
     return (
         attributes.get("type") == "object" and attributes.get("additionalProperties") is False
-    ) or sg.is_selection_group(attributes)
+    ) or is_selection_group(attributes)
 
 
 def is_activatable_v2(attributes: dict) -> bool:
