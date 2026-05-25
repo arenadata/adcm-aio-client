@@ -22,7 +22,14 @@ from adcm_aio_client import Filter
 from adcm_aio_client._filters import FilterByDisplayName, FilterByName, FilterByStatus, Filtering
 from adcm_aio_client._types import ComponentID, HostID, Requester
 from adcm_aio_client.mapping import apply_local_changes, apply_remote_changes
-from adcm_aio_client.mapping._types import LocalMappings, MappingEntry, MappingPair, MappingRefreshStrategy
+from adcm_aio_client.mapping._types import (
+    LocalMappings,
+    MappingDelta,
+    MappingEntry,
+    MappingPair,
+    MappingRefreshStrategy,
+    PayloadMappingEntries,
+)
 from adcm_aio_client.objects._accessors import NonPaginatedAccessor, filters_to_inline
 from adcm_aio_client.objects._base import convert_update_errors
 
@@ -61,7 +68,10 @@ class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
 
 class ActionMapping:
     def __init__(
-        self: Self, owner: Cluster | Service | Component | Host, cluster: Cluster, entries: Iterable[MappingPair]
+        self: Self,
+        owner: Cluster | Service | Component | Host,
+        cluster: Cluster,
+        entries: Iterable[MappingPair | MappingEntry],
     ) -> None:
         self._owner = owner
         self._cluster = cluster
@@ -72,7 +82,12 @@ class ActionMapping:
 
         self._initial: set[MappingEntry] = set()
 
-        for component, host in entries:
+        for entry in entries:
+            if isinstance(entry, MappingEntry):
+                self._initial.add(entry)
+                continue
+
+            component, host = entry
             self._components[component.id] = component
             self._hosts[host.id] = host
             self._initial.add(MappingEntry(host_id=host.id, component_id=component.id))
@@ -152,7 +167,7 @@ class ActionMapping:
 
 
 class ClusterMapping(ActionMapping):
-    def __init__(self: Self, owner: Cluster, entries: Iterable[MappingPair]) -> None:
+    def __init__(self: Self, owner: Cluster, entries: Iterable[MappingPair | MappingEntry]) -> None:
         self._path = (*owner.get_own_path(), "mapping")
         super().__init__(owner=owner, cluster=owner, entries=entries)
 
@@ -228,78 +243,54 @@ class ClusterMapping(ActionMapping):
         return "/".join(str(item) for item in self._path)
 
 
-class WizardMapping:
+class WizardMapping(ActionMapping):
     def __init__(
         self: Self,
-        entries: dict[str, list[dict]] | None = None,
-        initial_entries: list[dict] | None = None,
+        owner: Cluster | Service | Component | Host,
+        cluster: Cluster,
+        entries: Iterable[MappingPair | MappingEntry],
+        cumulative_delta: MappingDelta | None,
     ) -> None:
-        entries_to_add, entries_to_remove = self._to_delta_entries(entries)
-        self._effective_mapping = self._calculate_delta(
-            initial_entries=self._to_entries(initial_entries or []),
-            entries_to_add=entries_to_add,
-            entries_to_remove=entries_to_remove,
-        )
-        self._add_delta: set[MappingEntry] = set()
-        self._remove_delta: set[MappingEntry] = set()
+        super().__init__(owner, cluster, entries)
+        self._base_mapping = copy(self._initial)
+        if cumulative_delta is not None:
+            self._base_mapping |= cumulative_delta.add
+            self._base_mapping -= cumulative_delta.remove
 
-    def get_delta(self: Self) -> dict[str, list[dict[str, int]]]:
+        self._current = copy(self._base_mapping)
+        self._added_delta: set[MappingEntry] = set()
+        self._removed_delta: set[MappingEntry] = set()
+
+    async def add(self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter) -> Self:
+        _ = await super().add(component=component, host=host)
+        self._sync_result_delta()
+
+        return self
+
+    async def remove(
+        self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter
+    ) -> Self:
+        _ = await super().remove(component=component, host=host)
+        self._sync_result_delta()
+
+        return self
+
+    def get_map_delta(self: Self) -> dict[str, PayloadMappingEntries]:
         return {
-            "add": self._to_payload(self._add_delta),
-            "remove": self._to_payload(self._remove_delta),
+            "add": self._to_delta_payload(self._added_delta),
+            "remove": self._to_delta_payload(self._removed_delta),
         }
 
-    def add(self: Self, component: Component, host: Host) -> Self:
-        entry = MappingEntry(host_id=host.id, component_id=component.id)
+    def reset_delta(self: Self) -> None:
+        self._current = copy(self._base_mapping)
+        self._sync_result_delta()
 
-        if entry in self._remove_delta:
-            self._remove_delta.remove(entry)
-
-        elif entry not in self._effective_mapping:
-            self._add_delta.add(entry)
-
-        return self
-
-    def remove(self: Self, component: Component, host: Host) -> Self:
-        entry = MappingEntry(host_id=host.id, component_id=component.id)
-
-        if entry in self._add_delta:
-            self._add_delta.remove(entry)
-
-        elif entry in self._effective_mapping:
-            self._remove_delta.add(entry)
-
-        return self
-
-    def reset_delta(self: Self) -> Self:
-        self._add_delta.clear()
-        self._remove_delta.clear()
-        return self
-
-    def _calculate_delta(
-        self: Self,
-        initial_entries: set[MappingEntry],
-        entries_to_add: set[MappingEntry],
-        entries_to_remove: set[MappingEntry],
-    ) -> set[MappingEntry]:
-        return (initial_entries | entries_to_add) - entries_to_remove
-
-    def _to_delta_entries(
-        self: Self, entries: dict[str, list[dict]] | None
-    ) -> tuple[set[MappingEntry], set[MappingEntry]]:
-        if entries is None:
-            return set(), set()
-
-        add = self._to_entries(entries["add"])
-        remove = self._to_entries(entries["remove"])
-        return add, remove
+    def _sync_result_delta(self: Self) -> None:
+        self._added_delta = self._current - self._base_mapping
+        self._removed_delta = self._base_mapping - self._current
 
     @staticmethod
-    def _to_entries(data: Iterable[dict]) -> set[MappingEntry]:
-        return {MappingEntry(host_id=item["hostId"], component_id=item["componentId"]) for item in data}
-
-    @staticmethod
-    def _to_payload(entries: set[MappingEntry]) -> list[dict[str, int]]:
+    def _to_delta_payload(entries: set[MappingEntry]) -> PayloadMappingEntries:
         return [
             {"hostId": entry.host_id, "componentId": entry.component_id}
             for entry in sorted(entries, key=lambda item: (item.host_id, item.component_id))

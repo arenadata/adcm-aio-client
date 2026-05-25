@@ -32,6 +32,7 @@ from adcm_aio_client.errors import (
     UnitExecutionError,
 )
 from adcm_aio_client.mapping._objects import ActionMapping, WizardMapping
+from adcm_aio_client.mapping._types import MappingDelta, MappingEntry, MappingPair
 from adcm_aio_client.objects._accessors import NonPaginatedChildAccessor
 from adcm_aio_client.objects._base import (
     InteractiveChildObject,
@@ -41,7 +42,7 @@ from adcm_aio_client.objects._base import (
 )
 
 if TYPE_CHECKING:
-    from adcm_aio_client.objects import Bundle, Cluster, Job
+    from adcm_aio_client.objects import Bundle, Cluster, Component, Host, Job, Service
 
 
 class _GenericAction(InteractiveChildObject):
@@ -226,12 +227,13 @@ class PreProcess:
     ) -> None:
         self._action = action
         self._requester = requester
+        self._action_owner = action._parent
 
     @convert_create_errors
     async def init(self: Self) -> Flow:
         process_path = *self._action.get_own_path(), Flow.PATH_PREFIX
         response = await self._requester.post(*process_path, data={})
-        return Flow(parent=self._action, data=response.as_dict())
+        return Flow(parent=self._action, data=response.as_dict(), action_owner=self._action_owner)
 
     @asynccontextmanager
     async def flow(self: Self) -> AsyncIterator[Flow]:
@@ -243,10 +245,13 @@ class PreProcess:
 class Flow(InteractiveChildObject[Action]):
     PATH_PREFIX = "processes"
 
-    def __init__(self: Self, parent: Action, data: dict[str, Any]) -> None:
+    def __init__(
+        self: Self, parent: Action, data: dict[str, Any], action_owner: Cluster | Service | Component | Host
+    ) -> None:
         super().__init__(parent=parent, data=data)
         self.id = self._data["id"]
         self._sync_key = self._data["syncKey"]
+        self._action_owner = action_owner
 
     async def get_state(self: Self) -> str:
         res = await self._retrieve_data()
@@ -292,7 +297,7 @@ class Flow(InteractiveChildObject[Action]):
                         get_sync_key=self._get_sync_key,
                         set_synk_key=self._set_sync_key,
                         refresh_sync_key=self._refresh_sync_key,
-                        get_mapping_initial_entries=self._get_mapping_initial_entries,
+                        get_mapping_components=self._get_action_mapping_args,
                     )
                 )
         return units
@@ -308,15 +313,17 @@ class Flow(InteractiveChildObject[Action]):
         self._sync_key = resp["syncKey"]
         return self._sync_key
 
-    @async_cached_property
-    async def _mapping_initial_entries(self: Self) -> list:
-        cluster = await detect_cluster(owner=self._parent._parent)
+    async def _get_action_mapping_args(
+        self: Self,
+    ) -> tuple[
+        Cluster,
+        Cluster | Service | Component | Host,
+        list[MappingPair],
+    ]:
+        cluster = await detect_cluster(owner=self._action_owner)
         cluster_mapping = await cluster.mapping
-        return cluster_mapping.all()
-
-    async def _get_mapping_initial_entries(self: Self) -> list[dict]:
-        mapping_pairs = await self._mapping_initial_entries
-        return [{"hostId": host.id, "componentId": component.id} for component, host in mapping_pairs]
+        entries = cluster_mapping.all()
+        return cluster, self._action_owner, entries
 
 
 class _BaseUnit(InteractiveChildObject[Flow]):
@@ -329,14 +336,17 @@ class _BaseUnit(InteractiveChildObject[Flow]):
         get_sync_key: Callable[[], str],
         set_synk_key: Callable[[str], None],
         refresh_sync_key: Callable[[], Awaitable[str]],
-        get_mapping_initial_entries: Callable[[], Awaitable[list[dict[str, int]]]],
+        get_mapping_components: Callable[
+            [],
+            Awaitable[tuple[Cluster, Cluster | Service | Component | Host, list[MappingPair]]],
+        ],
     ) -> None:
         super().__init__(parent=parent, data=data)
         self.unit_id: int | None = self._data.get("id")
         self._get_flow_sync_key = get_sync_key
         self._set_flow_sync_key_after_execute = set_synk_key
         self._refresh_sync_key_after_job_complete = refresh_sync_key
-        self._get_mapping_initial_entries = get_mapping_initial_entries
+        self._get_action_mapping_components = get_mapping_components
 
     @cached_property
     def name(self: Self) -> str:
@@ -357,7 +367,6 @@ class _BaseUnit(InteractiveChildObject[Flow]):
     @convert_unit_execution_errors
     async def _post_operation_r(self: Self, payload: dict) -> dict:
         response = await self._requester.post(*self._parent.get_own_path(), "operation", data=payload)
-
         return response.as_dict()
 
 
@@ -447,7 +456,10 @@ class MappingUnit(_BaseUnit):
         get_sync_key: Callable[[], str],
         set_synk_key: Callable[[str], None],
         refresh_sync_key: Callable[[], Awaitable[str]],
-        get_mapping_initial_entries: Callable[[], Awaitable[list[dict]]],
+        get_mapping_components: Callable[
+            [],
+            Awaitable[tuple[Cluster, Cluster | Service | Component | Host, list[MappingPair]]],
+        ],
     ) -> None:
         super().__init__(
             parent=parent,
@@ -455,19 +467,19 @@ class MappingUnit(_BaseUnit):
             get_sync_key=get_sync_key,
             set_synk_key=set_synk_key,
             refresh_sync_key=refresh_sync_key,
-            get_mapping_initial_entries=get_mapping_initial_entries,
+            get_mapping_components=get_mapping_components,
         )
-
         self._mapping: WizardMapping | None = None
 
     async def execute(self: Self) -> Self:
         mapping = await self.mapping
+
         payload = {
             "method": "submit_step",
             "params": {
                 "stepId": self.unit_id,
                 "processSyncKey": self._get_flow_sync_key(),
-                "hostComponentMapDelta": mapping.get_delta(),
+                "hostComponentMapDelta": mapping.get_map_delta(),
             },
         }
         response_data = await self._post_operation_r(payload)
@@ -479,15 +491,43 @@ class MappingUnit(_BaseUnit):
     async def mapping(self: Self) -> WizardMapping:
         if self._mapping is not None:
             return self._mapping
-        cumulative_delta = await self._cumulative_delta
-        initial_entries = await self._get_mapping_initial_entries()
-        self._mapping = WizardMapping(entries=cumulative_delta, initial_entries=initial_entries)
+
+        cluster, owner, entries = await self._get_action_mapping_components()
+        cumulative_delta = await self._get_cumulative_delta()
+
+        self._mapping = WizardMapping(
+            cluster=cluster,
+            owner=owner,
+            entries=entries,
+            cumulative_delta=cumulative_delta,
+        )
         return self._mapping
 
-    @async_cached_property
-    async def _cumulative_delta(self: Self) -> dict | None:
+    async def _get_cumulative_delta(self: Self) -> MappingDelta | None:
         unit_data = await self._retrieve_data()
-        return unit_data.get("cumulativeDelta")
+        cumulative_delta = unit_data.get("cumulativeDelta")
+
+        if cumulative_delta is None:
+            return None
+
+        added_entries = (
+            {
+                MappingEntry(host_id=entry["hostId"], component_id=entry["componentId"])
+                for entry in cumulative_delta["add"]
+            }
+            if cumulative_delta["add"]
+            else set()
+        )
+        removed_entries = (
+            {
+                MappingEntry(host_id=entry["hostId"], component_id=entry["componentId"])
+                for entry in cumulative_delta["remove"]
+            }
+            if cumulative_delta["remove"]
+            else set()
+        )
+
+        return MappingDelta(add=added_entries, remove=removed_entries)
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:
