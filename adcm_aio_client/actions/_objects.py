@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-from abc import abstractmethod
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from functools import cached_property
@@ -340,9 +339,6 @@ class _BaseUnit(InteractiveChildObject[Flow]):
         response = await self._retrieve_data()
         return response["state"]
 
-    @abstractmethod
-    async def execute(self: Self, timeout: int | None = None) -> Self: ...
-
     @convert_unit_execution_errors
     async def _post_operation_r(self: Self, payload: dict) -> dict:
         response = await self._requester.post(*self._parent.get_own_path(), "operation", data=payload)
@@ -401,8 +397,31 @@ class OperationUnit(_BaseUnit):
 
 
 class ConfigurationUnit(_BaseUnit):
-    async def execute(self: Self, timeout: int | None = None) -> Self:
-        raise NotImplementedError()
+    async def execute(self: Self) -> Self:
+        config_payload = (await self.config)._to_payload()
+        payload = {
+            "method": "submit_step",
+            "params": {
+                "stepId": self.id,
+                "processSyncKey": self._get_flow_sync_key(),
+                "configuration": config_payload,
+            },
+        }
+
+        response = await self._post_operation_r(payload)
+
+        self._set_flow_sync_key_after_execute(response["syncKey"])
+
+        return self
+
+    @async_cached_property
+    async def config(self: Self) -> ActionConfig:
+        response = (await self.requester.get(*self.get_own_path())).as_dict()["configuration"]
+
+        schema = ConfigSchema(spec_as_jsonschema=response["configSchema"])
+        data = ActionConfigData(values=response["config"], attributes=response["adcmMeta"])
+
+        return ActionConfig(schema=schema, config=data, parent=self)
 
 
 class MappingUnit(_BaseUnit):

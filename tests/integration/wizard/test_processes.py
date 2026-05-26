@@ -1,8 +1,11 @@
+from httpx import AsyncClient
 import pytest
 import pytest_asyncio
 
 from adcm_aio_client import Filter
+from adcm_aio_client.actions._objects import ConfigurationUnit, OperationUnit
 from adcm_aio_client.client import ADCMClient
+from adcm_aio_client.config import Parameter
 from adcm_aio_client.errors import UnitExecutionError, WaitTimeoutError
 from adcm_aio_client.objects import Action, Bundle, Cluster, Flow
 
@@ -50,6 +53,8 @@ async def _test_action_flow_fail_context_manager(action: Action) -> None:
 async def _test_action_flow_fail_timeout(adcm_client: ADCMClient, cluster: Cluster, action: Action) -> None:
     flow = await action.pre_process.init()
     unit = flow.units[0]
+    assert isinstance(unit, OperationUnit)
+
     with pytest.raises(WaitTimeoutError):
         await unit.execute(timeout=FAIL_TIMEOUT)
 
@@ -112,3 +117,44 @@ async def test_action_flow(adcm_client: ADCMClient, wizard_cluster: Cluster) -> 
     await _test_action_flow_fail_job_status(wizard_cluster)
     await _test_execute_unit_with_wrong_synk_key(action)
     await _test_skip_unit_with_wrong_synk_key(action)
+
+
+async def test_configuration_unit(wizard_cluster: Cluster, httpx_client: AsyncClient) -> None:
+    action = await wizard_cluster.actions.get(name__eq="single_config_step")
+
+    flow = await action.pre_process.init()
+    assert len(flow.units) == 1
+    unit = flow.units[0]
+    assert isinstance(unit, ConfigurationUnit)
+
+    process_url = "/".join(str(item) for item in flow.get_own_path()) + "/"
+    response = await httpx_client.get(process_url)
+    assert response.json()["currentStep"] == unit.id
+    assert response.json()["state"] == "created"
+
+    config = await unit.config
+    config["integer_field", Parameter].set("wrong value")
+
+    with pytest.raises(
+        UnitExecutionError,
+        match="<ConfigurationUnit #1 Stage1.ConfigurationStep1>.*"
+        r"CONFIG_VALUE_ERROR.*/integer_field \[value\]: should be of type integer",
+    ):
+        await unit.execute()
+
+    int_value = 123
+    config["integer_field", Parameter].set(value=int_value)
+    await unit.execute()
+
+    step_url = f"{process_url}/steps/{unit.id}/"
+    response = await httpx_client.get(step_url)
+    assert response.json()["configuration"]["config"]["integer_field"] == int_value
+
+    response = await httpx_client.get(process_url)
+    assert response.json()["currentStep"] is None
+    assert response.json()["state"] == "created"
+
+    await flow.complete()
+    response = await httpx_client.get(process_url)
+    assert response.json()["currentStep"] is None
+    assert response.json()["state"] == "completed"
