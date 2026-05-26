@@ -297,7 +297,7 @@ class Flow(InteractiveChildObject[Action]):
                         get_sync_key=self._get_sync_key,
                         set_synk_key=self._set_sync_key,
                         refresh_sync_key=self._refresh_sync_key,
-                        get_mapping_components=self._get_action_mapping_args,
+                        get_mapping_args=self._get_action_mapping_args,
                     )
                 )
         return units
@@ -336,7 +336,7 @@ class _BaseUnit(InteractiveChildObject[Flow]):
         get_sync_key: Callable[[], str],
         set_synk_key: Callable[[str], None],
         refresh_sync_key: Callable[[], Awaitable[str]],
-        get_mapping_components: Callable[
+        get_mapping_args: Callable[
             [],
             Awaitable[tuple[Cluster, Cluster | Service | Component | Host, list[MappingPair]]],
         ],
@@ -346,7 +346,7 @@ class _BaseUnit(InteractiveChildObject[Flow]):
         self._get_flow_sync_key = get_sync_key
         self._set_flow_sync_key_after_execute = set_synk_key
         self._refresh_sync_key_after_job_complete = refresh_sync_key
-        self._get_action_mapping_components = get_mapping_components
+        self._get_action_mapping_args = get_mapping_args
 
     @cached_property
     def name(self: Self) -> str:
@@ -367,6 +367,7 @@ class _BaseUnit(InteractiveChildObject[Flow]):
     @convert_unit_execution_errors
     async def _post_operation_r(self: Self, payload: dict) -> dict:
         response = await self._requester.post(*self._parent.get_own_path(), "operation", data=payload)
+
         return response.as_dict()
 
 
@@ -456,7 +457,7 @@ class MappingUnit(_BaseUnit):
         get_sync_key: Callable[[], str],
         set_synk_key: Callable[[str], None],
         refresh_sync_key: Callable[[], Awaitable[str]],
-        get_mapping_components: Callable[
+        get_mapping_args: Callable[
             [],
             Awaitable[tuple[Cluster, Cluster | Service | Component | Host, list[MappingPair]]],
         ],
@@ -467,7 +468,7 @@ class MappingUnit(_BaseUnit):
             get_sync_key=get_sync_key,
             set_synk_key=set_synk_key,
             refresh_sync_key=refresh_sync_key,
-            get_mapping_components=get_mapping_components,
+            get_mapping_args=get_mapping_args,
         )
         self._mapping: WizardMapping | None = None
 
@@ -492,7 +493,7 @@ class MappingUnit(_BaseUnit):
         if self._mapping is not None:
             return self._mapping
 
-        cluster, owner, entries = await self._get_action_mapping_components()
+        cluster, owner, entries = await self._get_action_mapping_args()
         cumulative_delta = await self._get_cumulative_delta()
 
         self._mapping = WizardMapping(
