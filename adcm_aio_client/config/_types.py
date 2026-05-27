@@ -284,6 +284,11 @@ class ConfigSchema:
         yield from self._param_map[parameter_name]["properties"].items()
 
     def retrieve_field(self: Self, parameter_name: LevelNames, field: tuple[str, ...]) -> Any:  # noqa: ANN401
+        """
+        Retrieve arbitrary field from parameter's schema.
+        Eg: title, default activation state of activatable group, etc.
+        """
+
         return reduce(dict.get, field, self._param_map[parameter_name])  # pyright: ignore[reportArgumentType]
 
     def iterate_parameters(self: Self) -> Iterable[tuple[LevelNames, dict]]:
