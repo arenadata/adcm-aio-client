@@ -7,6 +7,7 @@ from adcm_aio_client.actions._objects import ConfigurationUnit, MappingUnit, Ope
 from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.config import Parameter
 from adcm_aio_client.errors import UnitExecutionError, WaitTimeoutError
+from adcm_aio_client.mapping._types import MappingPair
 from adcm_aio_client.objects import Action, Bundle, Cluster, Component, Flow, Host
 
 pytestmark = [pytest.mark.asyncio]
@@ -121,6 +122,17 @@ async def _get_mapping_host_component_pairs(cluster: Cluster) -> list[tuple[int,
     return [(entry["hostId"], entry["componentId"]) for entry in response.as_list()]
 
 
+async def _prepare_cluster_mapping(cluster: Cluster, to_add: list[MappingPair], to_remove: list[MappingPair]) -> None:
+    mapping = await cluster.mapping
+
+    for component, host in to_add:
+        await mapping.add(component=component, host=host)
+    for component, host in to_remove:
+        await mapping.remove(component=component, host=host)
+
+    await mapping.save()
+
+
 async def _prepare_mapping_entries(
     adcm_client: ADCMClient,
     cluster: Cluster,
@@ -144,10 +156,6 @@ async def _prepare_mapping_entries(
         name="w-host2",
         cluster=cluster,
     )
-    cluster_mapping = await cluster.mapping
-    await cluster_mapping.add(component1, host_map1)
-    await cluster_mapping.save()
-
     return component1, component2, component3, host_map1, host_map2
 
 
@@ -174,7 +182,7 @@ async def _test_mapping_happy_path(
         "add": [],
         "remove": [{"hostId": host_map1.id, "componentId": component1.id}],
     }
-    assert mapping.get_map_delta() == expected_delta, "first step delta is wrong"
+    assert mapping._delta_to_payload() == expected_delta, "first step delta is wrong"
     await unit1.execute()
     # mapping of second unit
     mapping = await unit2.mapping
@@ -197,14 +205,14 @@ async def _test_mapping_happy_path(
 
 async def _test_mapping_rules_contradiction(
     action: Action,
-    component3: Component,
-    host_map1: Host,
+    component: Component,
+    host_map: Host,
 ) -> None:
     flow = await action.pre_process.init()
     unit1, unit2 = flow.units
     assert isinstance(unit1, MappingUnit) and isinstance(unit2, MappingUnit)
     mapping = await unit1.mapping
-    await mapping.add(component3, host_map1)
+    await mapping.add(component, host_map)
     with pytest.raises(UnitExecutionError):
         await unit1.execute()
 
@@ -227,6 +235,8 @@ async def test_action_flow(
     component1, component2, component3, host_map1, host_map2 = await _prepare_mapping_entries(
         adcm_client, wizard_cluster, simple_hostprovider_bundle
     )
+    await _prepare_cluster_mapping(cluster=wizard_cluster, to_add=[(component1, host_map1)], to_remove=[])
+
     mapping_action = await wizard_cluster.actions.get(name__eq="wizard_with_mapping")
     await _test_mapping_happy_path(
         action=mapping_action,
@@ -236,7 +246,7 @@ async def test_action_flow(
         host_map1=host_map1,
         host_map2=host_map2,
     )
-    await _test_mapping_rules_contradiction(action=mapping_action, component3=component3, host_map1=host_map1)
+    await _test_mapping_rules_contradiction(action=mapping_action, component=component3, host_map=host_map1)
 
 
 async def test_configuration_unit(wizard_cluster: Cluster, httpx_client: AsyncClient) -> None:

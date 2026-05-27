@@ -12,10 +12,10 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from asyncstdlib import cached_property as async_cached_property
 
@@ -31,8 +31,8 @@ from adcm_aio_client.errors import (
     ServerError,
     UnitExecutionError,
 )
-from adcm_aio_client.mapping._objects import ActionMapping, WizardMapping
-from adcm_aio_client.mapping._types import MappingDelta, MappingEntry, MappingPair
+from adcm_aio_client.mapping._objects import ActionMapping, ClusterMapping, WizardMapping
+from adcm_aio_client.mapping._types import MappingPair
 from adcm_aio_client.objects._accessors import NonPaginatedChildAccessor
 from adcm_aio_client.objects._base import (
     InteractiveChildObject,
@@ -318,12 +318,11 @@ class Flow(InteractiveChildObject[Action]):
     ) -> tuple[
         Cluster,
         Cluster | Service | Component | Host,
-        list[MappingPair],
+        ClusterMapping,
     ]:
         cluster = await detect_cluster(owner=self._action_owner)
         cluster_mapping = await cluster.mapping
-        entries = cluster_mapping.all()
-        return cluster, self._action_owner, entries
+        return cluster, self._action_owner, cluster_mapping
 
 
 class _BaseUnit(InteractiveChildObject[Flow]):
@@ -338,7 +337,7 @@ class _BaseUnit(InteractiveChildObject[Flow]):
         refresh_sync_key: Callable[[], Awaitable[str]],
         get_mapping_args: Callable[
             [],
-            Awaitable[tuple[Cluster, Cluster | Service | Component | Host, list[MappingPair]]],
+            Awaitable[tuple[Cluster, Cluster | Service | Component | Host, ClusterMapping]],
         ],
     ) -> None:
         super().__init__(parent=parent, data=data)
@@ -459,7 +458,7 @@ class MappingUnit(_BaseUnit):
         refresh_sync_key: Callable[[], Awaitable[str]],
         get_mapping_args: Callable[
             [],
-            Awaitable[tuple[Cluster, Cluster | Service | Component | Host, list[MappingPair]]],
+            Awaitable[tuple[Cluster, Cluster | Service | Component | Host, ClusterMapping]],
         ],
     ) -> None:
         super().__init__(
@@ -470,7 +469,6 @@ class MappingUnit(_BaseUnit):
             refresh_sync_key=refresh_sync_key,
             get_mapping_args=get_mapping_args,
         )
-        self._mapping: WizardMapping | None = None
 
     async def execute(self: Self) -> Self:
         mapping = await self.mapping
@@ -480,7 +478,7 @@ class MappingUnit(_BaseUnit):
             "params": {
                 "stepId": self.unit_id,
                 "processSyncKey": self._get_flow_sync_key(),
-                "hostComponentMapDelta": mapping.get_map_delta(),
+                "hostComponentMapDelta": mapping._delta_to_payload(),
             },
         }
         response_data = await self._post_operation_r(payload)
@@ -490,45 +488,106 @@ class MappingUnit(_BaseUnit):
 
     @async_cached_property
     async def mapping(self: Self) -> WizardMapping:
-        if self._mapping is not None:
-            return self._mapping
+        cluster, owner, cluster_mapping = await self._get_action_mapping_args()
 
-        cluster, owner, entries = await self._get_action_mapping_args()
-        cumulative_delta = await self._get_cumulative_delta()
+        previous_cu_delta = await self._get_cumulative_delta()
+        cluster_mapping_pairs = cluster_mapping.all()
+        base_mapping_entries = self._calculate_base_mapping_entries(
+            cluster_mapping_pairs=cluster_mapping_pairs,
+            previous_cu_delta=previous_cu_delta,
+        )
+        base_mapping_pairs = await self._entries_to_mapping_pairs(
+            mapping_pairs=cluster_mapping_pairs,
+            base_mapping_entries=base_mapping_entries,
+            cluster_mapping=cluster_mapping,
+        )
 
-        self._mapping = WizardMapping(
+        return WizardMapping(
             cluster=cluster,
             owner=owner,
-            entries=entries,
-            cumulative_delta=cumulative_delta,
+            entries=base_mapping_pairs,
         )
-        return self._mapping
 
-    async def _get_cumulative_delta(self: Self) -> MappingDelta | None:
+    def _calculate_base_mapping_entries(
+        self: Self,
+        cluster_mapping_pairs: list[MappingPair],
+        previous_cu_delta: dict[str, list[dict[str, int]]],
+    ) -> list[dict[str, int]]:
+        cluster_mapping_entries = [
+            {"hostId": host.id, "componentId": component.id} for component, host in cluster_mapping_pairs
+        ]
+
+        removed_entries = {(entry["hostId"], entry["componentId"]) for entry in previous_cu_delta["remove"]}
+        seen_entries: set[tuple[int, int]] = set()
+        base_mapping_entries: list[dict[str, int]] = []
+
+        for entry in [*cluster_mapping_entries, *previous_cu_delta["add"]]:
+            entry_key = (entry["hostId"], entry["componentId"])
+            if entry_key in removed_entries or entry_key in seen_entries:
+                continue
+
+            seen_entries.add(entry_key)
+            base_mapping_entries.append(entry)
+
+        return base_mapping_entries
+
+    async def _get_cumulative_delta(self: Self) -> dict[str, list]:
         unit_data = await self._retrieve_data()
-        cumulative_delta = unit_data.get("cumulativeDelta")
+        cu_delta = unit_data.get("cumulativeDelta")
+        if cu_delta is None:
+            return {"add": [], "remove": []}
+        return cu_delta
 
-        if cumulative_delta is None:
-            return None
+    async def _entries_to_mapping_pairs(
+        self: Self,
+        mapping_pairs: list[MappingPair],
+        cluster_mapping: ClusterMapping,
+        base_mapping_entries: list[dict],
+    ) -> list[MappingPair]:
+        hosts, components = self._cache_entries(mapping_pairs)
+        result: list[MappingPair] = []
 
-        added_entries = (
-            {
-                MappingEntry(host_id=entry["hostId"], component_id=entry["componentId"])
-                for entry in cumulative_delta["add"]
-            }
-            if cumulative_delta["add"]
-            else set()
-        )
-        removed_entries = (
-            {
-                MappingEntry(host_id=entry["hostId"], component_id=entry["componentId"])
-                for entry in cumulative_delta["remove"]
-            }
-            if cumulative_delta["remove"]
-            else set()
-        )
+        for entry in base_mapping_entries:
+            host_id = entry["hostId"]
+            component_id = entry["componentId"]
 
-        return MappingDelta(add=added_entries, remove=removed_entries)
+            host = hosts.get(host_id)
+            if host is None:
+                host: Host = await self._fing_mapping_entries(
+                    mapping=cluster_mapping, entity_id=host_id, entity_type="host"
+                )
+                hosts[host_id] = host
+            component = components.get(component_id)
+            if component is None:
+                component: Component = await self._fing_mapping_entries(
+                    mapping=cluster_mapping, entity_id=component_id, entity_type="component"
+                )
+                components[component_id] = component
+
+            result.append((component, host))
+
+        return result
+
+    async def _fing_mapping_entries(
+        self: Self, mapping: ClusterMapping, entity_id: int, entity_type: Literal["host", "component"]
+    ) -> Host | Component:
+        query = {"id__in": str(entity_id), "limit": 1}
+        match entity_type:
+            case "host":
+                entities = await mapping.hosts.list(query)
+            case "component":
+                entities = await mapping.components.list(query)
+        return entities[0]
+
+    @staticmethod
+    def _cache_entries(entries: Iterable[MappingPair]) -> tuple[dict[int, Host], dict[int, Component]]:
+        hosts = {}
+        components = {}
+        for component, host in entries:
+            components[component.id] = component
+            hosts[host.id] = host
+
+        return hosts, components
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:

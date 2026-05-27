@@ -24,7 +24,6 @@ from adcm_aio_client._types import ComponentID, HostID, Requester
 from adcm_aio_client.mapping import apply_local_changes, apply_remote_changes
 from adcm_aio_client.mapping._types import (
     LocalMappings,
-    MappingDelta,
     MappingEntry,
     MappingPair,
     MappingRefreshStrategy,
@@ -71,7 +70,7 @@ class ActionMapping:
         self: Self,
         owner: Cluster | Service | Component | Host,
         cluster: Cluster,
-        entries: Iterable[MappingPair | MappingEntry],
+        entries: Iterable[MappingPair],
     ) -> None:
         self._owner = owner
         self._cluster = cluster
@@ -83,10 +82,6 @@ class ActionMapping:
         self._initial: set[MappingEntry] = set()
 
         for entry in entries:
-            if isinstance(entry, MappingEntry):
-                self._initial.add(entry)
-                continue
-
             component, host = entry
             self._components[component.id] = component
             self._hosts[host.id] = host
@@ -167,7 +162,7 @@ class ActionMapping:
 
 
 class ClusterMapping(ActionMapping):
-    def __init__(self: Self, owner: Cluster, entries: Iterable[MappingPair | MappingEntry]) -> None:
+    def __init__(self: Self, owner: Cluster, entries: Iterable[MappingPair]) -> None:
         self._path = (*owner.get_own_path(), "mapping")
         super().__init__(owner=owner, cluster=owner, entries=entries)
 
@@ -248,16 +243,10 @@ class WizardMapping(ActionMapping):
         self: Self,
         owner: Cluster | Service | Component | Host,
         cluster: Cluster,
-        entries: Iterable[MappingPair | MappingEntry],
-        cumulative_delta: MappingDelta | None,
+        entries: Iterable[MappingPair],
     ) -> None:
         super().__init__(owner, cluster, entries)
-        self._base_mapping = copy(self._initial)
-        if cumulative_delta is not None:
-            self._base_mapping |= cumulative_delta.add
-            self._base_mapping -= cumulative_delta.remove
-
-        self._current = copy(self._base_mapping)
+        self._base_mapping: set[MappingEntry] = copy(self._initial)
         self._added_delta: set[MappingEntry] = set()
         self._removed_delta: set[MappingEntry] = set()
 
@@ -275,10 +264,11 @@ class WizardMapping(ActionMapping):
 
         return self
 
-    def get_map_delta(self: Self) -> dict[str, PayloadMappingEntries]:
+    def _delta_to_payload(self: Self) -> dict[str, PayloadMappingEntries]:
+        self._sync_result_delta()
         return {
-            "add": self._to_delta_payload(self._added_delta),
-            "remove": self._to_delta_payload(self._removed_delta),
+            "add": self._deserialize_pairs(self._added_delta),
+            "remove": self._deserialize_pairs(self._removed_delta),
         }
 
     def reset_delta(self: Self) -> None:
@@ -290,7 +280,7 @@ class WizardMapping(ActionMapping):
         self._removed_delta = self._base_mapping - self._current
 
     @staticmethod
-    def _to_delta_payload(entries: set[MappingEntry]) -> PayloadMappingEntries:
+    def _deserialize_pairs(entries: set[MappingEntry]) -> PayloadMappingEntries:
         return [
             {"hostId": entry.host_id, "componentId": entry.component_id}
             for entry in sorted(entries, key=lambda item: (item.host_id, item.component_id))
