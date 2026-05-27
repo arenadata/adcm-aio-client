@@ -12,16 +12,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Coroutine, Generator, Iterable
+from collections.abc import Generator, Iterable
 from copy import copy
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Self
-import asyncio
 
 from adcm_aio_client import Filter
 from adcm_aio_client._filters import FilterByDisplayName, FilterByName, FilterByStatus, Filtering
 from adcm_aio_client._types import ComponentID, HostID, Requester
 from adcm_aio_client.mapping import apply_local_changes, apply_remote_changes
+from adcm_aio_client.mapping._processes import _run_task_if_objects_are_missing
 from adcm_aio_client.mapping._types import (
     LocalMappings,
     MappingEntry,
@@ -209,9 +209,9 @@ class ClusterMapping(ActionMapping):
             if entry.component_id not in self._components:
                 missing_components.add(entry.component_id)
 
-        hosts_task = self._run_task_if_objects_are_missing(method=self.hosts.list, missing_objects=missing_hosts)
+        hosts_task = _run_task_if_objects_are_missing(method=self.hosts.list, missing_objects=missing_hosts)
 
-        components_task = self._run_task_if_objects_are_missing(
+        components_task = _run_task_if_objects_are_missing(
             method=self.components.list, missing_objects=missing_components
         )
 
@@ -220,19 +220,6 @@ class ClusterMapping(ActionMapping):
 
         if components_task is not None:
             self._components |= {component.id: component for component in await components_task}
-
-    def _run_task_if_objects_are_missing(
-        self: Self, method: Callable[[dict], Coroutine], missing_objects: set[int]
-    ) -> asyncio.Task | None:
-        if not missing_objects:
-            return None
-
-        ids_str = ",".join(map(str, missing_objects))
-        # limit in case there are more than 1 page of objects
-        records_amount = len(missing_objects)
-        query = {"id__in": ids_str, "limit": records_amount}
-
-        return asyncio.create_task(method(query))
 
     def __str__(self: Self) -> str:
         return "/".join(str(item) for item in self._path)

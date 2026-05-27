@@ -12,10 +12,10 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from asyncstdlib import cached_property as async_cached_property
 
@@ -32,6 +32,11 @@ from adcm_aio_client.errors import (
     UnitExecutionError,
 )
 from adcm_aio_client.mapping._objects import ActionMapping, ClusterMapping, WizardMapping
+from adcm_aio_client.mapping._processes import (
+    _calculate_base_mapping_entries,
+    _run_task_if_objects_are_missing,
+    _to_cache_entries,
+)
 from adcm_aio_client.mapping._types import MappingPair
 from adcm_aio_client.objects._accessors import NonPaginatedChildAccessor
 from adcm_aio_client.objects._base import (
@@ -492,7 +497,7 @@ class MappingUnit(_BaseUnit):
 
         previous_cu_delta = await self._get_cumulative_delta()
         cluster_mapping_pairs = cluster_mapping.all()
-        base_mapping_entries = self._calculate_base_mapping_entries(
+        base_mapping_entries = _calculate_base_mapping_entries(
             cluster_mapping_pairs=cluster_mapping_pairs,
             previous_cu_delta=previous_cu_delta,
         )
@@ -508,29 +513,6 @@ class MappingUnit(_BaseUnit):
             entries=base_mapping_pairs,
         )
 
-    def _calculate_base_mapping_entries(
-        self: Self,
-        cluster_mapping_pairs: list[MappingPair],
-        previous_cu_delta: dict[str, list[dict[str, int]]],
-    ) -> list[dict[str, int]]:
-        cluster_mapping_entries = [
-            {"hostId": host.id, "componentId": component.id} for component, host in cluster_mapping_pairs
-        ]
-
-        removed_entries = {(entry["hostId"], entry["componentId"]) for entry in previous_cu_delta["remove"]}
-        seen_entries: set[tuple[int, int]] = set()
-        base_mapping_entries: list[dict[str, int]] = []
-
-        for entry in [*cluster_mapping_entries, *previous_cu_delta["add"]]:
-            entry_key = (entry["hostId"], entry["componentId"])
-            if entry_key in removed_entries or entry_key in seen_entries:
-                continue
-
-            seen_entries.add(entry_key)
-            base_mapping_entries.append(entry)
-
-        return base_mapping_entries
-
     async def _get_cumulative_delta(self: Self) -> dict[str, list]:
         unit_data = await self._retrieve_data()
         cu_delta = unit_data.get("cumulativeDelta")
@@ -544,50 +526,32 @@ class MappingUnit(_BaseUnit):
         cluster_mapping: ClusterMapping,
         base_mapping_entries: list[dict],
     ) -> list[MappingPair]:
-        hosts, components = self._cache_entries(mapping_pairs)
-        result: list[MappingPair] = []
+        hosts, components = _to_cache_entries(mapping_pairs)
+        missing_hosts = set()
+        missing_components = set()
 
         for entry in base_mapping_entries:
             host_id = entry["hostId"]
             component_id = entry["componentId"]
 
-            host = hosts.get(host_id)
-            if host is None:
-                host: Host = await self._fing_mapping_entries(
-                    mapping=cluster_mapping, entity_id=host_id, entity_type="host"
-                )
-                hosts[host_id] = host
-            component = components.get(component_id)
-            if component is None:
-                component: Component = await self._fing_mapping_entries(
-                    mapping=cluster_mapping, entity_id=component_id, entity_type="component"
-                )
-                components[component_id] = component
+            if host_id not in hosts:
+                missing_hosts.add(host_id)
+            if component_id not in components:
+                missing_components.add(component_id)
 
-            result.append((component, host))
+        hosts_task = _run_task_if_objects_are_missing(method=cluster_mapping.hosts.list, missing_objects=missing_hosts)
 
-        return result
+        components_task = _run_task_if_objects_are_missing(
+            method=cluster_mapping.components.list, missing_objects=missing_components
+        )
 
-    async def _fing_mapping_entries(
-        self: Self, mapping: ClusterMapping, entity_id: int, entity_type: Literal["host", "component"]
-    ) -> Host | Component:
-        query = {"id__in": str(entity_id), "limit": 1}
-        match entity_type:
-            case "host":
-                entities = await mapping.hosts.list(query)
-            case "component":
-                entities = await mapping.components.list(query)
-        return entities[0]
+        if hosts_task is not None:
+            hosts |= {host.id: host for host in await hosts_task}
 
-    @staticmethod
-    def _cache_entries(entries: Iterable[MappingPair]) -> tuple[dict[int, Host], dict[int, Component]]:
-        hosts = {}
-        components = {}
-        for component, host in entries:
-            components[component.id] = component
-            hosts[host.id] = host
+        if components_task is not None:
+            components |= {component.id: component for component in await components_task}
 
-        return hosts, components
+        return [(components[entry["componentId"]], hosts[entry["hostId"]]) for entry in base_mapping_entries]
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:
