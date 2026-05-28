@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     pass
 
 
-def _run_task_if_objects_are_missing(
+def run_task_if_objects_are_missing(
     method: Callable[[dict], Coroutine], missing_objects: set[int]
 ) -> asyncio.Task | None:
     if not missing_objects:
@@ -34,7 +34,7 @@ def _run_task_if_objects_are_missing(
     return asyncio.create_task(method(query))
 
 
-def _to_cache_entries(entries: Iterable[MappingPair]) -> tuple[HostCache, ComponentCache]:
+def to_cache_entries(entries: Iterable[MappingPair]) -> tuple[HostCache, ComponentCache]:
     hosts = {}
     components = {}
     for component, host in entries:
@@ -44,7 +44,7 @@ def _to_cache_entries(entries: Iterable[MappingPair]) -> tuple[HostCache, Compon
     return hosts, components
 
 
-def _calculate_base_mapping_entries(
+def calculate_base_mapping_entries(
     cluster_mapping_pairs: list[MappingPair],
     previous_cu_delta: dict[str, PayloadMappingEntries],
 ) -> PayloadMappingEntries:

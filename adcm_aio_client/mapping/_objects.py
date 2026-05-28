@@ -21,7 +21,7 @@ from adcm_aio_client import Filter
 from adcm_aio_client._filters import FilterByDisplayName, FilterByName, FilterByStatus, Filtering
 from adcm_aio_client._types import ComponentID, HostID, Requester
 from adcm_aio_client.mapping import apply_local_changes, apply_remote_changes
-from adcm_aio_client.mapping._processes import _run_task_if_objects_are_missing
+from adcm_aio_client.mapping._processes import run_task_if_objects_are_missing
 from adcm_aio_client.mapping._types import (
     LocalMappings,
     MappingEntry,
@@ -209,9 +209,9 @@ class ClusterMapping(ActionMapping):
             if entry.component_id not in self._components:
                 missing_components.add(entry.component_id)
 
-        hosts_task = _run_task_if_objects_are_missing(method=self.hosts.list, missing_objects=missing_hosts)
+        hosts_task = run_task_if_objects_are_missing(method=self.hosts.list, missing_objects=missing_hosts)
 
-        components_task = _run_task_if_objects_are_missing(
+        components_task = run_task_if_objects_are_missing(
             method=self.components.list, missing_objects=missing_components
         )
 
@@ -258,7 +258,7 @@ class WizardMapping(ActionMapping):
             "remove": self._deserialize_pairs(self._removed_delta),
         }
 
-    def reset_delta(self: Self) -> None:
+    def _reset_delta(self: Self) -> None:
         self._current = copy(self._base_mapping)
         self._sync_result_delta()
 

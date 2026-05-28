@@ -33,9 +33,9 @@ from adcm_aio_client.errors import (
 )
 from adcm_aio_client.mapping._objects import ActionMapping, ClusterMapping, WizardMapping
 from adcm_aio_client.mapping._processes import (
-    _calculate_base_mapping_entries,
-    _run_task_if_objects_are_missing,
-    _to_cache_entries,
+    calculate_base_mapping_entries,
+    run_task_if_objects_are_missing,
+    to_cache_entries,
 )
 from adcm_aio_client.mapping._types import MappingPair
 from adcm_aio_client.objects._accessors import NonPaginatedChildAccessor
@@ -496,7 +496,7 @@ class MappingUnit(_BaseUnit):
 
         previous_cu_delta = await self._get_cumulative_delta()
         cluster_mapping_pairs = cluster_mapping.all()
-        base_mapping_entries = _calculate_base_mapping_entries(
+        base_mapping_entries = calculate_base_mapping_entries(
             cluster_mapping_pairs=cluster_mapping_pairs,
             previous_cu_delta=previous_cu_delta,
         )
@@ -525,7 +525,7 @@ class MappingUnit(_BaseUnit):
         cluster_mapping: ClusterMapping,
         base_mapping_entries: list[dict],
     ) -> list[MappingPair]:
-        hosts, components = _to_cache_entries(mapping_pairs)
+        hosts, components = to_cache_entries(mapping_pairs)
         missing_hosts = set()
         missing_components = set()
 
@@ -538,9 +538,9 @@ class MappingUnit(_BaseUnit):
             if component_id not in components:
                 missing_components.add(component_id)
 
-        hosts_task = _run_task_if_objects_are_missing(method=cluster_mapping.hosts.list, missing_objects=missing_hosts)
+        hosts_task = run_task_if_objects_are_missing(method=cluster_mapping.hosts.list, missing_objects=missing_hosts)
 
-        components_task = _run_task_if_objects_are_missing(
+        components_task = run_task_if_objects_are_missing(
             method=cluster_mapping.components.list, missing_objects=missing_components
         )
 
