@@ -185,7 +185,7 @@ class Action(_GenericAction):
 
     @cached_property
     def pre_process(self: Self) -> PreProcess:
-        return PreProcess(requester=self._requester, action=self)
+        return PreProcess(requester=self._requester, action=self, owner=self._parent)
 
 
 class ActionsAccessor[Parent: InteractiveObject](NonPaginatedChildAccessor[Parent, Action]):
@@ -229,16 +229,17 @@ class PreProcess:
         self: Self,
         requester: Requester,
         action: Action,
+        owner: Cluster | Service | Component | Host,
     ) -> None:
         self._action = action
         self._requester = requester
-        self._action_owner = action._parent
+        self._owner = owner
 
     @convert_create_errors
     async def init(self: Self) -> Flow:
         process_path = *self._action.get_own_path(), Flow.PATH_PREFIX
         response = await self._requester.post(*process_path, data={})
-        return Flow(parent=self._action, data=response.as_dict(), action_owner=self._action_owner)
+        return Flow(parent=self._action, data=response.as_dict(), action_owner=self._owner)
 
     @asynccontextmanager
     async def flow(self: Self) -> AsyncIterator[Flow]:
@@ -254,7 +255,6 @@ class Flow(InteractiveChildObject[Action]):
         self: Self, parent: Action, data: dict[str, Any], action_owner: Cluster | Service | Component | Host
     ) -> None:
         super().__init__(parent=parent, data=data)
-        self.id = self._data["id"]
         self._sync_key = self._data["syncKey"]
         self._action_owner = action_owner
 
@@ -346,7 +346,6 @@ class _BaseUnit(InteractiveChildObject[Flow]):
         ],
     ) -> None:
         super().__init__(parent=parent, data=data)
-        self.unit_id: int | None = self._data.get("id")
         self._get_flow_sync_key = get_sync_key
         self._set_flow_sync_key_after_execute = set_synk_key
         self._refresh_sync_key_after_job_complete = refresh_sync_key
@@ -380,7 +379,7 @@ class OperationUnit(_BaseUnit):
         payload = {
             "method": "submit_step",
             "params": {
-                "stepId": self.unit_id,
+                "stepId": self.id,
                 "processSyncKey": self._get_flow_sync_key(),
             },
         }
@@ -408,7 +407,7 @@ class OperationUnit(_BaseUnit):
         payload = {
             "method": "skip_step",
             "params": {
-                "stepId": self.unit_id,
+                "stepId": self.id,
                 "processSyncKey": self._get_flow_sync_key(),
             },
         }
@@ -481,7 +480,7 @@ class MappingUnit(_BaseUnit):
         payload = {
             "method": "submit_step",
             "params": {
-                "stepId": self.unit_id,
+                "stepId": self.id,
                 "processSyncKey": self._get_flow_sync_key(),
                 "hostComponentMapDelta": mapping._delta_to_payload(),
             },
