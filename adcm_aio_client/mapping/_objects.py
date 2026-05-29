@@ -12,17 +12,23 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Coroutine, Generator, Iterable
+from collections.abc import Generator, Iterable
 from copy import copy
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Self
-import asyncio
 
 from adcm_aio_client import Filter
 from adcm_aio_client._filters import FilterByDisplayName, FilterByName, FilterByStatus, Filtering
 from adcm_aio_client._types import ComponentID, HostID, Requester
 from adcm_aio_client.mapping import apply_local_changes, apply_remote_changes
-from adcm_aio_client.mapping._types import LocalMappings, MappingEntry, MappingPair, MappingRefreshStrategy
+from adcm_aio_client.mapping._processes import run_task_if_objects_are_missing
+from adcm_aio_client.mapping._types import (
+    LocalMappings,
+    MappingEntry,
+    MappingPair,
+    MappingRefreshStrategy,
+    PayloadMappingEntries,
+)
 from adcm_aio_client.objects._accessors import NonPaginatedAccessor, filters_to_inline
 from adcm_aio_client.objects._base import convert_update_errors
 
@@ -61,7 +67,10 @@ class ComponentsMappingNode(NonPaginatedAccessor["Component"]):
 
 class ActionMapping:
     def __init__(
-        self: Self, owner: Cluster | Service | Component | Host, cluster: Cluster, entries: Iterable[MappingPair]
+        self: Self,
+        owner: Cluster | Service | Component | Host,
+        cluster: Cluster,
+        entries: Iterable[MappingPair],
     ) -> None:
         self._owner = owner
         self._cluster = cluster
@@ -72,7 +81,8 @@ class ActionMapping:
 
         self._initial: set[MappingEntry] = set()
 
-        for component, host in entries:
+        for entry in entries:
+            component, host = entry
             self._components[component.id] = component
             self._hosts[host.id] = host
             self._initial.add(MappingEntry(host_id=host.id, component_id=component.id))
@@ -199,9 +209,9 @@ class ClusterMapping(ActionMapping):
             if entry.component_id not in self._components:
                 missing_components.add(entry.component_id)
 
-        hosts_task = self._run_task_if_objects_are_missing(method=self.hosts.list, missing_objects=missing_hosts)
+        hosts_task = run_task_if_objects_are_missing(method=self.hosts.list, missing_objects=missing_hosts)
 
-        components_task = self._run_task_if_objects_are_missing(
+        components_task = run_task_if_objects_are_missing(
             method=self.components.list, missing_objects=missing_components
         )
 
@@ -211,18 +221,54 @@ class ClusterMapping(ActionMapping):
         if components_task is not None:
             self._components |= {component.id: component for component in await components_task}
 
-    def _run_task_if_objects_are_missing(
-        self: Self, method: Callable[[dict], Coroutine], missing_objects: set[int]
-    ) -> asyncio.Task | None:
-        if not missing_objects:
-            return None
-
-        ids_str = ",".join(map(str, missing_objects))
-        # limit in case there are more than 1 page of objects
-        records_amount = len(missing_objects)
-        query = {"id__in": ids_str, "limit": records_amount}
-
-        return asyncio.create_task(method(query))
-
     def __str__(self: Self) -> str:
         return "/".join(str(item) for item in self._path)
+
+
+class WizardMapping(ActionMapping):
+    def __init__(
+        self: Self,
+        owner: Cluster | Service | Component | Host,
+        cluster: Cluster,
+        entries: Iterable[MappingPair],
+    ) -> None:
+        super().__init__(owner, cluster, entries)
+        self._base_mapping: set[MappingEntry] = copy(self._initial)
+        self._added_delta: set[MappingEntry] = set()
+        self._removed_delta: set[MappingEntry] = set()
+
+    async def add(self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter) -> Self:
+        _ = await super().add(component=component, host=host)
+        self._sync_result_delta()
+
+        return self
+
+    async def remove(
+        self: Self, component: Component | Iterable[Component], host: Host | Iterable[Host] | Filter
+    ) -> Self:
+        _ = await super().remove(component=component, host=host)
+        self._sync_result_delta()
+
+        return self
+
+    def _delta_to_payload(self: Self) -> dict[str, PayloadMappingEntries]:
+        self._sync_result_delta()
+        return {
+            "add": self._deserialize_pairs(self._added_delta),
+            "remove": self._deserialize_pairs(self._removed_delta),
+        }
+
+    def _reset_delta(self: Self) -> None:
+        self._current = copy(self._base_mapping)
+        self._sync_result_delta()
+
+    def _sync_result_delta(self: Self) -> None:
+        self._added_delta = self._current - self._base_mapping
+        self._removed_delta = self._base_mapping - self._current
+
+    @staticmethod
+    def _deserialize_pairs(entries: set[MappingEntry]) -> PayloadMappingEntries:
+        return [
+            {"hostId": entry.host_id, "componentId": entry.component_id}
+            for entry in sorted(entries, key=lambda item: (item.host_id, item.component_id))
+        ]
