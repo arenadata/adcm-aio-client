@@ -31,7 +31,6 @@ from adcm_aio_client.config._types import (
     GenericConfigData,
     LevelNames,
     LocalConfigs,
-    level_names_to_full_name,
 )
 from adcm_aio_client.errors import (
     ConfigComparisonError,
@@ -324,7 +323,7 @@ class _WithSelect:
             self._data.set_value(parameter=self._name, value=None)
 
     def _validate_choices(self: Self, value: str | None) -> None:
-        schema = self._schema._param_map[self._name]
+        schema = self._schema.get_param_spec(parameter_name=self._name)
 
         if value not in (choices := get_choices(schema=schema)):
             group_name = schema["title"]
@@ -338,14 +337,8 @@ class _WithSelect:
             return
 
         group_full_name = (*self._name, group_name)
-        for param_name, _ in self._schema.iterate_properties(parameter_name=group_full_name):
-            param_full_name = (*group_full_name, param_name)
-
-            if self._schema.is_activatable_group(param_full_name):
-                is_active = self._schema.retrieve_field(
-                    parameter_name=param_full_name, field=("adcmMeta", "activation", "default")
-                )
-                self._data._attributes.setdefault(level_names_to_full_name(param_full_name), {})["isActive"] = is_active
+        default_attributes = self._schema.get_default_attributes_for_group(parameter_name=group_full_name)
+        self._data.update_attributes(attributes=default_attributes)
 
 
 class _Selectable(_Group):
@@ -384,7 +377,7 @@ class _Selectable(_Group):
 
     @property
     def choices(self: Self) -> list[str | None]:
-        return get_choices(schema=self._schema._param_map[self._name])
+        return get_choices(schema=self._schema.get_param_spec(parameter_name=self._name))
 
     @property
     def value(self: Self) -> str | None:

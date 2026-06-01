@@ -116,6 +116,9 @@ class GenericConfigData(ABC):  # noqa: B024
         self._attributes[full_name][attribute] = value
         return value
 
+    def update_attributes(self: Self, attributes: dict) -> None:
+        _merge_dicts(self._attributes, attributes)
+
 
 class ActionConfigData(GenericConfigData):
     __slots__ = GenericConfigData.__slots__
@@ -268,6 +271,9 @@ class ConfigSchema:
 
         return param_spec.get("default", None)
 
+    def get_param_spec(self: Self, parameter_name: LevelNames) -> dict:
+        return self._param_map[parameter_name]
+
     def get_technical_name(self: Self, parameter_name: tuple[LevelNames, ParameterDisplayName]) -> ParameterName | None:
         return self._display_name_map[parameter_name]
 
@@ -280,9 +286,6 @@ class ConfigSchema:
 
         raise RuntimeError(f"Parameter `{(*parent_parameter_name, parameter_name)}` is not registered in schema")
 
-    def iterate_properties(self: Self, parameter_name: LevelNames) -> Iterable[tuple[ParameterName, dict]]:
-        yield from self._param_map[parameter_name]["properties"].items()
-
     def retrieve_field(self: Self, parameter_name: LevelNames, field: tuple[str, ...]) -> Any:  # noqa: ANN401
         """
         Retrieve arbitrary field from parameter's schema.
@@ -290,6 +293,23 @@ class ConfigSchema:
         """
 
         return reduce(dict.get, field, self._param_map[parameter_name])  # pyright: ignore[reportArgumentType]
+
+    def get_default_attributes_for_group(self: Self, parameter_name: LevelNames) -> dict:
+        default_attributes = {}
+
+        if not self.is_group(parameter_name):
+            return default_attributes
+
+        for param_name, _ in self._iterate_parameters(object_schema=self.get_param_spec(parameter_name=parameter_name)):
+            param_full_name = (*parameter_name, *param_name)
+
+            if self.is_activatable_group(param_full_name):
+                is_active = self.retrieve_field(  # TODO: see ADCM-8145. can not have a default activation value
+                    parameter_name=param_full_name, field=("adcmMeta", "activation", "default")
+                )
+                default_attributes.setdefault(level_names_to_full_name(param_full_name), {})["isActive"] = is_active
+
+        return default_attributes
 
     def iterate_parameters(self: Self) -> Iterable[tuple[LevelNames, dict]]:
         yield from self._iterate_parameters(object_schema=self._raw)
@@ -380,3 +400,18 @@ class ConfigRefreshStrategy(Protocol):
         `remote` may be changed according to strategy, so it shouldn't be "read-only"/"initial"
         """
         ...
+
+
+def _merge_dicts(a: dict, b: dict, path: tuple = ()) -> dict:
+    for key in b:
+        if key in a:
+            if isinstance(a[key], dict) and isinstance(b[key], dict):
+                _merge_dicts(a[key], b[key], path + (str(key),))
+
+            elif a[key] != b[key]:
+                raise RuntimeError("Conflict at " + ".".join(path + (str(key),)))
+
+        else:
+            a[key] = b[key]
+
+    return a

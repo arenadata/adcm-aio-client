@@ -664,14 +664,21 @@ async def _deeply_nested_selection_and_chg(service: Service) -> None:
                     "_selection": "lvl_3_group_1",
                     "lvl_3_group_1": {
                         "lvl_4_selection_group": None,
-                        "lvl_4_activatable_group": {"lvl_5_selection_group_not_required": None},
+                        "lvl_4_activatable_group": {
+                            "lvl_5_selection_group_not_required": None,
+                            "lvl_5_activatable_group": {"x": 1, "y": 2},
+                        },
                     },
                 }
             }
         }
     }
     expected_attrs = {
-        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group": {"isActive": False}
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group": {
+            "isActive": False
+        },
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group/"
+        "lvl_5_activatable_group": {"isActive": True},
     }
 
     sel_gr.select("Lvl 3 group 1")
@@ -712,18 +719,36 @@ async def _deeply_nested_selection_and_chg(service: Service) -> None:
                     "_selection": "lvl_3_group_1",
                     "lvl_3_group_1": {
                         "lvl_4_selection_group": {"_selection": "lvl_5_group_2", "lvl_5_group_2": {"x": 1, "y": 2}},
-                        "lvl_4_activatable_group": {"lvl_5_selection_group_not_required": None},
+                        "lvl_4_activatable_group": {
+                            "lvl_5_selection_group_not_required": None,
+                            "lvl_5_activatable_group": {"x": 1, "y": 2},
+                        },
                     },
                 }
             }
         }
     }
     expected_attrs = {
-        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group": {"isActive": True}
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group": {"isActive": True},
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group/"
+        "lvl_5_activatable_group": {"isActive": True},
     }
     expected_chg_attrs = {
         "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group": {
             "isActive": True,
+            "isSynchronized": True,
+        },
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group/"
+        "lvl_5_activatable_group": {
+            "isActive": True,
+            "isSynchronized": True,
+        },
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group/"
+        "lvl_5_activatable_group/x": {
+            "isSynchronized": True,
+        },
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group/"
+        "lvl_5_activatable_group/y": {
             "isSynchronized": True,
         },
         "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_selection_group/lvl_5_group_2/x": {

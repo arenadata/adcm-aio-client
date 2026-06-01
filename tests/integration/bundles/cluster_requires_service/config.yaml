@@ -206,6 +206,12 @@
                               display_name: "Lvl 6 group"
                               type: group
                               subs: *simple_subs_with_defaults
+                        - name: lvl_5_activatable_group
+                          display_name: "Lvl 4 activatable group"
+                          type: group
+                          activatable: True
+                          active: True
+                          subs: *simple_subs_with_defaults
                 - name: lvl_3_group_2
                   display_name: "Lvl 3 group 2"
                   type: group
