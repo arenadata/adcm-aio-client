@@ -300,8 +300,10 @@ class ConfigSchema:
         if not self.is_group(parameter_name):
             return default_attributes
 
-        for param_name, _ in self._iterate_parameters(object_schema=self.get_param_spec(parameter_name=parameter_name)):
-            param_full_name = (*parameter_name, *param_name)
+        for inner_param_name, _ in self._iterate_parameters(
+            object_schema=self.get_param_spec(parameter_name=parameter_name)
+        ):
+            param_full_name = (*parameter_name, *inner_param_name)
 
             if self.is_activatable_group(param_full_name):
                 is_active = self.retrieve_field(  # TODO: see ADCM-8145. can not have a default activation value
@@ -402,16 +404,23 @@ class ConfigRefreshStrategy(Protocol):
         ...
 
 
-def _merge_dicts(a: dict, b: dict, path: tuple = ()) -> dict:
-    for key in b:
-        if key in a:
-            if isinstance(a[key], dict) and isinstance(b[key], dict):
-                _merge_dicts(a[key], b[key], path + (str(key),))
+def _merge_dicts(target: dict, source: dict, path: tuple = ()) -> dict:
+    """
+    Recursively merges keys of `source` dict into `target` dict,
+    Raises an error if `source` and `target` have the same key with different values
+    """
 
-            elif a[key] != b[key]:
-                raise RuntimeError("Conflict at " + ".".join(path + (str(key),)))
+    for key in source:
+        if key in target:
+            key_path = (*path, str(key))
+
+            if isinstance(target[key], dict) and isinstance(source[key], dict):
+                _merge_dicts(target[key], source[key], key_path)
+
+            elif target[key] != source[key]:
+                raise RuntimeError(f"Conflict at {'.'.join(key_path)}")
 
         else:
-            a[key] = b[key]
+            target[key] = source[key]
 
-    return a
+    return target
