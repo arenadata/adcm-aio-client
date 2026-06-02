@@ -13,13 +13,14 @@
 from collections.abc import Callable, Coroutine
 from copy import deepcopy
 from functools import partial
-from typing import Any, Protocol, Self, overload
+from typing import Any, Protocol, Self, cast, overload
 import json
 import asyncio
 
 from adcm_aio_client._types import AwareOfOwnPath, WithRequesterProperty
 from adcm_aio_client.config import apply_local_changes
 from adcm_aio_client.config._operations import find_config_difference
+from adcm_aio_client.config._selection_groups import get_choices
 from adcm_aio_client.config._types import (
     ActionConfigData,
     AnyParameterName,
@@ -31,7 +32,12 @@ from adcm_aio_client.config._types import (
     LevelNames,
     LocalConfigs,
 )
-from adcm_aio_client.errors import ConfigComparisonError, ConfigNoParameterError, RequesterError
+from adcm_aio_client.errors import (
+    ConfigComparisonError,
+    ConfigNoParameterError,
+    InvalidSelectionGroupError,
+    RequesterError,
+)
 
 
 class ConfigOwner(WithRequesterProperty, AwareOfOwnPath, Protocol): ...
@@ -64,13 +70,19 @@ class _Group(_ConfigWrapper):
         super().__init__(name, data, schema)
         self._wrappers_cache = {}
 
-    def _find_and_wrap_config_entry[ValueW: _ConfigWrapper, GroupW: _ConfigWrapper, AGroupW: _ConfigWrapper](
+    def _find_and_wrap_config_entry[
+        ValueW: _ConfigWrapper,
+        GroupW: _ConfigWrapper,
+        AGroupW: _ConfigWrapper,
+        SGroupW: _ConfigWrapper,
+    ](
         self: Self,
         item: AnyParameterName | tuple[AnyParameterName, type[ValueW | GroupW | AGroupW]],
         value_class: type[ValueW],
         group_class: type[GroupW],
         a_group_class: type[AGroupW],
-    ) -> ValueW | GroupW | AGroupW:
+        s_group_class: type[SGroupW],
+    ) -> ValueW | GroupW | AGroupW | SGroupW:
         if isinstance(item, str):
             name = item
         else:
@@ -94,7 +106,12 @@ class _Group(_ConfigWrapper):
 
         class_ = value_class
         if self._schema.is_group(parameter_full_name):
-            class_ = a_group_class if self._schema.is_activatable_group(parameter_full_name) else group_class
+            if self._schema.is_activatable_group(parameter_full_name):
+                class_ = a_group_class
+            elif self._schema.is_selection_group(parameter_full_name):
+                class_ = s_group_class
+            else:
+                class_ = group_class
 
         wrapper = class_(name=parameter_full_name, data=self._data, schema=self._schema)
 
@@ -222,7 +239,11 @@ class ParameterGroup(_Group):
         NOTE: types aren't checked, they are just helpers for users' type checking setups.
         """
         return self._find_and_wrap_config_entry(
-            item=item, value_class=Parameter, group_class=ParameterGroup, a_group_class=ActivatableParameterGroup
+            item=item,
+            value_class=Parameter,
+            group_class=ParameterGroup,
+            a_group_class=ActivatableParameterGroup,
+            s_group_class=SelectableParameterGroup,
         )
 
 
@@ -251,6 +272,7 @@ class ParameterGroupHG(_Group):
             value_class=ParameterHG,
             group_class=ParameterGroupHG,
             a_group_class=ActivatableParameterGroupHG,
+            s_group_class=SelectableParameterGroupHG,
         )
 
 
@@ -279,6 +301,101 @@ class ActivatableParameterGroupHG(_Desyncable, _Activatable, ParameterGroupHG):
         return self
 
 
+class _WithSelect:
+    _schema: ConfigSchema
+    _data: GenericConfigData
+    _name: LevelNames
+
+    def select(self: Self, value: str | None) -> None:
+        self._validate_choices(value=value)
+        technical_name = (
+            self._schema.get_technical_name(parameter_name=(self._name, value)) if value is not None else None
+        )
+
+        if technical_name is not None:
+            inner_value = {
+                "_selection": technical_name,
+                technical_name: self._schema.get_default((*self._name, technical_name)),
+            }
+            self._data.set_value(parameter=self._name, value=inner_value)
+            self._set_default_attributes(group_name=technical_name)
+        else:
+            self._data.set_value(parameter=self._name, value=None)
+
+    def _validate_choices(self: Self, value: str | None) -> None:
+        schema = self._schema.get_param_spec(parameter_name=self._name)
+
+        if value not in (choices := get_choices(schema=schema)):
+            group_name = schema["title"]
+            raise InvalidSelectionGroupError(
+                f'Invalid choice "{value}" for "{group_name}" selection group. Available choices: {choices}'
+            )
+
+    def _set_default_attributes(self: Self, group_name: str | None) -> None:
+        """Check subs of selected `group_name` group, sets default attributes if needed"""
+        if group_name is None:
+            return
+
+        group_full_name = (*self._name, group_name)
+        default_attributes = self._schema.get_default_attributes_for_group(parameter_name=group_full_name)
+        self._data.update_attributes(attributes=default_attributes)
+
+
+class _Selectable(_Group):
+    def __getitem__[ExpectedType: ParameterGroup | ParameterGroupHG](
+        self: Self, item: AnyParameterName | tuple[AnyParameterName, type[ExpectedType]]
+    ) -> ExpectedType:
+        # item can be display_name or a technical_name, ensure it can be retrieved by any name
+        # subs of selection_group are only ParameterGroup | ParameterGroupHG
+        res = cast(ExpectedType, super().__getitem__(item=item))  # pyright: ignore[reportAttributeAccessIssue]
+        item = item[0] if isinstance(item, tuple) else item
+        item_display_name = self._schema.retrieve_field(parameter_name=res._name, field=("title",))
+
+        if item == item_display_name:
+            technical_name = self._schema.get_technical_name(parameter_name=(self._name, item))
+            item_display_name = item
+        else:
+            technical_name = item
+
+        current_selection = (self._data.get_value(self._name) or {}).get("_selection")
+
+        if current_selection != technical_name:
+            if current_selection is not None:
+                current_display_name = self._schema.get_display_name_by_parameter_name_and_parent_level_names(
+                    parent_parameter_name=self._name, parameter_name=current_selection
+                )
+            else:
+                current_display_name = None
+
+            self_display_name = self._schema.retrieve_field(parameter_name=self._name, field=("title",))
+            raise InvalidSelectionGroupError(
+                f'Can\'t access "{item_display_name}" group of "{self_display_name}" selection group, '
+                f'currently selected: "{current_display_name}".'
+            )
+
+        return res
+
+    @property
+    def choices(self: Self) -> list[str | None]:
+        return get_choices(schema=self._schema.get_param_spec(parameter_name=self._name))
+
+    @property
+    def value(self: Self) -> str | None:
+        value = self._data.get_value(self._name)
+        if value is not None:
+            selected_group = value["_selection"]
+            return self._schema.retrieve_field(parameter_name=(*self._name, selected_group), field=("title",))
+
+        return value
+
+
+class SelectableParameterGroup(_Selectable, _WithSelect, ParameterGroup): ...
+
+
+class SelectableParameterGroupHG(_Selectable, ParameterGroupHG):
+    """Desynchronization of selection_group is not supported in CHGs"""
+
+
 class _ConfigWrapperCreator[T: GenericConfigData](_ConfigWrapper):
     @property
     def config(self: Self) -> T:
@@ -299,8 +416,8 @@ class ObjectConfigWrapper(ParameterGroup, _ConfigWrapperCreator[ConfigData]): ..
 class HostGroupConfigWrapper(ParameterGroupHG, _ConfigWrapperCreator[ConfigData]): ...
 
 
-type ConfigEntry = Parameter | ParameterGroup | ActivatableParameterGroup
-type ConfigEntryHG = ParameterHG | ParameterGroupHG | ActivatableParameterGroupHG
+type ConfigEntry = Parameter | ParameterGroup | ActivatableParameterGroup | SelectableParameterGroup
+type ConfigEntryHG = ParameterHG | ParameterGroupHG | ActivatableParameterGroupHG | SelectableParameterGroupHG
 
 # API Objects
 

@@ -17,6 +17,9 @@ from dataclasses import dataclass
 from functools import reduce
 from typing import Any, NamedTuple, Protocol, Self
 
+from adcm_aio_client.config._selection_groups import SCHEMA_TYPE as SG_SCHEMA_TYPE
+from adcm_aio_client.config._selection_groups import get_properties, is_selection_group
+
 # External Section
 # these functions are heavily inspired by configuration rework in ADCM (ADCM-6034)
 
@@ -112,6 +115,9 @@ class GenericConfigData(ABC):  # noqa: B024
         full_name = level_names_to_full_name(parameter)
         self._attributes[full_name][attribute] = value
         return value
+
+    def update_attributes(self: Self, attributes: dict) -> None:
+        _merge_dicts(self._attributes, attributes)
 
 
 class ActionConfigData(GenericConfigData):
@@ -211,6 +217,7 @@ class ConfigSchema:
         self._jsons: set[LevelNames] = set()
         self._groups: set[LevelNames] = set()
         self._activatable_groups: set[LevelNames] = set()
+        self._selection_groups: set[LevelNames] = set()
         self._invisible_fields: set[LevelNames] = set()
         self._display_name_map: dict[tuple[LevelNames, ParameterDisplayName], ParameterName] = {}
         self._param_map: dict[LevelNames, dict] = {}
@@ -236,6 +243,9 @@ class ConfigSchema:
     def is_activatable_group(self: Self, parameter_name: LevelNames) -> bool:
         return parameter_name in self._activatable_groups
 
+    def is_selection_group(self: Self, parameter_name: LevelNames) -> bool:
+        return parameter_name in self._selection_groups
+
     def is_invisible(self: Self, parameter_name: LevelNames) -> bool:
         return parameter_name in self._invisible_fields
 
@@ -248,10 +258,60 @@ class ConfigSchema:
 
     def get_default(self: Self, parameter_name: LevelNames) -> Any:  # noqa: ANN401
         param_spec = self._param_map[parameter_name]
-        if not self.is_group(parameter_name):
-            return param_spec.get("default", None)
 
-        return {child_name: self.get_default((*parameter_name, child_name)) for child_name in param_spec["properties"]}
+        if self.is_group(parameter_name):
+            if self.is_selection_group(parameter_name):
+                if default := param_spec.get("default", None):
+                    return get_properties(param_spec)[default]
+                return None
+
+            return {
+                child_name: self.get_default((*parameter_name, child_name)) for child_name in param_spec["properties"]
+            }
+
+        return param_spec.get("default", None)
+
+    def get_param_spec(self: Self, parameter_name: LevelNames) -> dict:
+        return self._param_map[parameter_name]
+
+    def get_technical_name(self: Self, parameter_name: tuple[LevelNames, ParameterDisplayName]) -> ParameterName | None:
+        return self._display_name_map[parameter_name]
+
+    def get_display_name_by_parameter_name_and_parent_level_names(
+        self: Self, parent_parameter_name: LevelNames, parameter_name: ParameterName
+    ) -> ParameterDisplayName:
+        for (parent_level_names, param_display_name), _parameter_name in self._display_name_map.items():
+            if parent_level_names == parent_parameter_name and _parameter_name == parameter_name:
+                return param_display_name
+
+        raise RuntimeError(f"Parameter `{(*parent_parameter_name, parameter_name)}` is not registered in schema")
+
+    def retrieve_field(self: Self, parameter_name: LevelNames, field: tuple[str, ...]) -> Any:  # noqa: ANN401
+        """
+        Retrieve arbitrary field from parameter's schema.
+        Eg: title, default activation state of activatable group, etc.
+        """
+
+        return reduce(dict.get, field, self._param_map[parameter_name])  # pyright: ignore[reportArgumentType]
+
+    def get_default_attributes_for_group(self: Self, parameter_name: LevelNames) -> dict:
+        default_attributes = {}
+
+        if not self.is_group(parameter_name):
+            return default_attributes
+
+        for inner_param_name, _ in self._iterate_parameters(
+            object_schema=self.get_param_spec(parameter_name=parameter_name)
+        ):
+            param_full_name = (*parameter_name, *inner_param_name)
+
+            if self.is_activatable_group(param_full_name):
+                is_active = self.retrieve_field(  # TODO: see ADCM-8145. can not have a default activation value
+                    parameter_name=param_full_name, field=("adcmMeta", "activation", "default")
+                )
+                default_attributes.setdefault(level_names_to_full_name(param_full_name), {})["isActive"] = is_active
+
+        return default_attributes
 
     def iterate_parameters(self: Self) -> Iterable[tuple[LevelNames, dict]]:
         yield from self._iterate_parameters(object_schema=self._raw)
@@ -263,17 +323,26 @@ class ConfigSchema:
             yield (level_name,), attributes
 
             if is_group_v2(attributes):
+                if is_selection_group(attributes):
+                    # unfold `oneOf` to properties dict, ignoring `null` choices for further iteration
+                    attributes = {"properties": get_properties(attributes)}
+
                 for inner_level, inner_optional_attrs in self._iterate_parameters(attributes):
                     inner_attributes = self._unwrap_optional(inner_optional_attrs)
                     yield (level_name, *inner_level), inner_attributes
 
     def _analyze_schema(self: Self) -> None:
         for level_names, param_spec in self._iterate_parameters(object_schema=self._raw):
+            display_name = param_spec["title"]
+
             if is_group_v2(param_spec):
                 self._groups.add(level_names)
 
                 if is_activatable_v2(param_spec):
                     self._activatable_groups.add(level_names)
+
+                if is_selection_group(param_spec):
+                    self._selection_groups.add(level_names)
 
             elif is_json_v2(param_spec):
                 self._jsons.add(level_names)
@@ -282,13 +351,12 @@ class ConfigSchema:
                 self._invisible_fields.add(level_names)
 
             *group, own_level_name = level_names
-            display_name = param_spec["title"]
             self._display_name_map[tuple(group), display_name] = own_level_name
             self._param_map[level_names] = param_spec
 
     def _retrieve_name_type_mapping(self: Self) -> dict[LevelNames, str]:
         return {
-            level_names: param_spec.get("type", "enum")
+            level_names: SG_SCHEMA_TYPE if is_selection_group(param_spec) else param_spec.get("type", "enum")
             for level_names, param_spec in self._iterate_parameters(object_schema=self._raw)
         }
 
@@ -301,13 +369,7 @@ class ConfigSchema:
         if "title" not in attributes:
             return self._get_first_non_null_from_one_of(attributes)
 
-        if any("_selection" in entry.get("properties", {}) for entry in attributes["oneOf"]):
-            # It's required selection group, all data is in root
-            return attributes
-
-        # Non required selection group has info split between "root" and non-null entry
-        group_extra_info = self._get_first_non_null_from_one_of(attributes)
-        return attributes | group_extra_info
+        return attributes
 
     def _get_first_non_null_from_one_of(self: Self, attributes: dict) -> dict:
         # bald search, a lot may fail,
@@ -316,7 +378,9 @@ class ConfigSchema:
 
 
 def is_group_v2(attributes: dict) -> bool:
-    return attributes.get("type") == "object" and attributes.get("additionalProperties") is False
+    return (
+        attributes.get("type") == "object" and attributes.get("additionalProperties") is False
+    ) or is_selection_group(attributes)
 
 
 def is_activatable_v2(attributes: dict) -> bool:
@@ -338,3 +402,25 @@ class ConfigRefreshStrategy(Protocol):
         `remote` may be changed according to strategy, so it shouldn't be "read-only"/"initial"
         """
         ...
+
+
+def _merge_dicts(target: dict, source: dict, path: tuple = ()) -> dict:
+    """
+    Recursively merges keys of `source` dict into `target` dict,
+    Raises an error if `source` and `target` have the same key with different values
+    """
+
+    for key in source:
+        if key in target:
+            key_path = (*path, str(key))
+
+            if isinstance(target[key], dict) and isinstance(source[key], dict):
+                _merge_dicts(target[key], source[key], key_path)
+
+            elif target[key] != source[key]:
+                raise RuntimeError(f"Conflict at {'.'.join(key_path)}")
+
+        else:
+            target[key] = source[key]
+
+    return target

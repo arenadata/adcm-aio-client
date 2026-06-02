@@ -12,7 +12,9 @@
 
 from collections.abc import Iterable
 from functools import reduce
+from pathlib import Path
 from typing import Any
+import re
 import asyncio
 
 from httpx import AsyncClient
@@ -26,14 +28,19 @@ from adcm_aio_client.config import (
     ActivatableParameterGroupHG,
     Parameter,
     ParameterGroup,
+    ParameterGroupHG,
     ParameterHG,
+    SelectableParameterGroup,
+    SelectableParameterGroupHG,
     apply_local_changes,
     apply_remote_changes,
 )
 from adcm_aio_client.config._objects import HostGroupConfig, ObjectConfig
-from adcm_aio_client.errors import ConfigNoParameterError, ObjectUpdateError
+from adcm_aio_client.errors import ConfigNoParameterError, InvalidSelectionGroupError, ObjectUpdateError
 from adcm_aio_client.host_groups._config_group import ConfigHostGroup
-from adcm_aio_client.objects import Bundle, Cluster, Host, Service
+from adcm_aio_client.objects import Bundle, Cluster, Host, Job, Service
+from tests.integration.bundle import pack_bundle
+from tests.integration.conftest import BUNDLES
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -79,11 +86,26 @@ async def refresh_and_get_configs(*objects: Service | ConfigHostGroup) -> list[O
     return configs
 
 
+async def is_success(job: Job) -> bool:
+    return await job.get_status() == "success"
+
+
 @pytest_asyncio.fixture()
 async def cluster(adcm_client: ADCMClient, complex_cluster_bundle: Bundle) -> Cluster:
     cluster = await adcm_client.clusters.create(bundle=complex_cluster_bundle, name="Awesome Cluster")
     await cluster.services.add(filter_=Filter(attr="name", op="eq", value="complex_config"))
     return cluster
+
+
+@pytest_asyncio.fixture()
+async def bundle_with_selection_groups(adcm_client: ADCMClient, tmp_path: Path) -> Bundle:
+    bundle_path = pack_bundle(from_dir=BUNDLES / "cluster_requires_service", to=tmp_path)
+    return await adcm_client.bundles.create(source=bundle_path, accept_license=True)
+
+
+@pytest_asyncio.fixture()
+async def cluster_with_sg_config(adcm_client: ADCMClient, bundle_with_selection_groups: Bundle) -> Cluster:
+    return await adcm_client.clusters.create(bundle=bundle_with_selection_groups, name="Test cluster")
 
 
 async def test_config_history(cluster: Cluster) -> None:
@@ -148,13 +170,13 @@ async def test_invisible_fields(cluster: Cluster) -> None:
 async def test_structure_groups(cluster: Cluster) -> None:
     service = await get_service_with_config(cluster)
     config = await service.config
-    group = config["A lot of text"]
+    group = config["A lot of text", ParameterGroup]
     assert isinstance(group, ParameterGroup)
-    group_like = group["Group-like structure"]
+    group_like = group["Group-like structure", ParameterGroup]
     # structure with "dict" root is a group
     assert isinstance(group_like, ParameterGroup)
     assert isinstance(group_like["quantity"], Parameter)
-    nested_group = group_like["nested"]
+    nested_group = group_like["nested", ParameterGroup]
     assert isinstance(nested_group, ParameterGroup)
     nested_group["attr", Parameter].set("something")
     nested_group["op", Parameter].set("good")
@@ -411,6 +433,372 @@ async def test_config_two_sessions(
     await two_sessions_case_7(service_1, service_2, httpx_client=httpx_client)
     await two_sessions_case_8(service_1, service_2, httpx_client=httpx_client)
     await two_sessions_case_9(service_1, service_2, httpx_client=httpx_client)
+
+
+async def test_selection_groups(cluster_with_sg_config: Cluster) -> None:
+    cluster = cluster_with_sg_config
+
+    service, *_ = await cluster.services.add(filter_=Filter(attr="name", op="eq", value="selection_groups_config"))
+    await _selection_groups_in_object_config(service=service)
+    await _selection_groups_in_action_config(service=service)
+
+    service_with_selection_and_activation_groups, *_ = await cluster.services.add(
+        filter_=Filter(attr="name", op="eq", value="selection_and_activation_groups")
+    )
+    await _selection_and_activation_groups(service=service_with_selection_and_activation_groups)
+
+    service_with_deep_sg, *_ = await cluster.services.add(
+        filter_=Filter(attr="name", op="eq", value="deep_nested_selection")
+    )
+    await _deeply_nested_selection_and_chg(service=service_with_deep_sg)
+
+
+async def _selection_groups_in_object_config(service: Service) -> None:
+    config = await service.config
+
+    expected_initial = {"pick_me": None, "not_required": None, "with_default": {"_selection": "a", "a": {"a1": None}}}
+    assert config.data._values == expected_initial
+
+    pick_me_group = config["pick_me", SelectableParameterGroup]
+    with_default_group = config["with_default", SelectableParameterGroup]
+    not_required_group = config["not_required", SelectableParameterGroup]
+
+    assert pick_me_group is config["Pick me selection group"]
+    assert with_default_group is config["With default selection group"]
+    assert not_required_group is config["Not required selection group"]
+
+    assert isinstance(pick_me_group, SelectableParameterGroup)
+    assert isinstance(with_default_group, SelectableParameterGroup)
+    assert isinstance(not_required_group, SelectableParameterGroup)
+
+    assert pick_me_group.value is None
+    assert with_default_group.value == 'Group "a" of selection group "with_default"'
+    assert not_required_group.value is None
+
+    expected_pick_me_group_choices = [
+        'Group "a" of selection group "pick_me"',
+        'Group "b" of selection group "pick_me"',
+    ]
+    expected_with_default_group_choices = [
+        'Group "a" of selection group "with_default"',
+        'Group "b" of selection group "with_default"',
+    ]
+    expected_not_required_group_choices = [None, 'Group "a" of selection group "not_required"']
+
+    assert pick_me_group.choices == expected_pick_me_group_choices
+    assert with_default_group.choices == expected_with_default_group_choices
+    assert not_required_group.choices == expected_not_required_group_choices
+
+    expected_msg = re.escape(
+        'Invalid choice "a" for "Pick me selection group" selection group. Available choices: '
+        '[\'Group "a" of selection group "pick_me"\', \'Group "b" of selection group "pick_me"\']'
+    )
+    with pytest.raises(  # only display_names can be selected
+        InvalidSelectionGroupError, match=expected_msg
+    ):
+        pick_me_group.select("a")
+
+    pick_me_group.select('Group "b" of selection group "pick_me"')
+    # check access by technical_name and display_name
+    assert (
+        pick_me_group["b"]._data.values["pick_me"]
+        == pick_me_group['Group "b" of selection group "pick_me"']._data.values["pick_me"]
+        == {"_selection": "b", "b": {"b1": 4}}
+    )
+
+    with_default_group['Group "a" of selection group "with_default"', ParameterGroup]["a1", Parameter].set("some value")
+    not_required_group.select('Group "a" of selection group "not_required"')
+    await config.save()
+
+    with pytest.raises(
+        InvalidSelectionGroupError,
+        match='Can\'t access "Group "a" of selection group "pick_me"" group of "Pick me selection group" '
+        'selection group, currently selected: "Group "b" of selection group "pick_me"".',
+    ):
+        pick_me_group['Group "a" of selection group "pick_me"']
+
+    with pytest.raises(  # access by a technical_name, raises an error with display_name message
+        InvalidSelectionGroupError,
+        match='Can\'t access "Group "a" of selection group "pick_me"" group of "Pick me selection group" '
+        'selection group, currently selected: "Group "b" of selection group "pick_me"".',
+    ):
+        pick_me_group["a"]
+
+    expected_config = {
+        "pick_me": {"_selection": "b", "b": {"b1": 4}},
+        "with_default": {"_selection": "a", "a": {"a1": "some value"}},
+        "not_required": {"_selection": "a", "a": {"a1": None}},
+    }
+    assert config.data._values == expected_config
+
+    # get fresh selection_group config after save()
+    not_required_group = (await service.config)["not_required", SelectableParameterGroup]
+    not_required_group.select(None)
+    await config.save()
+
+    expected_config = {
+        "pick_me": {"_selection": "b", "b": {"b1": 4}},
+        "with_default": {"_selection": "a", "a": {"a1": "some value"}},
+        "not_required": None,
+    }
+    assert config.data._values == expected_config
+
+
+async def _selection_groups_in_action_config(service: Service) -> None:
+    action = await service.actions.get(name__eq="action_with_sgroups_config")
+    config = await action.config
+
+    pick_me_group = config["pick_me", SelectableParameterGroup]
+    with_default_group = config["with_default", SelectableParameterGroup]
+    not_required_group = config["not_required", SelectableParameterGroup]
+
+    pick_me_group.select('Group "b" of selection group "pick_me"')
+    with_default_group.select('Group "b" of selection group "with_default"')
+    not_required_group.select('Group "a" of selection group "not_required"')
+
+    job = await action.run()
+    assert await job.get_status() in ("created", "running")
+    await job.wait(exit_condition=is_success, timeout=30, poll_interval=1)
+
+
+async def _selection_and_activation_groups(service: Service) -> None:
+    expected_initial_config = {"root_act_gr": {"inner_sel_gr": None}, "root_sel_gr": None}
+    expected_initial_attrs = {"/root_act_gr": {"isActive": False}}
+
+    # case1: select simple group. No inner activatable_groups attrs are expected
+    config = await service.config
+    assert config.data.values == expected_initial_config
+    assert config.data.attributes == expected_initial_attrs
+
+    root_selection_group = config["root_sel_gr", SelectableParameterGroup]
+    root_selection_group.select('Subgroup 2 of "Root Selection Group"')
+
+    expected_config = {
+        "root_act_gr": {"inner_sel_gr": None},
+        "root_sel_gr": {"_selection": "subgr_2", "subgr_2": {"x": 1, "y": 2}},
+    }
+    expected_attrs = {"/root_act_gr": {"isActive": False}}
+    assert config.data.values == expected_config
+    assert config.data.attributes == expected_attrs
+    await config.save()
+
+    # case2: select group with activatable_group in subs, expect attrs has this key
+    config = await service.config
+    root_selection_group = config["root_sel_gr", SelectableParameterGroup]
+    root_selection_group.select('Subgroup 1 of "Root Selection Group"')
+    inner_act_subgr = root_selection_group["subgr_1", SelectableParameterGroup][
+        "inner_act_subgr", ActivatableParameterGroup
+    ]
+
+    expected_config = {
+        "root_act_gr": {"inner_sel_gr": None},
+        "root_sel_gr": {"_selection": "subgr_1", "subgr_1": {"inner_act_subgr": {"x": 1, "y": 2}}},
+    }
+    expected_attrs = {"/root_act_gr": {"isActive": False}, "/root_sel_gr/subgr_1/inner_act_subgr": {"isActive": False}}
+    assert config.data.values == expected_config
+    assert config.data.attributes == expected_attrs
+
+    inner_act_subgr.activate()
+    expected_attrs["/root_sel_gr/subgr_1/inner_act_subgr"]["isActive"] = True
+    assert config.data.attributes == expected_attrs
+    await config.save()
+
+    # case3: selection_group in activatable_group subs
+    config = await service.config
+    root_activation_group = config["root_act_gr", ActivatableParameterGroup]
+    root_activation_group.activate()
+    root_activation_group["Inner Selection Group", SelectableParameterGroup].select("Inner Group 2")
+
+    expected_config = {
+        "root_act_gr": {"inner_sel_gr": {"_selection": "inner_gr_2", "inner_gr_2": {"x": 1, "y": 2}}},
+        "root_sel_gr": {"_selection": "subgr_1", "subgr_1": {"inner_act_subgr": {"x": 1, "y": 2}}},
+    }
+    expected_attrs = {"/root_act_gr": {"isActive": True}, "/root_sel_gr/subgr_1/inner_act_subgr": {"isActive": True}}
+    assert config.data.values == expected_config
+    assert config.data.attributes == expected_attrs
+    await config.save()
+
+
+async def _deeply_nested_selection_and_chg(service: Service) -> None:
+    config = await service.config
+    chg = await service.config_host_groups.create(name="Test service CHG")
+    chg_config = await chg.config
+
+    expected_initial_config = {"lvl_root_group": {"lvl_1_group_1": {"lvl_2_selection_group": None}}}
+    expected_initial_attrs = {}
+
+    assert config.data.values == chg_config.data.values == expected_initial_config
+    assert config.data.attributes == chg_config.data.attributes == expected_initial_attrs
+
+    sel_gr = config["lvl_root_group", ParameterGroup]["lvl_1_group_1", ParameterGroup][
+        "Lvl 2 selection group", SelectableParameterGroup
+    ]
+    chg_sel_gr = chg_config["lvl_root_group", ParameterGroupHG]["lvl_1_group_1", ParameterGroupHG][
+        "Lvl 2 selection group", SelectableParameterGroupHG
+    ]
+
+    assert isinstance(sel_gr, SelectableParameterGroup)
+    assert isinstance(chg_sel_gr, SelectableParameterGroupHG)
+    assert sel_gr.value is None
+    assert chg_sel_gr.value is None
+    assert sel_gr.choices == chg_sel_gr.choices == ["Lvl 3 group 1", "Lvl 3 group 2"]
+
+    with pytest.raises(  # access subgroup while selected `None`
+        InvalidSelectionGroupError,
+        match='Can\'t access "Lvl 3 group 1" group of "Lvl 2 selection group" selection group, '
+        'currently selected: "None".',
+    ):
+        sel_gr["lvl_3_group_1"]
+
+    with pytest.raises(  # CHG: access subgroup while selected `None`
+        InvalidSelectionGroupError,
+        match='Can\'t access "Lvl 3 group 1" group of "Lvl 2 selection group" selection group, '
+        'currently selected: "None".',
+    ):
+        chg_sel_gr["lvl_3_group_1"]
+
+    expected_config = {
+        "lvl_root_group": {
+            "lvl_1_group_1": {
+                "lvl_2_selection_group": {
+                    "_selection": "lvl_3_group_1",
+                    "lvl_3_group_1": {
+                        "lvl_4_selection_group": None,
+                        "lvl_4_activatable_group": {
+                            "lvl_5_selection_group_not_required": None,
+                            "lvl_5_activatable_group": {"x": 1, "y": 2},
+                        },
+                    },
+                }
+            }
+        }
+    }
+    expected_attrs = {
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group": {
+            "isActive": False
+        },
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group/"
+        "lvl_5_activatable_group": {"isActive": True},
+    }
+
+    sel_gr.select("Lvl 3 group 1")
+    with pytest.raises(AttributeError):
+        # CHGs' configs are not desyncable => can not modify
+        chg_sel_gr.select("Lvl 3 group 1")  # pyright: ignore[reportAttributeAccessIssue]
+
+    assert config.data.values == expected_config
+    assert config.data.attributes == expected_attrs
+
+    with pytest.raises(  # access subgroup while selected another subgroup
+        InvalidSelectionGroupError,
+        match='Can\'t access "Lvl 3 group 2" group of "Lvl 2 selection group" selection group, '
+        'currently selected: "Lvl 3 group 1".',
+    ):
+        sel_gr["lvl_3_group_2"]
+
+    nested_sel_gr = sel_gr["lvl_3_group_1"]["lvl_4_selection_group", SelectableParameterGroup]
+    assert nested_sel_gr.value is None
+    assert nested_sel_gr.choices == ["Lvl 5 group 1", "Lvl 5 group 2"]
+
+    nested_sel_gr.select("Lvl 5 group 2")
+    nested_act_gr = sel_gr["lvl_3_group_1"]["lvl_4_activatable_group", ActivatableParameterGroup]
+    nested_act_gr.activate()
+
+    assert nested_sel_gr.value == "Lvl 5 group 2"
+    assert isinstance(nested_sel_gr, SelectableParameterGroup)
+    assert isinstance(nested_act_gr, ActivatableParameterGroup)
+    assert nested_act_gr["lvl_5_selection_group_not_required", SelectableParameterGroup].choices == [
+        None,
+        "Lvl 6 group",
+    ]
+
+    expected_config = {
+        "lvl_root_group": {
+            "lvl_1_group_1": {
+                "lvl_2_selection_group": {
+                    "_selection": "lvl_3_group_1",
+                    "lvl_3_group_1": {
+                        "lvl_4_selection_group": {"_selection": "lvl_5_group_2", "lvl_5_group_2": {"x": 1, "y": 2}},
+                        "lvl_4_activatable_group": {
+                            "lvl_5_selection_group_not_required": None,
+                            "lvl_5_activatable_group": {"x": 1, "y": 2},
+                        },
+                    },
+                }
+            }
+        }
+    }
+    expected_attrs = {
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group": {"isActive": True},
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group/"
+        "lvl_5_activatable_group": {"isActive": True},
+    }
+    expected_chg_attrs = {
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group": {
+            "isActive": True,
+            "isSynchronized": True,
+        },
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group/"
+        "lvl_5_activatable_group": {
+            "isActive": True,
+            "isSynchronized": True,
+        },
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group/"
+        "lvl_5_activatable_group/x": {
+            "isSynchronized": True,
+        },
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_activatable_group/"
+        "lvl_5_activatable_group/y": {
+            "isSynchronized": True,
+        },
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_selection_group/lvl_5_group_2/x": {
+            "isSynchronized": True
+        },
+        "/lvl_root_group/lvl_1_group_1/lvl_2_selection_group/lvl_3_group_1/lvl_4_selection_group/lvl_5_group_2/y": {
+            "isSynchronized": True
+        },
+    }
+
+    assert config.data.values == expected_config
+    assert config.data.attributes == expected_attrs
+
+    await config.save()
+
+    # refresh configs, expect to be the same
+    await config.refresh()
+    await chg_config.refresh()
+
+    chg_sel_gr = chg_config["lvl_root_group", ParameterGroupHG]["lvl_1_group_1", ParameterGroupHG][
+        "Lvl 2 selection group", SelectableParameterGroupHG
+    ]
+    with pytest.raises(  # CHG: access subgroup while selected another subgroup
+        InvalidSelectionGroupError,
+        match='Can\'t access "Lvl 3 group 2" group of "Lvl 2 selection group" selection group, '
+        'currently selected: "Lvl 3 group 1".',
+    ):
+        chg_sel_gr["lvl_3_group_2"]
+
+    assert config.data.values == chg_config.data.values == expected_config
+    assert config.data.attributes == expected_attrs
+    assert chg_config.data.attributes == expected_chg_attrs
+
+    chg_nested_sel_gr = chg_sel_gr["lvl_3_group_1", ParameterGroupHG][
+        "lvl_4_selection_group", SelectableParameterGroupHG
+    ]
+    assert chg_nested_sel_gr.value == "Lvl 5 group 2"
+    assert chg_nested_sel_gr.choices == ["Lvl 5 group 1", "Lvl 5 group 2"]
+
+    chg_nested_act_gr = chg_sel_gr["lvl_3_group_1"]["lvl_4_activatable_group", ActivatableParameterGroupHG]
+    assert isinstance(chg_nested_act_gr, ActivatableParameterGroupHG)
+
+    with pytest.raises(AttributeError):
+        chg_nested_act_gr.select("Lvl 5 group 2")  # pyright: ignore[reportAttributeAccessIssue]
+    chg_nested_act_gr.activate()
+
+    assert chg_nested_act_gr["lvl_5_selection_group_not_required", SelectableParameterGroupHG].choices == [
+        None,
+        "Lvl 6 group",
+    ]
 
 
 async def two_sessions_case_1(obj1: Service, obj2: Service, httpx_client: AsyncClient) -> None:

@@ -120,7 +120,7 @@ def test_edit_config(example_config: tuple[dict, dict], object_config: ObjectCon
     # if we don't want type checker to bother us, we can yolo like that
     config["main"]["inner_str"].set(new_config["main"]["inner_str"])  # type: ignore
 
-    main_group = config["main"]
+    main_group = config["main", ParameterGroup]
     assert isinstance(main_group, ParameterGroup)
     main_group["inner_dict", Parameter].set(
         {**main_group["inner_dict", Parameter[dict]].value, "additional": "keys", "are": "welcome"}

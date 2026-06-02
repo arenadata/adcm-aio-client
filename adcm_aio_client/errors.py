@@ -145,6 +145,9 @@ class ConfigComparisonError(ConfigError): ...
 class ConfigNoParameterError(ConfigError): ...
 
 
+class InvalidSelectionGroupError(ConfigError): ...
+
+
 # Action
 
 

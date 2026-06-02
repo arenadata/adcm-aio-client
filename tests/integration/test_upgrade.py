@@ -147,7 +147,7 @@ async def _test_upgrade_with_config(context: Context) -> None:
     group = config["Some Params", ParameterGroup]
     with pytest.raises(ConfigNoParameterError):
         group["cant_find"]
-    inner_group = group["Filter"]
+    inner_group = group["Filter", Parameter]
     assert isinstance(inner_group, ParameterGroup)
     assert inner_group["quantity", Parameter].value == 14443
     assert inner_group["nested"]["op"].value == "eq"  # type: ignore
