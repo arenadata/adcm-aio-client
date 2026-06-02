@@ -31,6 +31,20 @@ class MappingEntry(NamedTuple):
 type MappingData = set[MappingEntry]
 
 
+type PayloadMappingEntries = list[dict[str, ComponentID | HostID]]
+
+
+type HostCache = dict[int, Host]
+
+
+type ComponentCache = dict[int, Component]
+
+
+class MappingDelta(NamedTuple):
+    add: set[MappingEntry]
+    remove: set[MappingEntry]
+
+
 class LocalMappings(NamedTuple):
     initial: MappingData
     current: MappingData
