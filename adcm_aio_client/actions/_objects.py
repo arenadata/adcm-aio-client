@@ -12,21 +12,42 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Self
 
 from asyncstdlib import cached_property as async_cached_property
 
 from adcm_aio_client._filters import FilterByDisplayName, FilterByName, Filtering
+from adcm_aio_client._types import Requester
 from adcm_aio_client.config._objects import ActionConfig
 from adcm_aio_client.config._types import ActionConfigData, ConfigSchema
-from adcm_aio_client.errors import HostNotInClusterError, NoConfigInActionError, NoMappingInActionError
-from adcm_aio_client.mapping._objects import ActionMapping
+from adcm_aio_client.errors import (
+    ConflictError,
+    HostNotInClusterError,
+    NoConfigInActionError,
+    NoMappingInActionError,
+    ServerError,
+    UnitExecutionError,
+)
+from adcm_aio_client.mapping._objects import ActionMapping, ClusterMapping, WizardMapping
+from adcm_aio_client.mapping._processes import (
+    calculate_base_mapping_entries,
+    run_task_if_objects_are_missing,
+    to_cache_entries,
+)
+from adcm_aio_client.mapping._types import MappingPair
 from adcm_aio_client.objects._accessors import NonPaginatedChildAccessor
-from adcm_aio_client.objects._base import InteractiveChildObject, InteractiveObject
+from adcm_aio_client.objects._base import (
+    InteractiveChildObject,
+    InteractiveObject,
+    convert_create_errors,
+    convert_unit_execution_errors,
+)
 
 if TYPE_CHECKING:
-    from adcm_aio_client.objects import Bundle, Cluster, Job
+    from adcm_aio_client.objects import Bundle, Cluster, Component, Host, Job, Service
 
 
 class _GenericAction(InteractiveChildObject):
@@ -151,14 +172,20 @@ class Action(_GenericAction):
         self._blocking = value
         return self._blocking
 
-    async def run(self: Self) -> Job:
+    async def run(self: Self, process: Flow | None = None) -> Job:
         payload = await self._prepare_payload() | {"shouldBlockObject": self._blocking}
+        if process is not None:
+            payload |= {"process": {"id": process.id}}
 
         response = await self._requester.post(*self.get_own_path(), "run", data=payload)
 
         from adcm_aio_client.objects import Job
 
         return Job(requester=self._requester, data=response.as_dict())
+
+    @cached_property
+    def pre_process(self: Self) -> PreProcess:
+        return PreProcess(requester=self._requester, action=self, owner=self._parent)
 
 
 class ActionsAccessor[Parent: InteractiveObject](NonPaginatedChildAccessor[Parent, Action]):
@@ -195,6 +222,335 @@ class Upgrade(_GenericAction):
 class UpgradeNode[Parent: InteractiveObject](NonPaginatedChildAccessor[Parent, Upgrade]):
     class_type = Upgrade
     filtering = Filtering(FilterByName, FilterByDisplayName)
+
+
+class PreProcess:
+    def __init__(
+        self: Self,
+        requester: Requester,
+        action: Action,
+        owner: Cluster | Service | Component | Host,
+    ) -> None:
+        self._action = action
+        self._requester = requester
+        self._owner = owner
+
+    @convert_create_errors
+    async def init(self: Self) -> Flow:
+        process_path = *self._action.get_own_path(), Flow.PATH_PREFIX
+        response = await self._requester.post(*process_path, data={})
+        return Flow(parent=self._action, data=response.as_dict(), action_owner=self._owner)
+
+    @asynccontextmanager
+    async def flow(self: Self) -> AsyncIterator[Flow]:
+        flow = await self.init()
+        yield flow
+        await flow.complete()
+
+
+class Flow(InteractiveChildObject[Action]):
+    PATH_PREFIX = "processes"
+
+    def __init__(
+        self: Self, parent: Action, data: dict[str, Any], action_owner: Cluster | Service | Component | Host
+    ) -> None:
+        super().__init__(parent=parent, data=data)
+        self._sync_key = self._data["syncKey"]
+        self._action_owner = action_owner
+
+    async def get_state(self: Self) -> str:
+        res = await self._retrieve_data()
+        return res["state"]
+
+    async def complete(self: Self) -> bool:
+        try:
+            await self._requester.post(
+                *self.get_own_path(),
+                "operation",
+                data={
+                    "method": "complete",
+                    "params": {
+                        "processSyncKey": self._sync_key,
+                    },
+                },
+            )
+        except (ConflictError, ServerError):
+            return False
+        return True
+
+    @cached_property
+    def units(self: Self) -> list[ConfigurationUnit | OperationUnit | MappingUnit]:
+        units_mapping = {
+            "configuration": ConfigurationUnit,
+            "operation": OperationUnit,
+            "mapping": MappingUnit,
+        }
+
+        units = []
+
+        for stage in self._data["stages"]:
+            for step in stage["steps"]:
+                step_data = {
+                    **step,
+                    "stage": stage.get("displayName"),
+                }
+                unit_class = units_mapping[step["type"]]
+                units.append(
+                    unit_class(
+                        parent=self,
+                        data=step_data,
+                        get_sync_key=self._get_sync_key,
+                        set_synk_key=self._set_sync_key,
+                        refresh_sync_key=self._refresh_sync_key,
+                        get_mapping_args=self._get_action_mapping_args,
+                    )
+                )
+        return units
+
+    def _set_sync_key(self: Self, value: str) -> None:
+        self._sync_key = value
+
+    def _get_sync_key(self: Self) -> str:
+        return self._sync_key
+
+    async def _refresh_sync_key(self: Self) -> str:
+        resp = await self._retrieve_data()
+        self._sync_key = resp["syncKey"]
+        return self._sync_key
+
+    async def _get_action_mapping_args(
+        self: Self,
+    ) -> tuple[
+        Cluster,
+        Cluster | Service | Component | Host,
+        ClusterMapping,
+    ]:
+        cluster = await detect_cluster(owner=self._action_owner)
+        cluster_mapping = await cluster.mapping
+        return cluster, self._action_owner, cluster_mapping
+
+
+class _BaseUnit(InteractiveChildObject[Flow]):
+    PATH_PREFIX = "steps"
+
+    def __init__(
+        self: Self,
+        parent: Flow,
+        data: dict[str, Any],
+        get_sync_key: Callable[[], str],
+        set_synk_key: Callable[[str], None],
+        refresh_sync_key: Callable[[], Awaitable[str]],
+        get_mapping_args: Callable[
+            [],
+            Awaitable[tuple[Cluster, Cluster | Service | Component | Host, ClusterMapping]],
+        ],
+    ) -> None:
+        super().__init__(parent=parent, data=data)
+        self._get_flow_sync_key = get_sync_key
+        self._set_flow_sync_key_after_execute = set_synk_key
+        self._refresh_sync_key_after_job_complete = refresh_sync_key
+        self._get_action_mapping_args = get_mapping_args
+
+    @cached_property
+    def name(self: Self) -> str:
+        return self._data["name"]
+
+    @cached_property
+    def display_name(self: Self) -> str:
+        return self._data["displayName"]
+
+    @cached_property
+    def stage(self: Self) -> str:
+        return self._data["stage"]
+
+    async def get_state(self: Self) -> str:
+        response = await self._retrieve_data()
+        return response["state"]
+
+    @convert_unit_execution_errors
+    async def _post_operation_r(self: Self, payload: dict) -> dict:
+        response = await self._requester.post(*self._parent.get_own_path(), "operation", data=payload)
+
+        return response.as_dict()
+
+
+class OperationUnit(_BaseUnit):
+    async def execute(self: Self, timeout: int | None = None, poll_interval: int = 1) -> Self:
+        payload = {
+            "method": "submit_step",
+            "params": {
+                "stepId": self.id,
+                "processSyncKey": self._get_flow_sync_key(),
+            },
+        }
+
+        response_data = await self._post_operation_r(payload)
+
+        self._set_flow_sync_key_after_execute(response_data["syncKey"])
+
+        task_id = await self._get_task_id()
+
+        from adcm_aio_client.objects import Job
+
+        job = await Job.with_id(object_id=task_id, requester=self._requester)
+        await job.wait(timeout=timeout, poll_interval=poll_interval)
+
+        status = await job.get_status()
+        if status != "success":
+            raise UnitExecutionError(f'Related job (id={task_id}) finished with the status "{status}"')
+
+        await self._refresh_sync_key_after_job_complete()
+
+        return self
+
+    async def skip(self: Self) -> bool:
+        payload = {
+            "method": "skip_step",
+            "params": {
+                "stepId": self.id,
+                "processSyncKey": self._get_flow_sync_key(),
+            },
+        }
+        try:
+            response_data = await self._post_operation_r(payload)
+        except UnitExecutionError:
+            return False
+
+        self._set_flow_sync_key_after_execute(response_data["syncKey"])
+        return True
+
+    async def _get_task_id(self: Self) -> int:
+        resp = await self._retrieve_data()
+        return resp["task"]["id"]
+
+
+class ConfigurationUnit(_BaseUnit):
+    async def execute(self: Self) -> Self:
+        config_payload = (await self.config)._to_payload()
+        payload = {
+            "method": "submit_step",
+            "params": {
+                "stepId": self.id,
+                "processSyncKey": self._get_flow_sync_key(),
+                "configuration": config_payload,
+            },
+        }
+
+        response = await self._post_operation_r(payload)
+
+        self._set_flow_sync_key_after_execute(response["syncKey"])
+
+        return self
+
+    @async_cached_property
+    async def config(self: Self) -> ActionConfig:
+        response = (await self.requester.get(*self.get_own_path())).as_dict()["configuration"]
+
+        schema = ConfigSchema(spec_as_jsonschema=response["configSchema"])
+        data = ActionConfigData(values=response["config"], attributes=response["adcmMeta"])
+
+        return ActionConfig(schema=schema, config=data, parent=self)
+
+
+class MappingUnit(_BaseUnit):
+    def __init__(
+        self: Self,
+        parent: Flow,
+        data: dict[str, Any],
+        get_sync_key: Callable[[], str],
+        set_synk_key: Callable[[str], None],
+        refresh_sync_key: Callable[[], Awaitable[str]],
+        get_mapping_args: Callable[
+            [],
+            Awaitable[tuple[Cluster, Cluster | Service | Component | Host, ClusterMapping]],
+        ],
+    ) -> None:
+        super().__init__(
+            parent=parent,
+            data=data,
+            get_sync_key=get_sync_key,
+            set_synk_key=set_synk_key,
+            refresh_sync_key=refresh_sync_key,
+            get_mapping_args=get_mapping_args,
+        )
+
+    async def execute(self: Self) -> Self:
+        mapping = await self.mapping
+
+        payload = {
+            "method": "submit_step",
+            "params": {
+                "stepId": self.id,
+                "processSyncKey": self._get_flow_sync_key(),
+                "hostComponentMapDelta": mapping._delta_to_payload(),
+            },
+        }
+        response_data = await self._post_operation_r(payload)
+        self._set_flow_sync_key_after_execute(response_data["syncKey"])
+
+        return self
+
+    @async_cached_property
+    async def mapping(self: Self) -> WizardMapping:
+        cluster, owner, cluster_mapping = await self._get_action_mapping_args()
+
+        previous_cu_delta = await self._get_cumulative_delta()
+        cluster_mapping_pairs = cluster_mapping.all()
+        base_mapping_entries = calculate_base_mapping_entries(
+            cluster_mapping_pairs=cluster_mapping_pairs,
+            previous_cu_delta=previous_cu_delta,
+        )
+        base_mapping_pairs = await self._entries_to_mapping_pairs(
+            mapping_pairs=cluster_mapping_pairs,
+            base_mapping_entries=base_mapping_entries,
+            cluster_mapping=cluster_mapping,
+        )
+
+        return WizardMapping(
+            cluster=cluster,
+            owner=owner,
+            entries=base_mapping_pairs,
+        )
+
+    async def _get_cumulative_delta(self: Self) -> dict[str, list]:
+        unit_data = await self._retrieve_data()
+        cu_delta = unit_data.get("cumulativeDelta")
+        if cu_delta is None:
+            return {"add": [], "remove": []}
+        return cu_delta
+
+    async def _entries_to_mapping_pairs(
+        self: Self,
+        mapping_pairs: list[MappingPair],
+        cluster_mapping: ClusterMapping,
+        base_mapping_entries: list[dict],
+    ) -> list[MappingPair]:
+        hosts, components = to_cache_entries(mapping_pairs)
+        missing_hosts = set()
+        missing_components = set()
+
+        for entry in base_mapping_entries:
+            host_id = entry["hostId"]
+            component_id = entry["componentId"]
+
+            if host_id not in hosts:
+                missing_hosts.add(host_id)
+            if component_id not in components:
+                missing_components.add(component_id)
+
+        hosts_task = run_task_if_objects_are_missing(method=cluster_mapping.hosts.list, missing_objects=missing_hosts)
+
+        components_task = run_task_if_objects_are_missing(
+            method=cluster_mapping.components.list, missing_objects=missing_components
+        )
+
+        if hosts_task is not None:
+            hosts |= {host.id: host for host in await hosts_task}
+
+        if components_task is not None:
+            components |= {component.id: component for component in await components_task}
+
+        return [(components[entry["componentId"]], hosts[entry["hostId"]]) for entry in base_mapping_entries]
 
 
 async def detect_cluster(owner: InteractiveObject) -> Cluster:
