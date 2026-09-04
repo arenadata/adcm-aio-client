@@ -1,9 +1,8 @@
 ---
 - type: provider
   name: complex_provider
-  version: &version '1.0'
+  version: '1.0'
   config_group_customization: true
-
   config:
     - name: json
       type: json
@@ -21,8 +20,8 @@
             string_key: string
     - name: activatable_group
       type: group
-      activatable: True
-      active: True
+      activatable: true
+      active: true
       subs:
         - name: secretmap
           type: secretmap
@@ -31,17 +30,16 @@
             integer_key: '10'
             string_key: string
   actions:
-    provider_action: &job
-      type: job
-      script: ./playbook.yaml
-      script_type: ansible
-      states:
+    provider_action:
+      states: &id001
         available: any
-
-    with_config: &with_config
-      <<: *job
-      display_name: "Configurable one"
-      config: 
+      scripts:
+        - name: provider_action
+          script: ./playbook.yaml
+          script_type: ansible
+    with_config: &id002
+      display_name: Configurable one
+      config:
         - name: string_field
           type: string
         - name: params
@@ -50,33 +48,39 @@
           subs:
             - name: cant_find
               type: string
-              default: "cantCme"
+              default: cantCme
               ui_options:
                 invisible: true
             - name: pass
               type: password
-              required: no
+              required: false
             - name: sag
               display_name: Filter
               type: structure
               yspec: ./sag.yaml
               default:
                 nested:
-                  attr: "nice"
-                  op: "eq"
-                  tech: "true"
+                  attr: nice
+                  op: eq
+                  tech: 'true'
                 quantity: 14443
         - name: payload
           display_name: Request Body
           type: json
           default:
             - 1
-            - {"k": "v"}
-            - "plain"
-
+            - k: v
+            - plain
+      states: *id001
+      scripts:
+        - name: with_config
+          script: ./playbook.yaml
+          script_type: ansible
+  contract_version: '2.1'
+  venv: '2.16'
 - type: host
   name: host
-  version: *version
+  version: '1.0'
   config:
     - name: structure
       type: structure
@@ -105,8 +109,8 @@
             - value3
     - name: activatable_group
       type: group
-      activatable: True
-      active: True
+      activatable: true
+      active: true
       subs:
         - name: option
           type: option
@@ -117,11 +121,11 @@
           default: string1
   actions:
     host_action:
-      display_name: "host_action"
-      type: job
-      script: ./playbook.yaml
-      script_type: ansible
+      display_name: host_action
       states:
         available: any
-
-    with_config: *with_config
+      scripts:
+        - name: host_action
+          script: ./playbook.yaml
+          script_type: ansible
+    with_config: *id002
