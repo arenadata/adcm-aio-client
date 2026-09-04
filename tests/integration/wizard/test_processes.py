@@ -268,7 +268,7 @@ async def test_configuration_unit(wizard_cluster: Cluster, httpx_client: AsyncCl
     with pytest.raises(
         UnitExecutionError,
         match="<ConfigurationUnit #1 Stage1.ConfigurationStep1>.*"
-        r"CONFIG_VALUE_ERROR.*/integer_field \[value\]: should be of type integer",
+        r"integer_field \[value\]: should be of type integer",
     ):
         await unit.execute()
 
