@@ -91,6 +91,11 @@ def ssl_certs_dir(tmp_path_factory: pytest.TempdirFactory) -> Path:
         message = "Certificate generation failed, see logs for more details"
         raise RuntimeError(message)
 
+    # key.pem is created with mode 600, owned by the host user. Once copied into the
+    # container it's unreadable by the `adcm` user there (different uid), so nginx fails
+    # to load it and crash-loops. Make it world-readable - it's a throwaway test cert.
+    (cert_dir / "key.pem").chmod(0o644)
+
     return cert_dir
 
 
@@ -108,7 +113,8 @@ def adcm_image(network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir:
     with tarfile.open(mode="w:gz", fileobj=file) as tar:
         tar.add(ssl_certs_dir, "")
     file.seek(0)
-    adcm = ADCMContainer(image=f"{base_repo}:{adcm_tag}", network=network, db=db)
+    # SSL certs are injected into this container after it starts (below), so it can't serve TLS yet.
+    adcm = ADCMContainer(image=f"{base_repo}:{adcm_tag}", network=network, db=db, wait_for_ssl=False)
 
     with adcm:
         container = adcm.get_wrapped_container()
