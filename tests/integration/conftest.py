@@ -130,7 +130,7 @@ def adcm(network: Network, postgres: ADCMPostgresContainer, adcm_image: str) -> 
     db = DatabaseInfo(name=f"adcm_{suffix}", host=postgres.name)
     postgres.execute_statement(f"CREATE DATABASE {db.name} OWNER {DB_USER}")
 
-    adcm = ADCMContainer(image=adcm_image, network=network, db=db)
+    adcm = ADCMContainer(image=adcm_image, network=network, db=db, wait_for_ssl=False)
 
     with adcm as container:
         yield container
