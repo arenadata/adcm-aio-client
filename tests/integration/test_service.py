@@ -69,11 +69,7 @@ def prepare_bundle_data() -> list[dict]:
     service_with_component["components"] = {"component_1": component}
 
     return [
-        {
-            "type": "cluster",
-            "name": "Generated cluster",
-            "version": 1,
-        },
+        {"type": "cluster", "name": "Generated cluster", "version": 1, "venv": "2.16", "contract_version": "2.1"},
         *fifty_services,
         service_manual_add,
         service_with_component,

@@ -11,8 +11,9 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from time import sleep
+from time import monotonic, sleep
 from typing import Self
+import ssl
 import random
 import socket
 import string
@@ -51,6 +52,30 @@ def find_free_port(start: int, end: int) -> int:
     raise DockerContainerError(f"No free ports found in the range {start} to {end}")
 
 
+def wait_for_ssl_port_ready(host: str, port: int, timeout: float = 30.0, interval: float = 0.5) -> None:
+    """
+    `wait_for_logs` only proves the "starting nginx" log line was printed, not that nginx has
+    actually bound the port and is serving valid TLS - e.g. if nginx can't read the SSL cert it
+    crash-loops, reprinting that same log line on every retry while never becoming reachable.
+    """
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+
+    deadline = monotonic() + timeout
+    last_err: Exception | None = None
+    while monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=interval) as sock, context.wrap_socket(sock):
+                return
+        except OSError as e:
+            last_err = e
+            sleep(interval)
+
+    message = f"ADCM did not start accepting TLS connections on {host}:{port} within {timeout}s"
+    raise TimeoutError(message) from last_err
+
+
 class ADCMPostgresContainer(PostgresContainer):
     def __init__(self: Self, image: str, network: Network) -> None:
         super().__init__(image)
@@ -81,10 +106,19 @@ class ADCMContainer(DockerContainer):
     url: str
     ssl_url: str
 
-    def __init__(self: Self, image: str, network: Network, db: DatabaseInfo, *, migration_mode: bool = False) -> None:
+    def __init__(
+        self: Self,
+        image: str,
+        network: Network,
+        db: DatabaseInfo,
+        *,
+        migration_mode: bool = False,
+        wait_for_ssl: bool = True,
+    ) -> None:
         super().__init__(image)
         self._db = db
         self._migration_mode = migration_mode
+        self._wait_for_ssl = wait_for_ssl
 
         self.with_network(network)
 
@@ -127,6 +161,9 @@ class ADCMContainer(DockerContainer):
         ssl_port = self.get_exposed_port(8443)
         self.url = f"http://{ip}:{port}"
         self.ssl_url = f"https://{ip}:{ssl_port}"
+
+        if self._wait_for_ssl:
+            wait_for_ssl_port_ready(ip, int(ssl_port))
 
         return self
 
