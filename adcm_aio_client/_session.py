@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from asyncio import sleep
 from json import JSONDecodeError
 from types import TracebackType
 from typing import Self
@@ -109,14 +110,25 @@ class ADCMSession:
             cert=self._session_info.security.certificate,
         )
 
-        try:
-            await client.head("/")
-        except httpx.NetworkError as e:
-            await client.__aexit__(type(e), e)
-            message = f"Failed to connect to ADCM at URL {self._session_info.url}"
-            raise ClientInitError(message) from e
+        retries = self._request_policy.retry
+        last_error: httpx.TransportError | None = None
 
-        return client
+        # Catches httpx.TransportError (not just NetworkError) because a slow-to-respond ADCM
+        # under load raises ReadTimeout/ConnectTimeout here, not just connection-refused/reset
+        # errors - and those need the same retry treatment.
+        for attempt in range(retries.attempts):
+            try:
+                await client.head("/")
+            except httpx.TransportError as e:
+                last_error = e
+                if attempt < retries.attempts - 1:
+                    await sleep(retries.interval)
+            else:
+                return client
+
+        await client.__aexit__(type(last_error) if last_error else None, last_error)
+        message = f"Failed to connect to ADCM at URL {self._session_info.url}"
+        raise ClientInitError(message) from last_error
 
     def _prepare_api_v2_requester(self: Self) -> DefaultRequester:
         if self._http_client is None:
