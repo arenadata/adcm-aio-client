@@ -135,8 +135,8 @@ class ADCMContainer(DockerContainer):
         for _ in range(20):
             suffix = "".join(random.sample(string.ascii_letters, k=6)).lower()
             self.with_name(f"{adcm_container_name}_{suffix}")
-            self.with_bind_ports(8000, find_free_port(start=8000, end=8400))
-            self.with_bind_ports(8443, find_free_port(start=8400, end=8800))
+            self.with_bind_ports(8000, find_free_port(start=8000, end=8080))
+            self.with_bind_ports(8443, find_free_port(start=8400, end=8480))
 
             try:
                 super().start()

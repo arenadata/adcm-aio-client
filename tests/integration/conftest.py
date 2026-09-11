@@ -155,7 +155,7 @@ async def adcm_client(
         "verify": str(ssl_certs_dir / "cert.pem"),
         "timeout": 10,
         "retry_interval": 1,
-        "retry_attempts": 5,
+        "retry_attempts": 1,
     } | extra_kwargs
     async with ADCMSession(url=url, credentials=credentials, **kwargs) as client:
         yield client
@@ -173,7 +173,7 @@ async def second_adcm_client(
         "verify": str(ssl_certs_dir / "cert.pem"),
         "timeout": 10,
         "retry_interval": 1,
-        "retry_attempts": 5,
+        "retry_attempts": 1,
     } | extra_kwargs
     async with ADCMSession(url=url, credentials=credentials, **kwargs) as client:
         yield client
