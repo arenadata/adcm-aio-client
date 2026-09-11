@@ -11,8 +11,9 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from time import sleep
+from time import monotonic, sleep
 from typing import Self
+import ssl
 import random
 import socket
 import string
@@ -24,7 +25,7 @@ from testcontainers.core.waiting_utils import wait_container_is_ready, wait_for_
 from testcontainers.postgres import DbContainer, PostgresContainer
 import docker.errors
 
-postgres_image_name = "postgres:latest"
+postgres_image_name = "postgres:15"
 adcm_image_name = "hub.adsw.io/adcm/adcm:develop"
 adcm_container_name = "test_adcm"
 postgres_name = "test_pg_db"
@@ -49,6 +50,33 @@ def find_free_port(start: int, end: int) -> int:
             if s.connect_ex(("127.0.0.1", port)) != 0:  # Port is free
                 return port
     raise DockerContainerError(f"No free ports found in the range {start} to {end}")
+
+
+def wait_for_ssl_port_ready(host: str, port: int, timeout: float = 120.0, interval: float = 0.5) -> None:
+    """
+    `wait_for_logs` only proves the "starting nginx" log line was printed, not that nginx has
+    actually bound the port and is serving valid TLS. nginx is runit-supervised, so that same log
+    line is reprinted on every respawn - a crash (e.g. can't read the SSL cert, or gets killed
+    under resource pressure) restarts it and reprints "Run Nginx ...", so `wait_for_logs` can
+    match a process that's about to die rather than the one that ends up actually serving. A
+    generous timeout here gives room for that respawn to happen and stabilize under load.
+    """
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+
+    deadline = monotonic() + timeout
+    last_err: Exception | None = None
+    while monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=interval) as sock, context.wrap_socket(sock):
+                return
+        except OSError as e:
+            last_err = e
+            sleep(interval)
+
+    message = f"ADCM did not start accepting TLS connections on {host}:{port} within {timeout}s"
+    raise TimeoutError(message) from last_err
 
 
 class ADCMPostgresContainer(PostgresContainer):
@@ -81,10 +109,19 @@ class ADCMContainer(DockerContainer):
     url: str
     ssl_url: str
 
-    def __init__(self: Self, image: str, network: Network, db: DatabaseInfo, *, migration_mode: bool = False) -> None:
+    def __init__(
+        self: Self,
+        image: str,
+        network: Network,
+        db: DatabaseInfo,
+        *,
+        migration_mode: bool = False,
+        wait_for_ssl: bool = True,
+    ) -> None:
         super().__init__(image)
         self._db = db
         self._migration_mode = migration_mode
+        self._wait_for_ssl = wait_for_ssl
 
         self.with_network(network)
 
@@ -101,8 +138,8 @@ class ADCMContainer(DockerContainer):
         for _ in range(20):
             suffix = "".join(random.sample(string.ascii_letters, k=6)).lower()
             self.with_name(f"{adcm_container_name}_{suffix}")
-            self.with_bind_ports(8000, find_free_port(start=8000, end=8080))
-            self.with_bind_ports(8443, find_free_port(start=8400, end=8480))
+            self.with_bind_ports(8000, find_free_port(start=8000, end=8400))
+            self.with_bind_ports(8443, find_free_port(start=8400, end=8800))
 
             try:
                 super().start()
@@ -127,6 +164,17 @@ class ADCMContainer(DockerContainer):
         ssl_port = self.get_exposed_port(8443)
         self.url = f"http://{ip}:{port}"
         self.ssl_url = f"https://{ip}:{ssl_port}"
+
+        if self._wait_for_ssl:
+            try:
+                wait_for_ssl_port_ready(ip, int(ssl_port))
+            except TimeoutError:
+                # `start()` already created and started the real container above, but if we raise
+                # from here, `__enter__` never returns, so `__exit__`/`stop()` is never called by
+                # the caller's `with` block - the container would leak until ryuk reaps it. Stop
+                # it ourselves before propagating the error.
+                self.stop()
+                raise
 
         return self
 

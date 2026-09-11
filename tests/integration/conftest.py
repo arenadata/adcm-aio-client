@@ -11,11 +11,13 @@
 # limitations under the License.
 
 from collections.abc import AsyncGenerator, Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urljoin
 import os
+import fcntl
 import random
 import string
 import tarfile
@@ -78,9 +80,19 @@ def postgres(network: Network) -> Generator[ADCMPostgresContainer, None, None]:
         yield container
 
 
-@pytest.fixture(scope="session")
-def ssl_certs_dir(tmp_path_factory: pytest.TempdirFactory) -> Path:
-    cert_dir = Path(tmp_path_factory.mktemp("cert"))
+@contextmanager
+def _locked(lock_path: Path) -> Generator[None, None, None]:
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+
+def _generate_ssl_certs(cert_dir: Path) -> None:
+    cert_dir.mkdir(parents=True, exist_ok=True)
 
     exit_code = os.system(  # noqa: S605
         f"openssl req -x509 -newkey rsa:4096 -keyout {cert_dir}/key.pem -out {cert_dir}/cert.pem"
@@ -91,11 +103,34 @@ def ssl_certs_dir(tmp_path_factory: pytest.TempdirFactory) -> Path:
         message = "Certificate generation failed, see logs for more details"
         raise RuntimeError(message)
 
-    return cert_dir
+    # key.pem is created with mode 600, owned by the host user. Once copied into the
+    # container it's unreadable by the `adcm` user there (different uid), so nginx fails
+    # to load it and crash-loops. Make it world-readable - it's a throwaway test cert.
+    (cert_dir / "key.pem").chmod(0o644)
 
 
 @pytest.fixture(scope="session")
-def adcm_image(network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir: Path, adcm_tag: str) -> str:
+def ssl_certs_dir(tmp_path_factory: pytest.TempdirFactory, worker_id: str) -> Path:
+    if worker_id == "master":
+        cert_dir = Path(tmp_path_factory.mktemp("cert"))
+        _generate_ssl_certs(cert_dir)
+        return cert_dir
+
+    # Under xdist every worker runs its own pytest session, so a plain session-scoped fixture
+    # would regenerate certs (and rebuild the whole ADCM image below) once per worker, all at the
+    # same time - the heaviest moment of the run, N times over. Coordinate across workers with a
+    # lock file under the shared root tmp dir: whichever worker gets there first builds it, the
+    # rest just wait and reuse the result.
+    root_tmp_dir = Path(tmp_path_factory.getbasetemp()).parent
+    cert_dir = root_tmp_dir / "shared_ssl_certs"
+    with _locked(root_tmp_dir / "shared_ssl_certs.lock"):
+        if not (cert_dir / "cert.pem").exists():
+            _generate_ssl_certs(cert_dir)
+
+    return cert_dir
+
+
+def _build_adcm_image(network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir: Path, adcm_tag: str) -> str:
     suffix = "".join(random.sample(string.ascii_letters, k=6)).lower()
     base_repo = "hub.adsw.io/adcm/adcm"
     new_repo = "local/adcm"
@@ -108,7 +143,8 @@ def adcm_image(network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir:
     with tarfile.open(mode="w:gz", fileobj=file) as tar:
         tar.add(ssl_certs_dir, "")
     file.seek(0)
-    adcm = ADCMContainer(image=f"{base_repo}:{adcm_tag}", network=network, db=db)
+    # SSL certs are injected into this container after it starts (below), so it can't serve TLS yet.
+    adcm = ADCMContainer(image=f"{base_repo}:{adcm_tag}", network=network, db=db, wait_for_ssl=False)
 
     with adcm:
         container = adcm.get_wrapped_container()
@@ -116,6 +152,32 @@ def adcm_image(network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir:
         container.commit(repository=new_repo, tag=new_tag)
 
     return f"{new_repo}:{new_tag}"
+
+
+@pytest.fixture(scope="session")
+def adcm_image(
+    network: Network,
+    postgres: ADCMPostgresContainer,
+    ssl_certs_dir: Path,
+    adcm_tag: str,
+    tmp_path_factory: pytest.TempdirFactory,
+    worker_id: str,
+) -> str:
+    if worker_id == "master":
+        return _build_adcm_image(network, postgres, ssl_certs_dir, adcm_tag)
+
+    # Same reasoning as `ssl_certs_dir`: build the (expensive: pull + migrate + commit) image
+    # once for the whole run instead of once per worker, coordinating via a lock file.
+    root_tmp_dir = Path(tmp_path_factory.getbasetemp()).parent
+    result_file = root_tmp_dir / f"adcm_image_{adcm_tag}.txt"
+    with _locked(root_tmp_dir / f"adcm_image_{adcm_tag}.lock"):
+        if result_file.is_file():
+            return result_file.read_text().strip()
+
+        image = _build_adcm_image(network, postgres, ssl_certs_dir, adcm_tag)
+        result_file.write_text(image)
+
+    return image
 
 
 @pytest.fixture(scope="function")
@@ -149,7 +211,7 @@ async def adcm_client(
         "verify": str(ssl_certs_dir / "cert.pem"),
         "timeout": 10,
         "retry_interval": 1,
-        "retry_attempts": 1,
+        "retry_attempts": 5,
     } | extra_kwargs
     async with ADCMSession(url=url, credentials=credentials, **kwargs) as client:
         yield client
@@ -167,7 +229,7 @@ async def second_adcm_client(
         "verify": str(ssl_certs_dir / "cert.pem"),
         "timeout": 10,
         "retry_interval": 1,
-        "retry_attempts": 1,
+        "retry_attempts": 5,
     } | extra_kwargs
     async with ADCMSession(url=url, credentials=credentials, **kwargs) as client:
         yield client
