@@ -25,7 +25,7 @@ from testcontainers.core.waiting_utils import wait_container_is_ready, wait_for_
 from testcontainers.postgres import DbContainer, PostgresContainer
 import docker.errors
 
-postgres_image_name = "postgres:latest"
+postgres_image_name = "postgres:15"
 adcm_image_name = "hub.adsw.io/adcm/adcm:develop"
 adcm_container_name = "test_adcm"
 postgres_name = "test_pg_db"
@@ -135,8 +135,8 @@ class ADCMContainer(DockerContainer):
         for _ in range(20):
             suffix = "".join(random.sample(string.ascii_letters, k=6)).lower()
             self.with_name(f"{adcm_container_name}_{suffix}")
-            self.with_bind_ports(8000, find_free_port(start=8000, end=8080))
-            self.with_bind_ports(8443, find_free_port(start=8400, end=8480))
+            self.with_bind_ports(8000, find_free_port(start=8000, end=8400))
+            self.with_bind_ports(8443, find_free_port(start=8400, end=8800))
 
             try:
                 super().start()
