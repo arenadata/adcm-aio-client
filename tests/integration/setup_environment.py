@@ -52,11 +52,14 @@ def find_free_port(start: int, end: int) -> int:
     raise DockerContainerError(f"No free ports found in the range {start} to {end}")
 
 
-def wait_for_ssl_port_ready(host: str, port: int, timeout: float = 30.0, interval: float = 0.5) -> None:
+def wait_for_ssl_port_ready(host: str, port: int, timeout: float = 120.0, interval: float = 0.5) -> None:
     """
     `wait_for_logs` only proves the "starting nginx" log line was printed, not that nginx has
-    actually bound the port and is serving valid TLS - e.g. if nginx can't read the SSL cert it
-    crash-loops, reprinting that same log line on every retry while never becoming reachable.
+    actually bound the port and is serving valid TLS. nginx is runit-supervised, so that same log
+    line is reprinted on every respawn - a crash (e.g. can't read the SSL cert, or gets killed
+    under resource pressure) restarts it and reprints "Run Nginx ...", so `wait_for_logs` can
+    match a process that's about to die rather than the one that ends up actually serving. A
+    generous timeout here gives room for that respawn to happen and stabilize under load.
     """
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
@@ -163,7 +166,15 @@ class ADCMContainer(DockerContainer):
         self.ssl_url = f"https://{ip}:{ssl_port}"
 
         if self._wait_for_ssl:
-            wait_for_ssl_port_ready(ip, int(ssl_port))
+            try:
+                wait_for_ssl_port_ready(ip, int(ssl_port))
+            except TimeoutError:
+                # `start()` already created and started the real container above, but if we raise
+                # from here, `__enter__` never returns, so `__exit__`/`stop()` is never called by
+                # the caller's `with` block - the container would leak until ryuk reaps it. Stop
+                # it ourselves before propagating the error.
+                self.stop()
+                raise
 
         return self
 
