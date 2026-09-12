@@ -111,7 +111,11 @@ def adcm_image(network: Network, postgres: ADCMPostgresContainer, ssl_certs_dir:
 
     file = BytesIO()
     with tarfile.open(mode="w:gz", fileobj=file) as tar:
-        tar.add(ssl_certs_dir, "")
+        # Files only, without an entry for the directory itself: older Docker daemons (e.g. 20.10, 24) apply
+        # that entry's owner and mode to the target dir, making it root-owned 0700 (as pytest creates temp dirs),
+        # so ADCM can't read the certs and never enables TLS.
+        for cert in ("cert.pem", "key.pem"):
+            tar.add(ssl_certs_dir / cert, cert)
     file.seek(0)
     # SSL certs are injected into this container after it starts (below), so it can't serve TLS yet.
     adcm = ADCMContainer(image=f"{base_repo}:{adcm_tag}", network=network, db=db, wait_for_ssl=False)
