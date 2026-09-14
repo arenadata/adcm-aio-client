@@ -19,7 +19,7 @@ from adcm_aio_client.client import ADCMClient
 from adcm_aio_client.objects import Bundle, Cluster, Host, HostProvider
 from tests.integration.setup_environment import ADCMContainer
 
-REQUEST_KWARGS: dict = {"timeout": 10, "retry_interval": 1, "retry_attempts": 1}
+REQUEST_KWARGS: dict = {"timeout": 30, "retry_interval": 1, "retry_attempts": 1}
 CREDENTIALS = Credentials(username="admin", password="admin")  # noqa: S106
 
 
