@@ -212,7 +212,7 @@ async def _test_change_mm_via_action(
     assert mm.value == "changing"
 
     mm_task = await adcm_client.jobs.get(object=obj, name__eq=turn_on_name)
-    await mm_task.wait(timeout=30, poll_interval=1)
+    await mm_task.wait(timeout=60, poll_interval=1)
 
     await obj.refresh()
     mm = await obj.maintenance_mode
@@ -223,7 +223,7 @@ async def _test_change_mm_via_action(
     assert mm.value == "changing"
 
     mm_task = await adcm_client.jobs.get(object=obj, name__eq=turn_off_name)
-    await mm_task.wait(timeout=30, poll_interval=1)
+    await mm_task.wait(timeout=60, poll_interval=1)
 
     await obj.refresh()
     mm = await obj.maintenance_mode

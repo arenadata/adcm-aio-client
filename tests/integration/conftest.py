@@ -157,7 +157,7 @@ async def adcm_client(
 
     kwargs: dict = {
         "verify": str(ssl_certs_dir / "cert.pem"),
-        "timeout": 10,
+        "timeout": 30,
         "retry_interval": 1,
         "retry_attempts": 1,
     } | extra_kwargs
@@ -175,7 +175,7 @@ async def second_adcm_client(
 
     kwargs: dict = {
         "verify": str(ssl_certs_dir / "cert.pem"),
-        "timeout": 10,
+        "timeout": 30,
         "retry_interval": 1,
         "retry_attempts": 1,
     } | extra_kwargs

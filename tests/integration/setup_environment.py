@@ -21,7 +21,7 @@ import string
 from docker.errors import DockerException
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.network import Network
-from testcontainers.core.waiting_utils import wait_container_is_ready, wait_for_logs
+from testcontainers.core.waiting_utils import wait_for_logs
 from testcontainers.postgres import DbContainer, PostgresContainer
 import docker.errors
 
@@ -94,7 +94,6 @@ class ADCMPostgresContainer(PostgresContainer):
     def start(self: Self) -> DbContainer:
         super().start()
 
-        wait_container_is_ready(self)
         wait_for_logs(self, "database system is ready to accept connections")
 
         self.execute_statement(f"CREATE USER {DB_USER} WITH ENCRYPTED PASSWORD '{DB_PASSWORD}'")
@@ -152,7 +151,6 @@ class ADCMContainer(DockerContainer):
             message = "ADCM start loop hasn't invoke `break` and has error, container state is unpredictable"
             raise RuntimeError(message)
 
-        wait_container_is_ready(self)
         ready_logs = "Run Nginx ..." if not self._migration_mode else "Run main wsgi application ..."
         wait_for_logs(self, ready_logs)
 

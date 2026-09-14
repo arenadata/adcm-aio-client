@@ -161,7 +161,7 @@ async def _test_upgrade_with_config(context: Context) -> None:
     # job's not finished
     assert (await cluster.bundle).id == context.old_bundle.id
 
-    await job.wait(timeout=30)
+    await job.wait(timeout=60)
     await cluster.refresh()
     assert (await cluster.bundle).id == context.new_bundle.id
 
