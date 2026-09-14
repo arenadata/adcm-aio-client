@@ -1,36 +1,30 @@
-
 ---
 - type: cluster
   name: cluster_bound
   version: 1.0
-
+  contract_version: '2.1'
+  venv: '2.16'
 - type: service
   name: first_service
   flag_autogeneration:
-    enable_outdated_config: True
+    enable_outdated_config: true
   version: 1.5
-
   components:
     first_component:
       flag_autogeneration:
-        enable_outdated_config: True
+        enable_outdated_config: true
     second_component:
       flag_autogeneration:
-        enable_outdated_config: False
-
+        enable_outdated_config: false
 - type: service
   name: second_service
   flag_autogeneration:
-    enable_outdated_config: False
+    enable_outdated_config: false
   version: 1.2
   components:
     first_component:
-      bound_to:
-        service: first_service
-        component: first_component
       flag_autogeneration:
-        enable_outdated_config: False
+        enable_outdated_config: false
     second_component:
       flag_autogeneration:
-        enable_outdated_config: False
-
+        enable_outdated_config: false

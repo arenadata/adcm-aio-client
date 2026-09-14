@@ -41,6 +41,8 @@ def prepare_bundle_data() -> list[dict]:
             "type": "cluster",
             "name": "Generated cluster",
             "version": 1,
+            "venv": "2.16",
+            "contract_version": "2.1",
         },
         {
             "type": "service",
