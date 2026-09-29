@@ -1,15 +1,21 @@
+---
 - type: cluster
   name: Cluster With Config Example
   version: 1
-  description: |
-    This bundle is designed to provide sample of config,
+  description: 'This bundle is designed to provide sample of config,
+
     not nessesary including all config types or combinations.
-    Don't change configs of existing objects in it,
+
+    Don''t change configs of existing objects in it,
+
     add new service / component if you need.
+
+    '
+  contract_version: '2.1'
+  venv: '2.16'
 - type: service
   name: with_json_fields_and_groups
   version: 1.0
-
   config:
     - name: root_int
       display_name: Integer At Root
@@ -18,16 +24,21 @@
     - name: root_list
       display_name: List At Root
       type: list
-      default: ["first", "second", "third"]
+      default:
+        - first
+        - second
+        - third
     - name: root_dict
       display_name: Map At Root
       type: map
-      default: {"k1": "v1", "k2": "v2"}
+      default:
+        k1: v1
+        k2: v2
       required: false
     - name: duplicate
       display_name: Duplicate
       type: string
-      default: "hehe"
+      default: hehe
     - name: root_json
       display_name: JSON At Root
       type: json
@@ -39,15 +50,19 @@
         - name: inner_str
           display_name: String In Group
           type: string
-          default: "evil"
+          default: evil
         - name: inner_dict
           display_name: Map In Group
           type: map
-          default: {"a": "b"}
+          default:
+            a: b
         - name: inner_json
           display_name: JSON In Group
           type: json
-          default: {"complex": [], "jsonfield": 23, "server": "bestever"}
+          default:
+            complex: []
+            jsonfield: 23
+            server: bestever
         - name: duplicate
           display_name: Duplicate
           type: integer

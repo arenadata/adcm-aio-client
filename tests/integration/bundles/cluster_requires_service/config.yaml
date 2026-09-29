@@ -1,136 +1,127 @@
-
 ---
 - type: cluster
   name: cluster_dep
   version: 1.0
-
-  config: &config
+  config: &id001
     - name: string_param
       type: string
       default: some_default_value
-
     - name: int_param
       type: integer
       display_name: Some Int
       default: 12
-
+  contract_version: '2.1'
+  venv: '2.16'
 - type: service
   name: first_service
   flag_autogeneration:
-    enable_outdated_config: True
+    enable_outdated_config: true
   version: 1.5
-  config: *config
-
+  config: *id001
   components:
     first_component:
       flag_autogeneration:
-        enable_outdated_config: True
-      config: *config
+        enable_outdated_config: true
+      config: *id001
     second_component:
       flag_autogeneration:
-        enable_outdated_config: False
-      config: *config
-
+        enable_outdated_config: false
+      config: *id001
 - type: service
   name: second_service
   requires:
     - service: first_service
       component: first_component
   flag_autogeneration:
-    enable_outdated_config: False
+    enable_outdated_config: false
   version: 1.2
-  config: *config
+  config: *id001
   components:
     first_component:
       flag_autogeneration:
-        enable_outdated_config: False
-      config: *config
+        enable_outdated_config: false
+      config: *id001
     second_component:
       flag_autogeneration:
-        enable_outdated_config: False
-      config: *config
-
+        enable_outdated_config: false
+      config: *id001
 - type: service
   name: selection_groups_config
-  version: "sgr"
-
+  version: sgr
   actions:
     action_with_sgroups_config:
-      type: job
-      script: ./playbook.yaml
-      script_type: ansible
       states:
         available: any
-      config: &selection_groups_config
+      config: &id002
         - name: pick_me
-          display_name: "Pick me selection group"
+          display_name: Pick me selection group
           type: selection_group
           subs:
             - name: a
-              display_name: 'Group "a" of selection group "pick_me"'
+              display_name: Group "a" of selection group "pick_me"
               type: group
               subs:
                 - name: a1
                   type: string
             - name: b
-              display_name: 'Group "b" of selection group "pick_me"'
+              display_name: Group "b" of selection group "pick_me"
               type: group
               subs:
                 - name: b1
                   type: integer
                   default: 4
-
         - name: with_default
-          display_name: "With default selection group"
+          display_name: With default selection group
           type: selection_group
           default: a
           subs:
             - name: a
-              display_name: 'Group "a" of selection group "with_default"'
+              display_name: Group "a" of selection group "with_default"
               type: group
               subs:
                 - name: a1
                   type: string
             - name: b
-              display_name: 'Group "b" of selection group "with_default"'
+              display_name: Group "b" of selection group "with_default"
               type: group
               subs:
                 - name: b1
                   type: integer
                   default: 4
-
         - name: not_required
-          display_name: "Not required selection group"
+          display_name: Not required selection group
           type: selection_group
-          required: False
+          required: false
           subs:
             - name: a
-              display_name: 'Group "a" of selection group "not_required"'
+              display_name: Group "a" of selection group "not_required"
               type: group
               subs:
                 - name: a1
                   type: string
-                  required: False
-
-  config: *selection_groups_config
-
+                  required: false
+      scripts:
+        - name: action_with_sgroups_config
+          script: ./playbook.yaml
+          script_type: ansible
+  config: *id002
 - type: service
   name: selection_and_activation_groups
-  version: "sagr"
+  version: sagr
   config:
     - name: root_sel_gr
-      display_name: "Root Selection Group"
+      display_name: Root Selection Group
       type: selection_group
       subs:
         - name: subgr_1
-          display_name: 'Subgroup 1 of "Root Selection Group"'
+          display_name: Subgroup 1 of "Root Selection Group"
           type: group
           subs:
             - name: inner_act_subgr
               type: group
-              activatable: True
-              active: False
-              subs: &simple_subs_with_defaults
+              activatable: true
+              active: false
+              subs: &id003
                 - name: x
                   type: integer
                   default: 1
@@ -138,81 +129,80 @@
                   type: integer
                   default: 2
         - name: subgr_2
-          display_name: 'Subgroup 2 of "Root Selection Group"'
+          display_name: Subgroup 2 of "Root Selection Group"
           type: group
-          subs: *simple_subs_with_defaults
+          subs: *id003
     - name: root_act_gr
       type: group
-      activatable: True
-      active: False
+      activatable: true
+      active: false
       subs:
         - name: inner_sel_gr
-          display_name: "Inner Selection Group"
+          display_name: Inner Selection Group
           type: selection_group
           subs:
             - name: inner_gr_1
-              display_name: "Inner Group 1"
+              display_name: Inner Group 1
               type: group
-              subs: *simple_subs_with_defaults
+              subs: *id003
             - name: inner_gr_2
-              display_name: "Inner Group 2"
+              display_name: Inner Group 2
               type: group
-              subs: *simple_subs_with_defaults
-
+              subs: *id003
 - type: service
   name: deep_nested_selection
-  version: "nsgr"
+  version: nsgr
   config:
     - name: lvl_root_group
-      display_name: "Lvl root group"
+      display_name: Lvl root group
       type: group
       subs:
         - name: lvl_1_group_1
-          display_name: "Lvl 1 group 1"
+          display_name: Lvl 1 group 1
           type: group
           subs:
             - name: lvl_2_selection_group
-              display_name: "Lvl 2 selection group"
+              display_name: Lvl 2 selection group
               type: selection_group
               subs:
                 - name: lvl_3_group_1
-                  display_name: "Lvl 3 group 1"
+                  display_name: Lvl 3 group 1
                   type: group
                   subs:
                     - name: lvl_4_selection_group
-                      display_name: "Lvl 4 selection group"
+                      display_name: Lvl 4 selection group
                       type: selection_group
                       subs:
                         - name: lvl_5_group_1
-                          display_name: "Lvl 5 group 1"
+                          display_name: Lvl 5 group 1
                           type: group
-                          subs: *simple_subs_with_defaults
+                          subs: *id003
                         - name: lvl_5_group_2
-                          display_name: "Lvl 5 group 2"
+                          display_name: Lvl 5 group 2
                           type: group
-                          subs: *simple_subs_with_defaults
+                          subs: *id003
                     - name: lvl_4_activatable_group
-                      display_name: "Lvl 4 activatable group"
+                      display_name: Lvl 4 activatable group
                       type: group
-                      activatable: True
-                      active: False
+                      activatable: true
+                      active: false
                       subs:
                         - name: lvl_5_selection_group_not_required
-                          display_name: "Lvl 5 selection group not required"
+                          display_name: Lvl 5 selection group not required
                           type: selection_group
-                          required: False
+                          required: false
                           subs:
                             - name: lvl_6_group
-                              display_name: "Lvl 6 group"
+                              display_name: Lvl 6 group
                               type: group
-                              subs: *simple_subs_with_defaults
+                              subs: *id003
                         - name: lvl_5_activatable_group
-                          display_name: "Lvl 4 activatable group"
+                          display_name: Lvl 4 activatable group
                           type: group
-                          activatable: True
-                          active: True
-                          subs: *simple_subs_with_defaults
+                          activatable: true
+                          active: true
+                          subs: *id003
                 - name: lvl_3_group_2
-                  display_name: "Lvl 3 group 2"
+                  display_name: Lvl 3 group 2
                   type: group
-                  subs: *simple_subs_with_defaults
+                  subs: *id003

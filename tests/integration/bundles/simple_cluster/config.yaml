@@ -1,3 +1,6 @@
+---
 - type: cluster
   name: Simple Cluster
   version: 2
+  contract_version: '2.1'
+  venv: '2.16'

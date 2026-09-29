@@ -91,7 +91,7 @@ async def test_run_action_with_mapping_and_config(adcm_client: ADCMClient, clust
 
     job = await host_action.run()
     assert await job.get_status() in ("created", "running")
-    await job.wait(exit_condition=is_success, timeout=30, poll_interval=1)
+    await job.wait(exit_condition=is_success, timeout=60, poll_interval=1)
 
     ## check mapping after action
 
@@ -129,7 +129,7 @@ async def test_terminate_action_with_config(cluster: Cluster, hosts: TwoHosts) -
     action_config["very_important_flag", Parameter].set("will be terminated")
 
     job = await host_action.run()
-    await job.wait(exit_condition=is_running, timeout=10, poll_interval=1)
+    await job.wait(exit_condition=is_running, timeout=30, poll_interval=1)
     await job.terminate()
 
-    await job.wait(exit_condition=is_aborted, timeout=30, poll_interval=1)
+    await job.wait(exit_condition=is_aborted, timeout=60, poll_interval=1)

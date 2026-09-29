@@ -1,119 +1,179 @@
+---
 - type: cluster
   name: Some Cluster
   version: 0.1
   allow_maintenance_mode: true
-
   config:
     - name: string_field_prev
       type: string
-      default: "string value"
-
-  actions: &actions
-    success: &success_job
+      default: string value
+  actions:
+    success:
       display_name: I will survive
-      type: job
-      script_type: ansible
-      script: ./actions.yaml
       allow_to_terminate: true
       allow_for_action_host_group: true
-      params:
-        ansible_tags: ok
-      masking: {}
-
-    fail: &fail_job
-      <<: *success_job
+      masking: &id001 {}
+      scripts:
+        - name: success
+          script: ./actions.yaml
+          script_type: ansible
+          params: &id004
+            ansible_tags: ok
+    fail:
       display_name: no Way
-      params:
-        ansible_tags: fail
-
-    adcm_host_turn_on_maintenance_mode: &mm_job
-      type: job
-      script: ./host-mm.yaml
-      script_type: ansible
+      allow_to_terminate: true
+      allow_for_action_host_group: true
+      masking: *id001
+      scripts:
+        - name: fail
+          script: ./actions.yaml
+          script_type: ansible
+          params: &id005
+            ansible_tags: fail
+    adcm_host_turn_on_maintenance_mode:
       host_action: true
-      states:
+      states: &id002
         available: any
-      params:
-        ansible_tags: turn_on
-
+      scripts:
+        - name: adcm_host_turn_on_maintenance_mode
+          script: ./host-mm.yaml
+          script_type: ansible
+          params:
+            ansible_tags: turn_on
     adcm_host_turn_off_maintenance_mode:
-      <<: *mm_job
-      params:
-        ansible_tags: turn_off
-
-
+      host_action: true
+      states: *id002
+      scripts:
+        - name: adcm_host_turn_off_maintenance_mode
+          script: ./host-mm.yaml
+          script_type: ansible
+          params:
+            ansible_tags: turn_off
+  contract_version: '2.1'
+  venv: '2.16'
 - type: service
   name: example_1
   display_name: Old naMe
   version: 0.9
-
   actions:
     adcm_turn_on_maintenance_mode:
-      <<: *mm_job
       host_action: false
-      script: ./service-mm.yaml
-      params:
-        ansible_tags: turn_on
-
+      states: *id002
+      scripts:
+        - name: adcm_turn_on_maintenance_mode
+          script: ./service-mm.yaml
+          script_type: ansible
+          params:
+            ansible_tags: turn_on
     adcm_turn_off_maintenance_mode:
-      <<: *mm_job
       host_action: false
-      script: ./service-mm.yaml
-      params:
-        ansible_tags: turn_off
-
+      states: *id002
+      scripts:
+        - name: adcm_turn_off_maintenance_mode
+          script: ./service-mm.yaml
+          script_type: ansible
+          params:
+            ansible_tags: turn_off
   config:
     - name: root_int
       display_name: Integer At Root
       type: integer
       default: 100
-
-  components: &example_c
+  components: &id003
     first:
       display_name: First Component
       actions:
         adcm_turn_on_maintenance_mode:
-          <<: *mm_job
           host_action: false
-          script: ./component-mm.yaml
-          params:
-            ansible_tags: turn_on
-
+          states: *id002
+          scripts:
+            - name: adcm_turn_on_maintenance_mode
+              script: ./component-mm.yaml
+              script_type: ansible
+              params:
+                ansible_tags: turn_on
         adcm_turn_off_maintenance_mode:
-          <<: *mm_job
           host_action: false
-          script: ./component-mm.yaml
-          params:
-            ansible_tags: turn_off
+          states: *id002
+          scripts:
+            - name: adcm_turn_off_maintenance_mode
+              script: ./component-mm.yaml
+              script_type: ansible
+              params:
+                ansible_tags: turn_off
     second:
       display_name: Second Component
-
 - type: service
   name: example_2
-  version: "3.23"
-
-  components: *example_c
-
+  version: '3.23'
+  components: *id003
 - type: service
   name: with_actions
   version: 2.0
   actions:
     success:
-      <<: *success_job
+      display_name: I will survive
+      allow_to_terminate: true
+      allow_for_action_host_group: true
+      masking: *id001
+      scripts:
+        - name: success
+          script: ./actions.yaml
+          script_type: ansible
+          params: *id004
     fail:
-      <<: *fail_job
-
+      display_name: no Way
+      allow_to_terminate: true
+      allow_for_action_host_group: true
+      masking: *id001
+      scripts:
+        - name: fail
+          script: ./actions.yaml
+          script_type: ansible
+          params: *id005
   components:
     c1:
       display_name: Awesome
       actions:
         success:
-          <<: *success_job
+          display_name: I will survive
+          allow_to_terminate: true
+          allow_for_action_host_group: true
+          masking: *id001
+          scripts:
+            - name: success
+              script: ./actions.yaml
+              script_type: ansible
+              params: *id004
         fail:
-          <<: *fail_job
+          display_name: no Way
+          allow_to_terminate: true
+          allow_for_action_host_group: true
+          masking: *id001
+          scripts:
+            - name: fail
+              script: ./actions.yaml
+              script_type: ansible
+              params: *id005
     c2:
       actions:
         success:
-          <<: *success_job
+          display_name: I will survive
+          allow_to_terminate: true
+          allow_for_action_host_group: true
+          masking: *id001
+          scripts:
+            - name: success
+              script: ./actions.yaml
+              script_type: ansible
+              params: *id004
         fail:
-          <<: *fail_job
+          display_name: no Way
+          allow_to_terminate: true
+          allow_for_action_host_group: true
+          masking: *id001
+          scripts:
+            - name: fail
+              script: ./actions.yaml
+              script_type: ansible
+              params: *id005

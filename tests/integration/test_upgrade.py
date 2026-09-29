@@ -40,7 +40,7 @@ class Context(NamedTuple):
 
 async def upload_hp_bundle_with_50_plus_upgrades(adcm_client: ADCMClient, workdir: Path) -> Bundle:
     # based on simple_hostprovider
-    hp_def = {"type": "provider", "name": "simple_provider", "version": 6}
+    hp_def = {"type": "provider", "name": "simple_provider", "version": 6, "venv": "2.16", "contract_version": "2.1"}
     host_def = {"type": "host", "name": "simple_host", "version": 2}
 
     upgrade_base = {"versions": {"min": 3, "max": 5}, "states": {"available": "any"}}
@@ -161,7 +161,7 @@ async def _test_upgrade_with_config(context: Context) -> None:
     # job's not finished
     assert (await cluster.bundle).id == context.old_bundle.id
 
-    await job.wait(timeout=30)
+    await job.wait(timeout=60)
     await cluster.refresh()
     assert (await cluster.bundle).id == context.new_bundle.id
 

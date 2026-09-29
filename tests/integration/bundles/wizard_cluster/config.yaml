@@ -1,27 +1,23 @@
 ---
 - type: cluster
   name: cluster_wizard
-  version: &version '1.0'
+  version: '1.0'
   edition: community
   allow_maintenance_mode: true
-
   actions:
-    wizard_jinja: &wizard_action
-      type: job
-      script: ./sleep.yaml
-      script_type: ansible
-      wizard_template:
+    wizard_jinja:
+      wizard_template: &id001
         file:
           path: wizard_jinja/stages.j2
         engine:
           type: jinja2
-      states:
+      states: &id002
         available: any
-
+      scripts:
+        - name: wizard_jinja
+          script: ./sleep.yaml
+          script_type: ansible
     wizard_fail:
-      type: job
-      script: ./sleep.yaml
-      script_type: ansible
       wizard_template:
         file:
           path: wizard_jinja/stages_fail.j2
@@ -29,11 +25,11 @@
           type: jinja2
       states:
         available: any
-
+      scripts:
+        - name: wizard_fail
+          script: ./sleep.yaml
+          script_type: ansible
     wizard_with_mapping:
-      type: job
-      script: hc_apply
-      script_type: internal
       wizard_template:
         file:
           path: wizard_jinja/stages_mapping.j2
@@ -41,18 +37,18 @@
           type: jinja2
       states:
         available: any
-
-    simple: &simple_action
-      type: job
-      script: ./simple_action.yaml
-      script_type: ansible
-      states:
+      scripts:
+        - name: wizard_with_mapping
+          script: hc_apply
+          script_type: internal
+    simple:
+      states: &id003
         available: any
-
+      scripts:
+        - name: simple
+          script: ./simple_action.yaml
+          script_type: ansible
     single_config_step:
-      type: job
-      script: ./sleep.yaml
-      script_type: ansible
       wizard_template:
         file:
           path: single_config_step/stages.j2
@@ -60,8 +56,11 @@
           type: jinja2
       states:
         available: any
-
-  config: &config
+      scripts:
+        - name: single_config_step
+          script: ./sleep.yaml
+          script_type: ansible
+  config: &id004
     - name: float
       type: float
       required: false
@@ -75,26 +74,46 @@
             - entry1
             - entry2
           type: list
-
+  contract_version: '2.1'
+  venv: '2.16'
 - type: service
   name: service_1
-  version: "0.1"
+  version: '0.1'
   actions:
     wizard_jinja:
-      <<: *wizard_action
+      wizard_template: *id001
+      states: *id002
+      scripts:
+        - name: wizard_jinja
+          script: ./sleep.yaml
+          script_type: ansible
     simple:
-      <<: *simple_action
-  config: *config
-
+      states: *id003
+      scripts:
+        - name: simple
+          script: ./simple_action.yaml
+          script_type: ansible
+  config: *id004
   components:
-    component_1: &component
-      actions:
+    component_1:
+      actions: &id005
         wizard_jinja:
-          <<: *wizard_action
+          wizard_template: *id001
+          states: *id002
+          scripts:
+            - name: wizard_jinja
+              script: ./sleep.yaml
+              script_type: ansible
         simple:
-          <<: *simple_action
-      config: *config
+          states: *id003
+          scripts:
+            - name: simple
+              script: ./simple_action.yaml
+              script_type: ansible
+      config: *id004
     component_2:
-      <<: *component
+      actions: *id005
+      config: *id004
     component_3:
-      <<: *component
+      actions: *id005
+      config: *id004

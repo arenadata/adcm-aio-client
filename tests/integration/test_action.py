@@ -42,6 +42,8 @@ async def create_host_with_50_plus_actions(adcm_client: ADCMClient, workdir: Pat
             "type": "provider",
             "name": "simple_provider",
             "version": 6,
+            "venv": "2.16",
+            "contract_version": "2.1",
         },
         {
             "type": "host",
@@ -50,9 +52,13 @@ async def create_host_with_50_plus_actions(adcm_client: ADCMClient, workdir: Pat
             "actions": {
                 f"action_{i}": {
                     "display_name": f"Action {i}",
-                    "type": "job",
-                    "script_type": "ansible",
-                    "script": "some.yaml",
+                    "scripts": [
+                        {
+                            "name": "job",
+                            "script_type": "ansible",
+                            "script": "some.yaml",
+                        }
+                    ],
                     "masking": {},
                 }
                 for i in range(60)

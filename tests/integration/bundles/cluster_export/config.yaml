@@ -1,7 +1,7 @@
 ---
 - type: cluster
   name: cluster_export
-  version: &version '1.0'
+  version: '1.0'
   config:
     - name: string
       type: string
@@ -9,10 +9,11 @@
       default: string
   export:
     - string
-
+  contract_version: '2.1'
+  venv: '2.16'
 - name: service_export_0
   type: service
-  version: *version
+  version: '1.0'
   config:
     - name: text
       type: text
@@ -20,10 +21,9 @@
       default: text
   export:
     - text
-
 - name: service_export_1
   type: service
-  version: *version
+  version: '1.0'
   config:
     - name: text
       type: text
@@ -31,10 +31,9 @@
       default: text
   export:
     - text
-
 - name: service_export_2
   type: service
-  version: *version
+  version: '1.0'
   config:
     - name: text
       type: text
@@ -42,10 +41,9 @@
       default: text
   export:
     - text
-
 - name: service_export_3
   type: service
-  version: *version
+  version: '1.0'
   config:
     - name: text
       type: text
@@ -53,10 +51,9 @@
       default: text
   export:
     - text
-
 - name: service_export_4
   type: service
-  version: *version
+  version: '1.0'
   config:
     - name: text
       type: text
@@ -64,10 +61,9 @@
       default: text
   export:
     - text
-
 - name: service_export_5
   type: service
-  version: *version
+  version: '1.0'
   config:
     - name: text
       type: text
@@ -75,10 +71,9 @@
       default: text
   export:
     - text
-
 - name: service_export_6
   type: service
-  version: *version
+  version: '1.0'
   config:
     - name: text
       type: text
@@ -86,10 +81,9 @@
       default: text
   export:
     - text
-
 - name: service_export_7
   type: service
-  version: *version
+  version: '1.0'
   config:
     - name: text
       type: text
@@ -97,10 +91,9 @@
       default: text
   export:
     - text
-
 - name: service_export_8
   type: service
-  version: *version
+  version: '1.0'
   config:
     - name: text
       type: text
@@ -108,10 +101,9 @@
       default: text
   export:
     - text
-
 - name: service_export_9
   type: service
-  version: *version
+  version: '1.0'
   config:
     - name: text
       type: text
