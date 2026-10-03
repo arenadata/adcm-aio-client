@@ -9,6 +9,11 @@
         seconds: 3
       tags: [ sleep ]
 
+    - name: Long sleep
+      pause:
+        seconds: 120
+      tags: [ long_sleep ]
+
     - name: Success
       debug:
         msg: "successful step"

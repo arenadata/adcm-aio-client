@@ -373,6 +373,27 @@
               script_type: ansible
               params:
                 ansible_tags: change
+        long_host_action_config_hc_acl:
+          display_name: long_acl_host_action
+          host_action: true
+          allow_to_terminate: true
+          config:
+            - name: very_important_flag
+              type: string
+          hc_acl:
+            - service: with_host_actions
+              component: c2
+              action: add
+            - service: with_host_actions
+              component: c1
+              action: remove
+          masking: {}
+          scripts:
+            - name: long_host_action_config_hc_acl
+              script: ./actions.yaml
+              script_type: ansible
+              params:
+                ansible_tags: long_sleep
     c2:
       actions: *id012
 - type: service
