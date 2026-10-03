@@ -34,10 +34,10 @@ type MappingData = set[MappingEntry]
 type PayloadMappingEntries = list[dict[str, ComponentID | HostID]]
 
 
-type HostCache = dict[int, Host]
+type HostCache = dict[int, "Host"]
 
 
-type ComponentCache = dict[int, Component]
+type ComponentCache = dict[int, "Component"]
 
 
 class MappingDelta(NamedTuple):
