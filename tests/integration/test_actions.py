@@ -116,13 +116,10 @@ async def test_terminate_action_with_config(cluster: Cluster, hosts: TwoHosts) -
     assert len(tuple(mapping.iter())) == 2
     await mapping.save()
 
-    ## terminate long_host_action_config_hc_acl
+    ## terminate host_action_config_hc_acl
 
-    # Termination is asynchronous: ADCM only marks the task as "revoking" and its scheduler sends the actual signal
-    # on the next termination poll (every 5 seconds by default). The action has to outlive that poll,
-    # otherwise it finishes on its own and the task never becomes "aborted".
     host_1, host_2 = await mapping.hosts.all()
-    host_action = await host_2.actions.get(name__eq="long_host_action_config_hc_acl")
+    host_action = await host_2.actions.get(name__eq="host_action_config_hc_acl")
 
     action_mapping = await host_action.mapping
     await action_mapping.remove(component=component_1_s1, host=host_2)
@@ -132,7 +129,7 @@ async def test_terminate_action_with_config(cluster: Cluster, hosts: TwoHosts) -
     action_config["very_important_flag", Parameter].set("will be terminated")
 
     job = await host_action.run()
-    await job.wait(exit_condition=is_running, timeout=60, poll_interval=1)
+    await job.wait(exit_condition=is_running, timeout=30, poll_interval=1)
     await job.terminate()
 
     await job.wait(exit_condition=is_aborted, timeout=60, poll_interval=1)
