@@ -123,6 +123,9 @@ class ADCMContainer(DockerContainer):
 
         self.with_env("MIGRATION_MODE", "1" if self._migration_mode else "0")
         self.with_env("STATISTICS_ENABLED", "0")
+        # Task termination is asynchronous: ADCM scheduler sends the actual signal on its termination poll,
+        # which is 5 seconds by default. Short actions finish on their own before that, so poll as often as allowed.
+        self.with_env("SCHEDULER_JOB_TERMINATION_POLL_INTERVAL", "1")
         self.with_env("DB_USER", DB_USER)
         self.with_env("DB_PASS", DB_PASSWORD)
         self.with_env("DB_NAME", self._db.name)
