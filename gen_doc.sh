@@ -10,4 +10,4 @@ rm -rf "$OUTPUT_DIR"
 
 # pdoc skips private (`_*.py`) submodules when walking a package,
 # so every module file is passed explicitly to include them in the docs.
-poetry run pdoc -o "$OUTPUT_DIR" $(find adcm_aio_client -name '*.py' -not -path '*/__pycache__/*' | sort)
+poetry run python pdoc_cli.py -t custom-templates -o "$OUTPUT_DIR" $(find adcm_aio_client -name '*.py' -not -path '*/__pycache__/*' | sort)

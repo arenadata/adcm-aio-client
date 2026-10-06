@@ -70,6 +70,10 @@ from adcm_aio_client.requesters import BundleRetrieverInterface
 
 
 class ADCM(InteractiveObject, WithActions, WithConfig):
+    """
+    Represents `ADCM` instance itself: its version, actions and configuration.
+    """
+
     def __init__(self: Self, requester: Requester, data: dict[str, Any], version: str) -> None:
         super().__init__(requester=requester, data=data)
         self._version = version
@@ -87,6 +91,10 @@ class ADCM(InteractiveObject, WithActions, WithConfig):
 
 
 class License(WithProtectedRequester):
+    """
+    Represents license of a bundle's prototype: its text, state and acceptance.
+    """
+
     def __init__(self: Self, requester: Requester, prototypes_data: dict) -> None:
         self._license_prototype_id = prototypes_data["id"]
         self._data = prototypes_data["license"]
@@ -107,7 +115,14 @@ class License(WithProtectedRequester):
 
 
 class Bundle(Deletable, RootInteractiveObject):
+    """
+    Represents `Bundle` entity in ADCM terminology.
+
+    Bundle is an uploaded package with definitions of clusters or hostproviders.
+    """
+
     PATH_PREFIX = "bundles"
+    """@private"""
 
     @property
     def name(self: Self) -> str:
@@ -536,10 +551,12 @@ class Component(
     WithMaintenanceMode,
     InteractiveChildObject[Service],
 ):
+    """
+    Represents part of `Service` named `Component` in ADCM terminology.
+    """
+
     PATH_PREFIX = "components"
-    """
-    @private
-    """
+    """@private"""
 
     @property
     def name(self: Self) -> str:
@@ -881,7 +898,14 @@ async def default_exit_condition(job: "Job") -> bool:
 
 
 class Job(WithStatus, RootInteractiveObject):
+    """
+    Represents `Job` entity in ADCM terminology.
+
+    Job is created as a result of running `Action` or `Upgrade`.
+    """
+
     PATH_PREFIX = "tasks"
+    """@private"""
 
     @property
     def name(self: Self) -> str:

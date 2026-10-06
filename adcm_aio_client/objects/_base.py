@@ -95,6 +95,7 @@ convert_unit_execution_errors = _convert_object_errors(
 
 class InteractiveObject(WithProtectedRequester, WithRequesterProperty, AwareOfOwnPath):
     PATH_PREFIX: ClassVar[str]
+    """@private"""
     _delete_on_refresh: deque[str]
 
     def __init_subclass__(cls: type[Self]) -> None:

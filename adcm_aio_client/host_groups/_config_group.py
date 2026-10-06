@@ -24,7 +24,14 @@ if TYPE_CHECKING:
 
 
 class ConfigHostGroup(InteractiveChildObject, Deletable, WithConfigOfHostGroup):
+    """
+    Represents `ConfigHostGroup` entity in ADCM terminology.
+
+    It's a group of hosts with configuration that may differ from the owner's one.
+    """
+
     PATH_PREFIX = "config-groups"
+    """@private"""
 
     @property
     def name(self: Self) -> str:

@@ -4,9 +4,13 @@ on:
   push:
     branches:
       - master
+      # TODO: temporary, so docs can be reviewed on GitHub Pages; remove before merge
+      - 'feature/ADCM-6490'
     paths: &docs-sources
       - 'adcm_aio_client/**'
       - 'gen_doc.sh'
+      - 'pdoc_cli.py'
+      - 'custom-templates/**'
       - 'pyproject.toml'
       - 'poetry.lock'
       - '.github/workflows/docs.yaml'
@@ -45,7 +49,11 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: build
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    # TODO: temporary deploy from `feature/ADCM-6490` for docs review; restore master-only condition before merge:
+    #   if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    if: >-
+      github.event_name != 'pull_request'
+      && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/feature/ADCM-6490')
     runs-on: ubuntu-24.04
     permissions:
       actions: read

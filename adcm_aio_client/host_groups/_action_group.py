@@ -24,7 +24,14 @@ if TYPE_CHECKING:
 
 
 class ActionHostGroup(InteractiveChildObject, WithActions, Deletable):
+    """
+    Represents `ActionHostGroup` entity in ADCM terminology.
+
+    It's a group of hosts that actions can be run on.
+    """
+
     PATH_PREFIX = "action-host-groups"
+    """@private"""
 
     @property
     def name(self: Self) -> str:

@@ -1,0 +1,33 @@
+{% extends "default/module.html.jinja2" %}
+
+{% block favicon %}
+    <link rel="icon" type="image/svg+xml"
+          href="data:image/svg+xml,{% filter urlencode %}{% include "favicon.svg" %}{% endfilter %}"/>
+{% endblock %}
+
+{# Project logo on top of the navigation, leads to the main page. Embedded, so it works from pages of any depth. #}
+{% block nav_title %}
+    <a href="{{ "../" * module.modulename.count(".") }}index.html">
+        <img src="data:image/svg+xml,{% filter urlencode %}{% include "logo.svg" %}{% endfilter %}"
+             class="logo" alt="ADCM logo"/>
+    </a>
+{% endblock %}
+
+{#
+On the main page (root package) list the main classes from public submodules,
+so they are reachable from the navigation without exporting them from the root package.
+#}
+{% block nav_members %}
+    {{ super() }}
+    {% if module.modulename == "adcm_aio_client" %}
+        {% for submodule_name in ["adcm_aio_client.client", "adcm_aio_client.objects", "adcm_aio_client.config"] %}
+            {% set submodule = all_modules[submodule_name] %}
+            <h2>{{ submodule.name | capitalize }}</h2>
+            <ul class="memberlist">
+                {% for m in submodule.members.values() | sort(attribute="qualname") if m.kind == "class" %}
+                    <li><a class="class" href="{{ module.name }}/{{ submodule.name }}.html#{{ m.qualname }}">{{ m.qualname }}</a></li>
+                {% endfor %}
+            </ul>
+        {% endfor %}
+    {% endif %}
+{% endblock %}
