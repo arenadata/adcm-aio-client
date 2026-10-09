@@ -21,8 +21,10 @@ dependencies = [
 dynamic = ["version", "classifiers"]
 
 [project.urls]
-homepage = "https://github.com/arenadata/adcm-aio-client"
-repository = "https://github.com/arenadata/adcm-aio-client"
+homepage = "https://docs.arenadata.io/en/ADCM/current/tutorials/client-usage-examples.html"
+github = "https://github.com/arenadata/adcm-aio-client"
+documentation = "https://arenadata.github.io/adcm-aio-client/adcm_aio_client.html"
+changelog = "https://github.com/arenadata/adcm-aio-client/releases"
 
 [tool.poetry]
 version = "0.2.1"
