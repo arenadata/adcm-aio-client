@@ -157,7 +157,14 @@ class _GenericAction(InteractiveChildObject):
 
 
 class Action(_GenericAction):
+    """
+    Represents `Action` entity in ADCM terminology.
+
+    Use `run()` to launch it and get `Job` to track its execution.
+    """
+
     PATH_PREFIX = "actions"
+    """@private"""
 
     def __init__(self: Self, parent: InteractiveObject, data: dict[str, Any]) -> None:
         super().__init__(parent, data)
@@ -194,7 +201,14 @@ class ActionsAccessor[Parent: InteractiveObject](NonPaginatedChildAccessor[Paren
 
 
 class Upgrade(_GenericAction):
+    """
+    Represents `Upgrade` entity in ADCM terminology.
+
+    Upgrade switches an object to a newer version of a bundle.
+    """
+
     PATH_PREFIX = "upgrades"
+    """@private"""
 
     @property
     async def bundle(self: Self) -> Bundle:
@@ -249,7 +263,14 @@ class PreProcess:
 
 
 class Flow(InteractiveChildObject[Action]):
+    """
+    Represents step-by-step execution process of `Action`.
+
+    Flow consists of units (configuration, operation and mapping steps), see `units`.
+    """
+
     PATH_PREFIX = "processes"
+    """@private"""
 
     def __init__(
         self: Self, parent: Action, data: dict[str, Any], action_owner: Cluster | Service | Component | Host
@@ -332,6 +353,7 @@ class Flow(InteractiveChildObject[Action]):
 
 class _BaseUnit(InteractiveChildObject[Flow]):
     PATH_PREFIX = "steps"
+    """@private"""
 
     def __init__(
         self: Self,

@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from adcm_aio_client.objects import Component, Host
 
 
-type MappingPair = tuple[Component, Host]
+type MappingPair = tuple["Component", "Host"]
 
 
 class MappingEntry(NamedTuple):
@@ -34,10 +34,10 @@ type MappingData = set[MappingEntry]
 type PayloadMappingEntries = list[dict[str, ComponentID | HostID]]
 
 
-type HostCache = dict[int, Host]
+type HostCache = dict[int, "Host"]
 
 
-type ComponentCache = dict[int, Component]
+type ComponentCache = dict[int, "Component"]
 
 
 class MappingDelta(NamedTuple):
