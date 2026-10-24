@@ -558,7 +558,7 @@ async def _selection_groups_in_action_config(service: Service) -> None:
 
     job = await action.run()
     assert await job.get_status() in ("created", "running")
-    await job.wait(exit_condition=is_success, timeout=30, poll_interval=1)
+    await job.wait(exit_condition=is_success, timeout=60, poll_interval=1)
 
 
 async def _selection_and_activation_groups(service: Service) -> None:

@@ -33,6 +33,14 @@ async def is_running(job: Job) -> bool:
     return await job.get_status() == "running"
 
 
+async def is_success(job: Job) -> bool:
+    return await job.get_status() == "success"
+
+
+async def is_failed(job: Job) -> bool:
+    return await job.get_status() == "failed"
+
+
 async def run_non_blocking(target: WithActions, **filters: FilterValue) -> Job:
     action = await target.actions.get(**filters)
     action.blocking = False
@@ -86,13 +94,14 @@ async def prepare_environment(
     )
 
     for object_ in chain(clusters, services, components, hosts, hostproviders):
-        await run_non_blocking(object_, name__eq="success")
+        job = await run_non_blocking(object_, name__eq="success")
+        await job.wait(timeout=60, poll_interval=1, exit_condition=is_success)
 
     for group in host_groups:
-        await run_non_blocking(group, name__in=["fail"])
+        job = await run_non_blocking(group, name__in=["fail"])
+        await job.wait(timeout=60, poll_interval=1, exit_condition=is_failed)
 
 
-@pytest.mark.skip(reason="has a flack problem, skipped to work without blocking on ADCM-7120")
 @pytest.mark.usefixtures("prepare_environment")
 @pytest.mark.parametrize("adcm_client", [{"timeout": 60}], ids=["t60"], indirect=True)
 async def test_jobs_api(adcm_client: ADCMClient) -> None:

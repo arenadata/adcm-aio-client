@@ -1,29 +1,28 @@
+---
 - type: provider
   name: simple_provider
   version: 4
-
   upgrade:
     - name: simple_provider
-      display_name: "simple upgrade"
+      display_name: simple upgrade
       versions:
         min: 1
         max: 4
       states:
         available: any
-
-  actions: &actions
-    success: &job
+  actions: &id001
+    success:
       display_name: I will survive
-      type: job
-      script_type: ansible
-      script: ./actions.yaml
-      params:
-        ansible_tags: ok
       masking: {}
-
-
+      scripts:
+        - name: success
+          script: ./actions.yaml
+          script_type: ansible
+          params:
+            ansible_tags: ok
+  contract_version: '2.1'
+  venv: '2.16'
 - type: host
   name: simple_host
   version: 2
-
-  actions: *actions
+  actions: *id001

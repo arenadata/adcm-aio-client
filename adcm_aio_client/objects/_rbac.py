@@ -30,6 +30,7 @@ type PolicyObject = Cluster | Service | Component | HostProvider | Host
 
 class _UserBase(RootInteractiveObject):
     PATH_PREFIX = "rbac/users"
+    """@private"""
 
     @property
     def username(self: Self) -> str:
@@ -72,11 +73,15 @@ class _UserBase(RootInteractiveObject):
 
 
 class LocalUser(Deletable, _UserBase):
-    pass
+    """
+    Represents ADCM user created locally.
+    """
 
 
 class LDAPUser(_UserBase):
-    pass
+    """
+    Represents ADCM user synchronized from LDAP.
+    """
 
 
 class UsersNode(PaginatedAccessor[LocalUser | LDAPUser]):
@@ -122,6 +127,7 @@ class UsersNode(PaginatedAccessor[LocalUser | LDAPUser]):
 
 class _GroupBase(RootInteractiveObject):
     PATH_PREFIX = "rbac/groups"
+    """@private"""
 
     @property
     def display_name(self: Self) -> str:
@@ -139,11 +145,15 @@ class _GroupBase(RootInteractiveObject):
 
 
 class LocalGroup(Deletable, _GroupBase):
-    pass
+    """
+    Represents ADCM group of users created locally.
+    """
 
 
 class LDAPGroup(_GroupBase):
-    pass
+    """
+    Represents ADCM group of users synchronized from LDAP.
+    """
 
 
 class GroupsNode(PaginatedAccessor[LocalGroup | LDAPGroup]):
@@ -172,6 +182,7 @@ class GroupsNode(PaginatedAccessor[LocalGroup | LDAPGroup]):
 
 class _RoleBase(RootInteractiveObject):
     PATH_PREFIX = "rbac/roles"
+    """@private"""
 
     @property
     def name(self: Self) -> str:
@@ -209,11 +220,15 @@ class _Role(_RoleBase):
 
 
 class BuiltInRole(_Role):
-    pass
+    """
+    Represents role shipped with ADCM, consists of `Permission` objects.
+    """
 
 
 class CustomRole(Deletable, _Role):
-    pass
+    """
+    Represents role created by user, consists of `Permission` objects.
+    """
 
 
 class RolesNode(PaginatedAccessor[BuiltInRole | CustomRole | Permission]):
@@ -248,7 +263,12 @@ class RolesNode(PaginatedAccessor[BuiltInRole | CustomRole | Permission]):
 
 
 class Policy(Deletable, RootInteractiveObject):
+    """
+    Represents RBAC policy: grants `role` to `groups` on specific `objects`.
+    """
+
     PATH_PREFIX = "rbac/policies"
+    """@private"""
     _obj_type_cls_map = {
         "cluster": Cluster,
         "provider": HostProvider,

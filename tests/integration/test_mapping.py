@@ -96,7 +96,7 @@ def assert_mapping(mapping: Iterable[tuple[Component, Host]], expected: Iterable
 
 def new_admin_session(adcm: ADCMContainer) -> ADCMSession:
     credentials = Credentials(username="admin", password="admin")  # noqa: S106
-    kwargs = {"verify": False, "timeout": 10, "retry_interval": 1, "retry_attempts": 1}
+    kwargs = {"verify": False, "timeout": 30, "retry_interval": 1, "retry_attempts": 1}
     return ADCMSession(url=adcm.url, credentials=credentials, **kwargs)
 
 

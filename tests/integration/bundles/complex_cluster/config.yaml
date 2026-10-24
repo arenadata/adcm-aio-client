@@ -1,23 +1,20 @@
+---
 - type: cluster
   name: Some Cluster
-  config_group_customization: yes
+  config_group_customization: true
   version: 1
   allow_maintenance_mode: true
-
   upgrade:
-    - &upgrade
-      name: Simple
-      display_name: "I am very simple, you know?"
-      versions:
+    - name: Simple
+      display_name: I am very simple, you know?
+      versions: &id001
         min: 0.1
         max: 0.9
-      states: 
+      states: &id002
         available: any
-
-    - <<: *upgrade
-      name: action_config
-      display_name: "With action and config"
-      scripts: &upgrade_scripts
+    - name: action_config
+      display_name: With action and config
+      scripts:
         - name: pre
           script_type: ansible
           script: ./actions.yaml
@@ -31,8 +28,7 @@
           script: ./actions.yaml
           params:
             ansible_tags: ok
-            
-      config: &upgrade_config
+      config: &id005
         - name: string_field
           type: string
         - name: params
@@ -41,173 +37,181 @@
           subs:
             - name: cant_find
               type: string
-              default: "cantCme"
+              default: cantCme
               ui_options:
                 invisible: true
             - name: pass
               type: password
-              required: no
+              required: false
             - name: sag
               display_name: Filter
               type: structure
               yspec: ./sag.yaml
               default:
                 nested:
-                  attr: "nice"
-                  op: "eq"
-                  tech: "true"
+                  attr: nice
+                  op: eq
+                  tech: 'true'
                 quantity: 14443
         - name: payload
           display_name: Request Body
           type: json
           default:
             - 1
-            - {"k": "v"}
-            - "plain"
-
-  actions: &actions
-    success: &job
+            - k: v
+            - plain
+      versions: *id001
+      states: *id002
+  actions: &id010
+    success:
       display_name: I will survive
-      type: job
-      script_type: ansible
-      script: ./actions.yaml
       allow_to_terminate: true
       allow_for_action_host_group: true
-      params:
-        ansible_tags: ok
-      masking: {}
-
+      masking: &id003 {}
+      scripts:
+        - name: success
+          script: ./actions.yaml
+          script_type: ansible
+          params: &id006
+            ansible_tags: ok
     fail:
-      <<: *job
       display_name: no Way
-      params:
-        ansible_tags: fail
-
+      allow_to_terminate: true
+      allow_for_action_host_group: true
+      masking: *id003
+      scripts:
+        - name: fail
+          script: ./actions.yaml
+          script_type: ansible
+          params:
+            ansible_tags: fail
     success_task:
       display_name: Lots Of me
-      type: task
       masking: {}
       allow_to_terminate: true
       allow_for_action_host_group: true
       scripts:
-        - &success_job
-          name: first
+        - name: first
           script_type: ansible
           script: ./actions.yaml
-          params:
+          params: &id004
             ansible_tags: ok, sleep
-        - <<: *success_job
-          name: second
+        - name: second
           display_name: AnothEr
-
+          script_type: ansible
+          script: ./actions.yaml
+          params: *id004
     with_config:
-      <<: *job
-      display_name: "Configurable one"
-      config: *upgrade_config
-
+      display_name: Configurable one
+      config: *id005
+      allow_to_terminate: true
+      allow_for_action_host_group: true
+      masking: *id003
+      scripts:
+        - name: with_config
+          script: ./actions.yaml
+          script_type: ansible
+          params: *id006
     with_mapping:
-      <<: *job
-      display_name: "I will change the cluster"
-      hc_acl: &hc_acl
+      display_name: I will change the cluster
+      hc_acl: &id007
         - action: add
           service: example_1
           component: first
         - action: remove
           service: example_2
           component: second
-
+      allow_to_terminate: true
+      allow_for_action_host_group: true
+      masking: *id003
+      scripts:
+        - name: with_mapping
+          script: ./actions.yaml
+          script_type: ansible
+          params: *id006
     with_config_and_mapping:
-      <<: *job
-      display_name: "JOAT"
-      config: *upgrade_config
-      hc_acl: *hc_acl
-
+      display_name: JOAT
+      config: *id005
+      hc_acl: *id007
+      allow_to_terminate: true
+      allow_for_action_host_group: true
+      masking: *id003
+      scripts:
+        - name: with_config_and_mapping
+          script: ./actions.yaml
+          script_type: ansible
+          params: *id006
   config:
     - name: string_field
       type: string
-      default: "string value"
-
+      default: string value
+  contract_version: '2.1'
+  venv: '2.16'
 - type: service
   name: example_1
   display_name: First Example
   version: 1.0
-
-  config: &simple_config
+  config: &id008
     - name: root_int
       display_name: Integer At Root
       type: integer
       default: 100
-
-  components: &example_c
+  components: &id009
     first:
       display_name: First Component
-      config: *simple_config
+      config: *id008
     second:
       display_name: Second Component
-      config: *simple_config
+      config: *id008
     third_one:
       display_name: This Is Different
-      config: *simple_config
-
+      config: *id008
 - type: service
   name: example_2
-  version: "4.23.456"
-
-  components: *example_c
-
+  version: 4.23.456
+  components: *id009
 - type: service
   name: with_actions
   version: 2.3
-  actions: *actions
-
+  actions: *id010
   components:
     c1:
       display_name: Awesome
-      actions: *actions
+      actions: *id010
     c2:
-      actions: *actions
-
+      actions: *id010
 - type: service
   name: with_license
   version: 1
   license: ./license.txt
-
 - type: service
   name: complex_config
   version: 0.3
-  config_group_customization: yes
-
+  config_group_customization: true
   config:
-    - &complexity_level
-      name: complexity_level
+    - name: complexity_level
       display_name: Complexity Level
       type: integer
       default: 4
-      required: no
-
+      required: false
     - name: very_important_flag
       display_name: Set me
       type: float
       required: true
-
     - name: int_field
       display_name: Integer Field
       type: integer
       required: false
-
     - name: int_field2
       display_name: Integer Field 2
       type: integer
       required: false
-
     - name: cant_find
       type: string
-      default: "cantCme"
+      default: cantCme
       ui_options:
         invisible: true
-
-    - &country_codes
-      name: country_codes
+    - name: country_codes
       type: structure
       yspec: ./schema.yaml
       default:
@@ -217,41 +221,37 @@
           code: 33
         - country: Spain
           code: 34
-
-    - &a_lot_of_text
-      name: a_lot_of_text
+    - name: a_lot_of_text
       display_name: A lot of text
       type: group
       subs:
         - name: cant_find
           type: string
-          default: "cantCme"
+          default: cantCme
           ui_options:
             invisible: true
         - name: simple_string
           type: string
-          required: no
-          default: "simple string here"
+          required: false
+          default: simple string here
         - name: big_text
           type: text
-          required: no
-          default: ""
+          required: false
+          default: ''
         - name: license
-          description: "Edit license as you want :3"
+          description: Edit license as you want :3
           read_only: any
           type: file
           default: ./text.txt
         - name: pass
           type: password
-          required: no
+          required: false
         - name: sag
           display_name: Group-like structure
           type: structure
           yspec: ./sag.yaml
           required: false
-
-    - &from_doc
-      name: from_doc
+    - name: from_doc
       display_name: Examples from documentation
       type: group
       ui_options:
@@ -273,7 +273,7 @@
         - name: secret_mapping
           display_name: Map Secrets
           type: secretmap
-          required: no
+          required: false
         - name: mount_points
           type: list
           default:
@@ -285,12 +285,14 @@
           type: map
           default:
             name: Joe
-            age: "24"
+            age: '24'
             sex: m
         - name: protocol
           type: option
-          option: { http: "80", https: "443" }
-          default: "80"
+          option:
+            http: '80'
+            https: '443'
+          default: '80'
     - name: agroup
       display_name: Optional
       type: group
@@ -309,12 +311,11 @@
         - name: strange
           type: json
           default: []
-
     - name: protagonist
       type: selection_group
       group_customization: false
       default: young
-      subs: &choices
+      subs: &id011
         - name: young
           type: group
           subs:
@@ -331,17 +332,13 @@
           subs:
             - name: wizdom
               type: integer
-
     - name: antagonist
       type: selection_group
       group_customization: false
       required: false
-      subs: *choices
-
+      subs: *id011
   components:
-    component1:
-
-
+    component1: null
 - type: service
   name: with_host_actions
   version: 2.3
@@ -354,13 +351,9 @@
           type: string
           required: true
           default: default
-
-      actions: &component_actions
+      actions: &id012
         host_action_config_hc_acl:
           display_name: acl_host_action
-          type: job
-          script_type: ansible
-          script: ./actions.yaml
           host_action: true
           allow_to_terminate: true
           config:
@@ -373,36 +366,33 @@
             - service: with_host_actions
               component: c1
               action: remove
-          params:
-            ansible_tags: change
           masking: {}
-
+          scripts:
+            - name: host_action_config_hc_acl
+              script: ./actions.yaml
+              script_type: ansible
+              params:
+                ansible_tags: change
     c2:
-      actions: *component_actions
-
-# requires cases section
-
+      actions: *id012
 - type: service
   version: 1.0
   name: my_service
   components:
-    my_component:
-
+    my_component: null
 - type: service
   version: 1.0
   name: service_with_requires_my_component
   components:
-    componentB:
+    componentB: null
   requires:
     - service: my_service
       component: my_component
-
 - type: service
   version: 1.0
   name: service_with_requires_my_service
   requires:
     - service: my_service
-
 - type: service
   version: 1.0
   name: component_with_requires_my_component
@@ -411,7 +401,6 @@
       requires:
         - service: my_service
           component: my_component
-
 - type: service
   version: 1.0
   name: component_with_requires_my_service
@@ -419,33 +408,25 @@
     component_with_requires_my_service:
       requires:
         - service: my_service
-
 - type: service
   version: 2.3
   name: A
-
   requires:
     - service: B
-
   components:
     a1:
       requires:
         - service: C
-
 - type: service
   version: 2.4
   name: B
-
   requires:
     - service: A
-
 - type: service
   version: 2.1
   name: C
-
   requires:
     - service: A
-
   components:
     c1:
       requires:

@@ -24,7 +24,14 @@ if TYPE_CHECKING:
 
 
 class ConfigHostGroup(InteractiveChildObject, Deletable, WithConfigOfHostGroup):
+    """
+    Represents `ConfigHostGroup` entity in ADCM terminology.
+
+    It's a group of hosts with configuration that may differ from the owner's one.
+    """
+
     PATH_PREFIX = "config-groups"
+    """@private"""
 
     @property
     def name(self: Self) -> str:
@@ -50,8 +57,21 @@ class HostsInConfigHostGroupNode(HostsInHostGroupNode):
 
 
 class WithConfigHostGroups(WithProtectedRequester, AwareOfOwnPath):
+    """
+    Mixin for objects that have config host groups
+    """
+
     @cached_property
     def config_host_groups(self: Self) -> ConfigHostGroupNode:
+        """
+        Node responsible for accessing 'ConfigHostGroup' objects
+
+        Examples:
+        ```python
+            cluster = await client.clusters.get(name__eq="example")
+            groups = await cluster.config_host_groups.all()
+        ```
+        """
         return ConfigHostGroupNode(
             parent=self,  # pyright: ignore[reportArgumentType]  easier to ignore than fix this typing
             path=(*self.get_own_path(), "config-groups"),

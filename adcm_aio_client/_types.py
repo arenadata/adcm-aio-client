@@ -122,7 +122,7 @@ class MappingOperation(str, Enum):
 type URLStr = str
 
 
-DEFAULT_JOB_TERMINAL_STATUSES = frozenset(("broken", "aborted", "failed", "success"))
+DEFAULT_JOB_TERMINAL_STATUSES = frozenset(("broken", "aborted", "failed", "success", "revoked"))
 
 
 class MaintenanceModeStatus(str, Enum):

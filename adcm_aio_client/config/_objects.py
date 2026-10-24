@@ -127,6 +127,10 @@ class _Group(_ConfigWrapper):
 
 
 class Parameter[T](_ConfigWrapper):
+    """
+    Represents single configuration parameter.
+    """
+
     @property
     def value(self: Self) -> T:
         # todo probably want to return read-only proxies for list/dict
@@ -212,6 +216,12 @@ class _Desyncable(_ConfigWrapper):
 
 
 class ParameterHG[T](_Desyncable, Parameter[T]):
+    """
+    Represents single configuration parameter of `ConfigHostGroup`.
+
+    Changing the value desynchronizes it from the owner's configuration.
+    """
+
     def set(self: Self, value: Any) -> Self:  # noqa: ANN401
         super().set(value)
         self.desync()
@@ -219,6 +229,10 @@ class ParameterHG[T](_Desyncable, Parameter[T]):
 
 
 class ParameterGroup(_Group):
+    """
+    Represents group of configuration parameters.
+    """
+
     @overload
     def __getitem__[ExpectedType: "ConfigEntry"](
         self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
@@ -248,6 +262,10 @@ class ParameterGroup(_Group):
 
 
 class ParameterGroupHG(_Group):
+    """
+    Represents group of configuration parameters of `ConfigHostGroup`.
+    """
+
     @overload
     def __getitem__[ExpectedType: "ConfigEntryHG"](
         self: Self, item: tuple[AnyParameterName, type[ExpectedType]]
@@ -286,10 +304,20 @@ class _Activatable(_Group):
         return self
 
 
-class ActivatableParameterGroup(_Activatable, ParameterGroup): ...
+class ActivatableParameterGroup(_Activatable, ParameterGroup):
+    """
+    Represents group of configuration parameters that can be activated or deactivated.
+    """
 
 
 class ActivatableParameterGroupHG(_Desyncable, _Activatable, ParameterGroupHG):
+    """
+    Represents group of configuration parameters of `ConfigHostGroup`
+    that can be activated or deactivated.
+
+    Changing activity desynchronizes it from the owner's configuration.
+    """
+
     def activate(self: Self) -> Self:
         super().activate()
         self.desync()
@@ -389,7 +417,10 @@ class _Selectable(_Group):
         return value
 
 
-class SelectableParameterGroup(_Selectable, _WithSelect, ParameterGroup): ...
+class SelectableParameterGroup(_Selectable, _WithSelect, ParameterGroup):
+    """
+    Represents group of configuration parameters with one of the inner groups selected.
+    """
 
 
 class SelectableParameterGroupHG(_Selectable, ParameterGroupHG):
